@@ -122,7 +122,7 @@ export const firstPublishProblem = (unknown: string[]): string | undefined =>
   unknown.length === 0
     ? undefined
     : `${unknown.join(' and ')} ${unknown.length === 1 ? 'is' : 'are'} not on npm yet. npm trusted publishing needs the package to exist: ` +
-      'publish the first version by hand from this commit, add release.yml as its trusted publisher, then re-run the failed jobs of this run. See CONTRIBUTING.md.'
+      'publish a 0.0.0 placeholder by hand, add release.yml as its trusted publisher, then re-run the failed jobs of this run. See CONTRIBUTING.md.'
 
 /** The release notes: each package's changelog entry for its version. */
 export const releaseNotes = (packages: ReleasePackage[]): string =>

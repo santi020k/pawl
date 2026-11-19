@@ -40,12 +40,16 @@ The workflow publishes only what is missing, so a failed run is fixed with "Re-r
 
 ### First release and setup
 
-npm trusted publishing needs the package to exist, so the first version of each package is published by hand, once, from the merged `main` commit, the library first: `pnpm ok`, then `pnpm --filter @santi020k/pawl publish --access public` and the same for `@santi020k/pawl-policy`. A version published by hand has no provenance. The Release run of that merge stops with a message that says so. Then:
+npm trusted publishing cannot create a package, so a new package gets a placeholder first: version `0.0.0`, published by hand, with only a `package.json` (its name and `repository`) and a README that says to install a real version. Do this right before the release pull request merges, because npm drops a trusted publisher that has not published within 2 days of being added:
 
-1. On npm, add a trusted publisher to each package: repository `santi020k/pawl`, workflow `release.yml`, environment `npm`.
-2. Choose "Re-run failed jobs" on that Release run. It finds the versions on npm, checks them and creates the tag and the GitHub release on the release commit.
+1. Publish the placeholder of each new package with `npm publish --access public` from a temporary directory.
+2. Add `release.yml` as its trusted publisher, allowed to publish: `npx npm@12 trust github <package> --repo santi020k/pawl --file release.yml --env npm --allow-publish`.
+3. Merge. The Release run publishes the real version through trusted publishing, with provenance, which also validates the trusted publisher.
+4. Deprecate the placeholder: `npm deprecate <package>@0.0.0 "Placeholder. Install 0.1.0 or later."`
 
-The `npm` environment on GitHub should allow only the `main` branch. Protect `main` so that it takes pull requests only and requires the CI checks.
+If a Release run stops because a package is not on npm, do steps 1 and 2 for it, then choose "Re-run failed jobs" on that run.
+
+The `npm` and `docs-production` environments on GitHub allow only the `main` branch; `docs-production` holds the Cloudflare secrets described in [apps/docs/README.md](apps/docs/README.md#deploy). Protect `main` so that it takes pull requests only and requires the CI checks.
 
 ## Secrets
 

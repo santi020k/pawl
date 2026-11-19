@@ -61,6 +61,15 @@ const KEY_OPTION = `/^(${KEY_NAMES})$/`
 /** A quote character, for patterns that match a string literal by its source text. */
 const QUOTE = `['"\`]`
 
+/** Zod methods that read a schema rather than build one, so they may follow .meta(). */
+const ZOD_READERS = 'meta|(?:safe)?(?:parse|encode|decode)(?:Async)?|spa|validate(?:Async)?'
+
+/** The Testing Library queries that return at once, so there is nothing to await. */
+const SYNC_QUERY = '(?:get|query)(?:All)?By(?:LabelText|PlaceholderText|Text|AltText|Title|DisplayValue|Role|TestId)'
+
+/** The build flags Nuxt moved from process to import.meta. */
+const NUXT_FLAGS = 'client|browser|server|nitro|dev|test|prerender'
+
 /** The code patterns again, as GritQL. Biome matches source text, so literals are matched with their quotes. */
 const GRIT = {
   apiKey: {
@@ -77,7 +86,21 @@ const GRIT = {
     conditions: [`$name <: r"^['\\"]Access-Control-Allow-Origin['\\"]$"`, `$value <: r"^['\\"]\\*['\\"]$"`]
   },
   negatedAnd: { pattern: '`!($a && $b)`' },
-  negatedOr: { pattern: '`!($a || $b)`' }
+  negatedOr: { pattern: '`!($a || $b)`' },
+  optionalNullable: { pattern: '`$schema.optional().nullable()`' },
+  nullableOptional: { pattern: '`$schema.nullable().optional()`' },
+  strictObject: { pattern: '`z.object($...).strict($...)`' },
+  looseObject: { pattern: '`z.object($...).$method($...)`', conditions: ['$method <: r"^(?:passthrough|loose)$"'] },
+  trimAfterLength: { pattern: '`$schema.$check($...).trim()`', conditions: ['$check <: r"^(?:min|max|length)$"'] },
+  metaNotLast: {
+    pattern: '`$schema.meta($...).$method($...)`',
+    conditions: [`not $method <: r"^(?:${ZOD_READERS})$"`]
+  },
+  awaitQuery: { pattern: '`await $query($...)`', conditions: [`$query <: r"^${SYNC_QUERY}$"`] },
+  awaitBoundQuery: { pattern: '`await $object.$query($...)`', conditions: [`$query <: r"^${SYNC_QUERY}$"`] },
+  screenDebug: { pattern: '`screen.$util($...)`', conditions: ['$util <: r"^(?:debug|logTestingPlaygroundURL)$"'] },
+  debugUtil: { pattern: '`$util($...)`', conditions: ['$util <: r"^(?:logRoles|logDOM|prettyDOM)$"'] },
+  processFlag: { pattern: '`process.$flag`', conditions: [`$flag <: r"^(?:${NUXT_FLAGS})$"`] }
 } satisfies Record<string, GritPattern>
 
 export const GUARDS: readonly Guard[] = [
@@ -270,6 +293,130 @@ export const GUARDS: readonly Guard[] = [
         message:
           'Use the cors() middleware from "hono/cors" with an explicit origin, not a hand-written wildcard header.',
         grit: GRIT.wildcardCors
+      }
+    ]
+  },
+  {
+    name: 'zod',
+    title: 'Zod',
+    when: ['zod'],
+    syntax: [
+      {
+        selector: "CallExpression[callee.property.name='nullable'][callee.object.callee.property.name='optional']",
+        message: 'Write .nullish() in a Zod schema, not .optional() and .nullable() together.',
+        grit: GRIT.optionalNullable
+      },
+      {
+        selector: "CallExpression[callee.property.name='optional'][callee.object.callee.property.name='nullable']",
+        message: 'Write .nullish() in a Zod schema, not .optional() and .nullable() together.',
+        grit: GRIT.nullableOptional
+      },
+      {
+        selector:
+          "CallExpression[callee.property.name='strict'][callee.object.callee.object.name='z'][callee.object.callee.property.name='object']",
+        message: 'Write z.strictObject(...) instead of z.object(...).strict().',
+        grit: GRIT.strictObject
+      },
+      {
+        selector:
+          "CallExpression[callee.property.name=/^(?:passthrough|loose)$/][callee.object.callee.object.name='z'][callee.object.callee.property.name='object']",
+        message: 'Write z.looseObject(...) instead of z.object(...).passthrough() or .loose().',
+        grit: GRIT.looseObject
+      },
+      {
+        selector:
+          "CallExpression[callee.property.name='trim'][callee.object.callee.property.name=/^(?:min|max|length)$/]",
+        message: 'Call .trim() before .min(), .max() or .length() in a Zod schema, so the trimmed value is measured.',
+        grit: GRIT.trimAfterLength
+      },
+      {
+        selector: `CallExpression[callee.computed=false][callee.property.name!=/^(?:${ZOD_READERS})$/][callee.object.callee.property.name='meta']`,
+        message: 'Call .meta() last in a Zod schema, after every other method.',
+        grit: GRIT.metaNotLast
+      }
+    ]
+  },
+  {
+    name: 'testing-library',
+    title: 'Testing Library',
+    when: [
+      '@testing-library/dom',
+      '@testing-library/react',
+      '@testing-library/vue',
+      '@testing-library/svelte',
+      '@testing-library/angular',
+      '@testing-library/preact'
+    ],
+    syntax: [
+      {
+        selector: `AwaitExpression > CallExpression.argument[callee.name=/^${SYNC_QUERY}$/]`,
+        message:
+          'getBy, getAllBy, queryBy and queryAllBy queries are synchronous. Drop the await, or use a findBy query.',
+        grit: GRIT.awaitQuery
+      },
+      {
+        selector: `AwaitExpression > CallExpression.argument[callee.property.name=/^${SYNC_QUERY}$/]`,
+        message:
+          'getBy, getAllBy, queryBy and queryAllBy queries are synchronous. Drop the await, or use a findBy query.',
+        grit: GRIT.awaitBoundQuery
+      }
+    ]
+  },
+  {
+    // Its own guard, so it can stay at warn while the queries above are errors.
+    name: 'testing-library-debug',
+    title: 'Testing Library debugging',
+    when: [
+      '@testing-library/dom',
+      '@testing-library/react',
+      '@testing-library/vue',
+      '@testing-library/svelte',
+      '@testing-library/angular',
+      '@testing-library/preact'
+    ],
+    level: 'warn',
+    syntax: [
+      {
+        selector:
+          "CallExpression[callee.object.name='screen'][callee.property.name=/^(?:debug|logTestingPlaygroundURL)$/]",
+        message:
+          'Remove Testing Library debugging calls such as screen.debug() and prettyDOM() before you commit a test.',
+        grit: GRIT.screenDebug
+      },
+      {
+        selector: 'CallExpression[callee.name=/^(?:logRoles|logDOM|prettyDOM)$/]',
+        message:
+          'Remove Testing Library debugging calls such as screen.debug() and prettyDOM() before you commit a test.',
+        grit: GRIT.debugUtil
+      }
+    ]
+  },
+  {
+    // Not for @testing-library/dom alone: a project without a framework imports it on purpose.
+    name: 'testing-library-dom',
+    title: 'Testing Library DOM imports',
+    when: [
+      '@testing-library/react',
+      '@testing-library/vue',
+      '@testing-library/svelte',
+      '@testing-library/angular',
+      '@testing-library/preact'
+    ],
+    paths: ['@testing-library/dom', 'dom-testing-library'].map(name => ({
+      name,
+      message:
+        'Import from your framework\'s Testing Library package, such as "@testing-library/react", not the DOM one.'
+    }))
+  },
+  {
+    name: 'nuxt',
+    title: 'Nuxt',
+    when: ['nuxt'],
+    syntax: [
+      {
+        selector: `MemberExpression[computed=false][object.name='process'][property.name=/^(?:${NUXT_FLAGS})$/]`,
+        message: 'Nuxt reads build flags from import.meta. Write import.meta.client, not process.client, and so on.',
+        grit: GRIT.processFlag
       }
     ]
   },

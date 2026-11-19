@@ -11,7 +11,7 @@
     "packages/pawl": {
       "entry": ["src/index.ts", "src/cli.ts", "scripts/*.ts", "test/**/*.test.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["eslint", "prettier"]
+      "ignoreDependencies": ["prettier"]
     },
     "apps/docs": {
       "entry": ["og.config.mjs"],

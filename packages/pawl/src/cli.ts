@@ -5,11 +5,11 @@ import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { BASELINE_FILE, readBaseline } from './baseline.ts'
 import { BLOCKING, check, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check.ts'
-import { allTechnologies, describe, detect, technologies } from './detect.ts'
+import { describe, detect } from './detect.ts'
 import { getDockerRule } from './docker.ts'
-import { BIOME_VERSION, biomeInstalled, checkBiomeConfig } from './engines/biome.ts'
+import { BIOME_VERSION, biomeContextFor, biomeInstalled, checkBiomeConfig } from './engines/biome.ts'
 import { eslintInstalled, eslintPlanFor } from './engines/eslint.ts'
-import { checkOxlintConfig, OXLINT_CONFIG_FILE, oxlintInstalled } from './engines/oxlint.ts'
+import { checkOxlintConfig, OXLINT_CONFIG_FILE, oxlintContextFor, oxlintInstalled } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled } from './engines/prettier.ts'
 import { activeGuards } from './guards.ts'
 import {
@@ -266,17 +266,12 @@ const runInit = async (root: string, flags: Flags): Promise<number> => {
 const runSync = async (root: string): Promise<number> => {
   const policy = await loadPolicy(root)
   const tools = toolset(root, policy)
-  const detection = detect(root)
+  const detection = detect(root, policy)
   const notes: string[] = []
   const actions: InitAction[] = []
 
   if (tools.biome) {
-    const context = {
-      technologies: technologies(detection),
-      dependencies: detection.dependencies,
-      lint: tools.linter === 'biome',
-      format: tools.formatter === 'biome'
-    }
+    const context = biomeContextFor(root, policy, detection, tools)
     const rootAction = planBiomeConfig(root, policy, context, notes)
 
     if (rootAction) actions.push(rootAction)
@@ -471,8 +466,8 @@ const kebab = (name: string): string => name.replace(/[A-Z]/g, letter => `-${let
 const LINTER_NAMES: Record<EngineName, string> = { biome: 'Biome', oxlint: 'Oxlint', eslint: 'ESLint' }
 
 const runDoctor = async (root: string): Promise<number> => {
-  const detection = detect(root)
   const policy = await loadPolicy(root)
+  const detection = detect(root, policy)
   const tools = toolset(root, policy)
   const source = findConfigFile(root) ? policy.sources.slice(1).join(' -> ') : 'default standard (no pawl.config file)'
   const lines = [
@@ -491,12 +486,7 @@ const runDoctor = async (root: string): Promise<number> => {
   }
 
   if (tools.biome) {
-    const config = checkBiomeConfig(root, policy, {
-      technologies: technologies(detection),
-      dependencies: detection.dependencies,
-      lint: tools.linter === 'biome',
-      format: tools.formatter === 'biome'
-    })
+    const config = checkBiomeConfig(root, policy, biomeContextFor(root, policy, detection, tools))
 
     lines.push(
       `Biome:    ${biomeInstalled(root) ? BIOME_VERSION : 'not installed'}, ${config.file ?? 'no config'} ${config.status === 'ok' ? 'in line with the policy' : `(${config.status})`}`
@@ -509,11 +499,7 @@ const runDoctor = async (root: string): Promise<number> => {
   }
 
   if (tools.linter === 'oxlint') {
-    const config = checkOxlintConfig(root, policy, {
-      typescript: true,
-      technologies: allTechnologies(detection),
-      dependencies: detection.dependencies
-    })
+    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
 
     lines.push(
       `Oxlint:   ${oxlintInstalled(root) ? 'installed' : 'not installed'}, ${OXLINT_CONFIG_FILE} (${config.status})`

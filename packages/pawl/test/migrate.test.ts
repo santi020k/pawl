@@ -105,7 +105,9 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
     applyInit(plan)
 
     expect(readFileSync(join(root, 'eslint.config.before-pawl.js'), 'utf8')).toBe(OLD_CONFIG)
-    expect(readFileSync(join(root, 'eslint.config.js'), 'utf8')).toContain('export default eslint()')
+    expect(readFileSync(join(root, 'eslint.config.js'), 'utf8')).toContain(
+      'export default eslint({ root: import.meta.dirname })'
+    )
 
     const policy = readFileSync(join(root, 'pawl.config.ts'), 'utf8')
 

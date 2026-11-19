@@ -1,28 +1,18 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { type Dirent, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isGitRepo, readJson, toPosix } from './fs-utils.ts'
+import { WALK_SKIP } from './ignores.ts'
 import { GATED_TAGS, type Technology } from './rules.ts'
+import { type Detectable, type Framework, type Policy, type Runtime } from './types.ts'
+
+export type { Framework } from './types.ts'
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun'
 
 export type WorkspaceTool = 'turbo' | 'nx'
 
-/** A framework or library pawl recognises from the dependencies. */
-export type Framework =
-  | 'react'
-  | 'next'
-  | 'vue'
-  | 'nuxt'
-  | 'svelte'
-  | 'angular'
-  | 'astro'
-  | 'solid'
-  | 'react-native'
-  | 'qwik'
-  | 'tailwind'
-  | 'tanstack-query'
-  | 'drizzle'
-  | 'playwright'
+/** A file format that has a pack of its own. */
+export type FileFormat = 'markdown' | 'mdx' | 'yaml' | 'jsonc' | 'toml' | 'graphql'
 
 /** Frameworks whose files Biome cannot fully lint yet, so ESLint still earns its place. */
 export const NEEDS_ESLINT: readonly Framework[] = ['vue', 'nuxt', 'svelte', 'angular', 'astro']
@@ -40,6 +30,12 @@ export interface Detection {
   }
   /** The frameworks the root package.json depends on. */
   rootFrameworks: Framework[]
+  /** Where the code runs: what the policy names, else what the dependencies and files say. */
+  runtimes: Runtime[]
+  /** File formats found near the top of the repo, each of which a pack can lint. */
+  formats: FileFormat[]
+  /** What the policy told detection to leave out. */
+  excluded: Detectable[]
   typescript: boolean
   /** Every dependency name in the root package.json and the workspace packages. */
   dependencies: string[]
@@ -50,6 +46,8 @@ export interface Detection {
     eslint?: string
     oxlint?: string
     prettier?: string
+    cspell?: string
+    jsdoc?: string
   }
 }
 
@@ -81,8 +79,54 @@ const FRAMEWORK_PACKAGES: readonly [string, Framework][] = [
   ['@tanstack/solid-query', 'tanstack-query'],
   ['@tanstack/svelte-query', 'tanstack-query'],
   ['drizzle-orm', 'drizzle'],
-  ['@playwright/test', 'playwright']
+  ['@playwright/test', 'playwright'],
+  ['hono', 'hono'],
+  ['lit', 'lit'],
+  ['lit-element', 'lit'],
+  ['@nestjs/core', 'nest'],
+  ['preact', 'preact'],
+  ['react-router', 'react-router'],
+  ['@react-router/dev', 'react-router'],
+  ['@remix-run/react', 'react-router'],
+  ['@remix-run/node', 'react-router'],
+  ['@tanstack/react-start', 'tanstack-start'],
+  ['@tanstack/solid-start', 'tanstack-start'],
+  ['vite', 'vite']
 ]
+
+/** Frameworks that run Vite themselves. Vite counts as a framework only without one of these. */
+const VITE_HOSTS: readonly Framework[] = [
+  'astro',
+  'nuxt',
+  'svelte',
+  'qwik',
+  'solid',
+  'react-router',
+  'tanstack-start',
+  'angular',
+  'next'
+]
+
+/** Frameworks whose code runs in a browser, so browser globals are defined. */
+const FRONTEND: readonly Framework[] = [
+  'react',
+  'next',
+  'vue',
+  'nuxt',
+  'svelte',
+  'angular',
+  'astro',
+  'solid',
+  'qwik',
+  'preact',
+  'lit',
+  'react-router',
+  'tanstack-start',
+  'vite'
+]
+
+/** Frameworks for servers only. */
+const SERVER: readonly Framework[] = ['nest', 'hono']
 
 const TOOL_FILES = {
   biome: ['biome.json', 'biome.jsonc'],
@@ -110,8 +154,122 @@ const TOOL_FILES = {
     'prettier.config.js',
     'prettier.config.mjs',
     'prettier.config.cjs'
-  ]
+  ],
+  cspell: [
+    'cspell.json',
+    '.cspell.json',
+    'cSpell.json',
+    'cspell.jsonc',
+    '.cspell.jsonc',
+    'cspell.config.json',
+    'cspell.config.yaml',
+    'cspell.config.yml',
+    'cspell.config.js',
+    'cspell.config.cjs',
+    'cspell.config.mjs'
+  ],
+  jsdoc: ['jsdoc.json', '.jsdoc.json', 'jsdoc.config.js', 'jsdoc.config.cjs', 'jsdoc.config.mjs']
 } as const
+
+const TSCONFIG_FILES = ['tsconfig.json', 'tsconfig.base.json', 'tsconfig.app.json', 'tsconfig.node.json']
+
+/** How far down the probe for file formats looks, and how many entries it reads at most. */
+const PROBE_DEPTH = 4
+
+const PROBE_LIMIT = 20_000
+
+const FORMAT_EXTENSIONS: readonly [RegExp, FileFormat][] = [
+  [/\.md$/i, 'markdown'],
+  [/\.mdx$/i, 'mdx'],
+  [/\.ya?ml$/i, 'yaml'],
+  [/\.json[c5]$/i, 'jsonc'],
+  [/\.toml$/i, 'toml'],
+  [/\.(?:graphql|gql)$/i, 'graphql']
+]
+
+interface Probe {
+  formats: Set<FileFormat>
+  astro: boolean
+}
+
+/**
+ * A shallow look at the files: which formats a pack could lint, and Astro components.
+ * Folders nothing is checked in are skipped, and so are hidden ones but `.github`.
+ */
+const probeFiles = (root: string): Probe => {
+  const probe: Probe = { formats: new Set(), astro: false }
+  let budget = PROBE_LIMIT
+  const visit = (dir: string, depth: number): void => {
+    let entries: Dirent[]
+
+    try {
+      entries = readdirSync(join(root, dir), { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (--budget < 0) return
+
+      if (entry.isDirectory()) {
+        const hidden = entry.name.startsWith('.') && entry.name !== '.github'
+
+        if (depth < PROBE_DEPTH && !hidden && !WALK_SKIP.has(entry.name)) visit(join(dir, entry.name), depth + 1)
+      } else if (entry.isFile()) {
+        if (entry.name.endsWith('.astro')) probe.astro = true
+
+        for (const [pattern, format] of FORMAT_EXTENSIONS) {
+          if (pattern.test(entry.name)) probe.formats.add(format)
+        }
+      }
+    }
+  }
+
+  visit('', 0)
+
+  return probe
+}
+
+const BUN_PACKAGES = ['bun-types', '@types/bun']
+
+const WORKER_PACKAGES = ['wrangler', '@cloudflare/workers-types', '@cloudflare/vitest-pool-workers']
+
+/** Where the code runs, from the dependencies, the frameworks and a few config files. */
+const detectRuntimes = (
+  root: string,
+  dependencies: ReadonlySet<string>,
+  frameworks: readonly Framework[],
+  hasManifest: boolean
+): Runtime[] => {
+  const has = (names: readonly string[]): boolean => names.some(name => existsSync(join(root, name)))
+  const bun = BUN_PACKAGES.some(name => dependencies.has(name)) || has(['bunfig.toml'])
+  const deno = has(['deno.json', 'deno.jsonc'])
+  const worker =
+    WORKER_PACKAGES.some(name => dependencies.has(name)) || has(['wrangler.toml', 'wrangler.json', 'wrangler.jsonc'])
+  const frontend = frameworks.some(framework => FRONTEND.includes(framework))
+  const server = frameworks.some(framework => SERVER.includes(framework))
+  const runtimes: Runtime[] = []
+
+  // Tooling runs on Node in any project with a package.json, so only a Deno project without one goes without.
+  if (!deno || hasManifest) runtimes.push('node')
+
+  // With nothing to say where the code runs, it may run anywhere, as before detection.
+  if (frontend || !(bun || deno || worker || server)) runtimes.push('browser')
+
+  if (bun) runtimes.push('bun')
+
+  if (deno) runtimes.push('deno')
+
+  if (worker) runtimes.push('worker')
+
+  return runtimes
+}
+
+/** Every framework and the Turborepo rules: what `detect.exclude` takes, and what `detect: false` leaves out. */
+export const DETECTABLE: readonly Detectable[] = [
+  ...new Set(FRAMEWORK_PACKAGES.map(([, framework]) => framework)),
+  'turbo'
+]
 
 const firstExisting = (root: string, names: readonly string[]): string | undefined =>
   names.find(name => existsSync(join(root, name)))
@@ -200,7 +358,10 @@ const dependencyNames = (manifest: Manifest | undefined): string[] =>
 const frameworksIn = (names: Iterable<string>): Framework[] => {
   const present = new Set(names)
 
-  return [...new Set(FRAMEWORK_PACKAGES.filter(([name]) => present.has(name)).map(([, framework]) => framework))]
+  const found = [...new Set(FRAMEWORK_PACKAGES.filter(([name]) => present.has(name)).map(([, framework]) => framework))]
+
+  // Vite on its own is a framework; under a framework that runs it, it is that framework's detail.
+  return found.some(framework => VITE_HOSTS.includes(framework)) ? found.filter(name => name !== 'vite') : found
 }
 
 const detectWorkspaceTool = (root: string): WorkspaceTool | undefined => {
@@ -211,22 +372,43 @@ const detectWorkspaceTool = (root: string): WorkspaceTool | undefined => {
 
 const WORKSPACE_TOOL_NAMES: Record<WorkspaceTool, string> = { turbo: 'Turborepo', nx: 'Nx' }
 
-/** Look at a project and report what it is built with. Reads files only; runs nothing but git. */
-export const detect = (root: string): Detection => {
+/** What a policy says about detection. */
+export type DetectOptions = Partial<Pick<Policy, 'detect' | 'runtime'>>
+
+/**
+ * Look at a project and report what it is built with. Reads files only; runs nothing but git.
+ * The policy's `detect` leaves technologies out, and its `runtime` replaces the detected runtimes.
+ */
+export const detect = (root: string, options: DetectOptions = {}): Detection => {
   const manifest = readJson<Manifest>(join(root, 'package.json'))
   const packages = workspacePackages(root, manifest)
   const manifests = [manifest, ...packages.map(dir => readJson<Manifest>(join(root, dir, 'package.json')))]
   const dependencies = new Set(manifests.flatMap(dependencyNames))
   const tool = detectWorkspaceTool(root)
   const tools: Detection['tools'] = {}
+  const enabled = options.detect?.enabled !== false
+  const excluded: Detectable[] = enabled ? [...(options.detect?.exclude ?? [])] : [...DETECTABLE]
+  const keep = (frameworks: Framework[]): Framework[] => frameworks.filter(framework => !excluded.includes(framework))
+  const probe = enabled ? probeFiles(root) : { formats: new Set<FileFormat>(), astro: false }
+  // Astro components with no package that declares Astro: then the files are the only sign of it.
+  const astroFromFiles = probe.astro && !frameworksIn(dependencies).includes('astro')
+  const withFiles = (frameworks: Framework[]): Framework[] => (astroFromFiles ? [...frameworks, 'astro'] : frameworks)
 
-  for (const name of ['biome', 'eslint', 'oxlint', 'prettier'] as const) {
+  for (const name of ['biome', 'eslint', 'oxlint', 'prettier', 'cspell', 'jsdoc'] as const) {
     const file = firstExisting(root, TOOL_FILES[name])
 
     if (file) tools[name] = file
   }
 
   if (!tools.prettier && manifest?.prettier !== undefined) tools.prettier = 'package.json'
+
+  const frameworks = keep(withFiles(frameworksIn(dependencies)))
+  // The policy's runtimes win. With detection off, the code may run anywhere.
+  const runtimesFor = (): Runtime[] => {
+    if (options.runtime) return [...options.runtime]
+
+    return enabled ? detectRuntimes(root, dependencies, frameworks, manifest !== undefined) : ['node', 'browser']
+  }
 
   return {
     root,
@@ -236,19 +418,44 @@ export const detect = (root: string): Detection => {
       tool,
       packages,
       frameworks: Object.fromEntries(
-        packages.map(dir => [dir, frameworksIn(dependencyNames(readJson<Manifest>(join(root, dir, 'package.json'))))])
+        packages.map(dir => [
+          dir,
+          keep(frameworksIn(dependencyNames(readJson<Manifest>(join(root, dir, 'package.json')))))
+        ])
       )
     },
     typescript:
       dependencies.has('typescript') ||
-      existsSync(join(root, 'tsconfig.json')) ||
-      packages.some(dir => existsSync(join(root, dir, 'tsconfig.json'))),
+      TSCONFIG_FILES.some(name => existsSync(join(root, name))) ||
+      packages.some(dir => TSCONFIG_FILES.some(name => existsSync(join(root, dir, name)))),
     dependencies: [...dependencies].sort(),
-    frameworks: frameworksIn(dependencies),
-    rootFrameworks: frameworksIn(dependencyNames(manifest)),
+    frameworks,
+    // Astro components found in the files count for the root: Astro's rules then apply repo-wide.
+    rootFrameworks: keep(withFiles(frameworksIn(dependencyNames(manifest)))),
+    runtimes: runtimesFor(),
+    formats: [...probe.formats].sort(),
+    excluded,
     tools
   }
 }
+
+/** The file formats and tools that call for a pack, and the pack each calls for. */
+const FILE_PACKS: readonly [(detection: Detection) => boolean, string][] = [
+  [detection => detection.formats.includes('markdown'), 'markdown'],
+  [detection => detection.formats.includes('yaml'), 'yaml'],
+  [detection => detection.formats.includes('jsonc'), 'jsonc'],
+  [detection => detection.formats.includes('toml'), 'toml'],
+  [detection => detection.formats.includes('graphql'), 'graphql'],
+  [detection => detection.tools.cspell !== undefined, 'cspell'],
+  [detection => detection.tools.jsdoc !== undefined || detection.dependencies.includes('jsdoc'), 'jsdoc']
+]
+
+/**
+ * The packs the repo's files call for: a format a pack lints, or a tool's config file.
+ * These are suggestions only. A pack switches on when the policy names it or `pawl add` adds it.
+ */
+export const filePacks = (detection: Detection): string[] =>
+  FILE_PACKS.filter(([found]) => found(detection)).map(([, pack]) => pack)
 
 export const usesReact = (detection: Detection): boolean =>
   detection.frameworks.some(framework => framework === 'react' || framework === 'next' || framework === 'react-native')
@@ -267,7 +474,10 @@ const FRAMEWORK_TECHNOLOGIES: Partial<Record<Framework, Technology[]>> = {
   tailwind: ['tailwind'],
   'tanstack-query': ['tanstack-query'],
   drizzle: ['drizzle'],
-  playwright: ['playwright']
+  playwright: ['playwright'],
+  preact: [],
+  'react-router': ['react'],
+  'tanstack-start': []
 }
 
 const toTechnologies = (frameworks: readonly Framework[]): Technology[] => {
@@ -277,7 +487,7 @@ const toTechnologies = (frameworks: readonly Framework[]): Technology[] => {
 }
 
 const withTurbo = (found: Technology[], detection: Detection): Technology[] =>
-  detection.workspace.tool === 'turbo' ? [...found, 'turbo'] : found
+  detection.workspace.tool === 'turbo' && !detection.excluded.includes('turbo') ? [...found, 'turbo'] : found
 
 /**
  * The technologies whose rules apply to the whole repo. In a monorepo that is what the root
@@ -327,7 +537,14 @@ export const describe = (detection: Detection): string => {
     tailwind: 'Tailwind CSS',
     'tanstack-query': 'TanStack Query',
     drizzle: 'Drizzle',
-    playwright: 'Playwright'
+    playwright: 'Playwright',
+    hono: 'Hono',
+    lit: 'Lit',
+    nest: 'NestJS',
+    preact: 'Preact',
+    'react-router': 'React Router',
+    'tanstack-start': 'TanStack Start',
+    vite: 'Vite'
   }
 
   parts.push(...detection.frameworks.map(framework => names[framework]))

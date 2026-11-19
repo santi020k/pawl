@@ -1,27 +1,25 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
+import { WALK_SKIP } from './ignores.ts'
 
-export const SKIP_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  'coverage',
-  '.turbo',
-  '.next',
-  '.astro',
-  '.nuxt',
-  '.svelte-kit',
-  '.output',
-  '.pawl'
-])
+// Kept for the modules that matched globs here before the ignores had a module of their own.
+export { makeIgnore } from './ignores.ts'
 
 /** Turn "one, many or none" into a list. */
 export const toList = <T>(value: T | readonly T[] | undefined): T[] => {
   if (value === undefined) return []
 
   return Array.isArray(value) ? [...(value as readonly T[])] : [value as T]
+}
+
+/** The directories from `start` up to the filesystem root, nearest first. */
+export const ancestors = (start: string): string[] => {
+  const dirs = [resolve(start)]
+
+  while (dirname(dirs.at(-1) as string) !== dirs.at(-1)) dirs.push(dirname(dirs.at(-1) as string))
+
+  return dirs
 }
 
 export const toPosix = (path: string): string => (sep === '/' ? path : path.split(sep).join('/'))
@@ -153,44 +151,11 @@ const walk = (root: string, dir: string): string[] => {
 
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) files.push(...walk(root, join(dir, entry.name)))
+      if (!WALK_SKIP.has(entry.name)) files.push(...walk(root, join(dir, entry.name)))
     } else if (entry.isFile()) {
       files.push(toPosix(relative(root, join(dir, entry.name))))
     }
   }
 
   return files
-}
-
-/** A small glob matcher: `**`, `*` and `?`. A pattern without a slash matches at any depth. */
-export const globToRegExp = (pattern: string): RegExp => {
-  const anchored = pattern.includes('/') ? pattern.replace(/^\.?\//, '') : `**/${pattern}`
-  let source = ''
-
-  for (let index = 0; index < anchored.length; index++) {
-    const char = anchored[index] as string
-
-    if (char === '*' && anchored[index + 1] === '*') {
-      source += anchored[index + 2] === '/' ? '(?:.*/)?' : '.*'
-      index += anchored[index + 2] === '/' ? 2 : 1
-    } else if (char === '*') {
-      source += '[^/]*'
-    } else if (char === '?') {
-      source += '[^/]'
-    } else {
-      source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    }
-  }
-
-  return new RegExp(`^${source}(?:/.*)?$`)
-}
-
-export const makeIgnore = (patterns: readonly string[]): ((file: string) => boolean) => {
-  const matchers = patterns.map(globToRegExp)
-
-  return file => {
-    if (file.split('/').some(part => SKIP_DIRS.has(part))) return true
-
-    return matchers.some(matcher => matcher.test(file))
-  }
 }

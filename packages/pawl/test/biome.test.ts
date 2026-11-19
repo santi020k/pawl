@@ -69,7 +69,7 @@ describe('biomeProjectConfig', () => {
 
     expect(biomeProjectConfig(policy)).toEqual({
       extends: [BIOME_PRESET],
-      files: { includes: ['!generated', '!vendor'] },
+      files: { includes: ['!generated', '!**/vendor'] },
       formatter: { indentStyle: 'tab' },
       javascript: { formatter: { quoteStyle: 'double' } },
       linter: { rules: { style: { useNamingConvention: 'warn' }, suspicious: { noConsole: 'off' } } }

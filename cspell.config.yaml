@@ -6,8 +6,10 @@ words:
   - astrojs
   - baselined
   - biomejs
+  - bunfig
   - bunx
   - classlist
+  - clinerules
   - commitprompt
   - Containerfile
   - darraghor
@@ -20,20 +22,24 @@ words:
   - Hono
   - Instantiator
   - isnan
+  - kiro
   - knip
   - langchain
   - lede
   - linejoin
   - llamaindex
+  - lockfiles
   - miterlimit
   - modelcontextprotocol
   - nonroot
   - noopener
   - noreferrer
   - opencontainers
+  - opencode
   - Qwik
   - santi
   - santi020k
+  - serviceworker
   - Slidev
   - stylesheet
   - textnodes

@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
     "build": "santi-og generate && astro build",
+    "dev": "astro dev",
+    "doctor": "astro-doctor",
     "og": "santi-og generate",
     "preview": "astro preview",
-    "typecheck": "astro check",
-    "doctor": "astro-doctor"
+    "typecheck": "astro check"
   },
   "dependencies": {
     "@astrojs/starlight": "catalog:",

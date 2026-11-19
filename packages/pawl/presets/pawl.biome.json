@@ -3,16 +3,44 @@
   "files": {
     "includes": [
       "**",
+      "!**/.pawl",
       "!**/dist",
       "!**/build",
       "!**/coverage",
+      "!**/.turbo",
       "!**/.next",
+      "!**/.open-next",
       "!**/.astro",
       "!**/.nuxt",
       "!**/.svelte-kit",
       "!**/.output",
-      "!**/.turbo",
-      "!**/.pawl"
+      "!**/.vercel",
+      "!**/.wrangler",
+      "!**/playwright-report",
+      "!**/test-results",
+      "!**/*.tsbuildinfo",
+      "!**/pnpm-lock.yaml",
+      "!**/yarn.lock",
+      "!**/package-lock.json",
+      "!**/bun.lock",
+      "!**/bun.lockb",
+      "!**/.agent",
+      "!**/.agents",
+      "!**/.aider*",
+      "!**/.claude",
+      "!**/.clinerules",
+      "!**/.codex",
+      "!**/.copilot",
+      "!**/.cursor",
+      "!**/.gemini",
+      "!**/.kiro",
+      "!**/.opencode",
+      "!**/.roo",
+      "!**/.windsurf",
+      "!**/__generated__",
+      "!**/*.generated.*",
+      "!**/*.gen.*",
+      "!**/.prisma"
     ]
   },
   "formatter": {
@@ -181,7 +209,8 @@
   "assist": {
     "actions": {
       "source": {
-        "organizeImports": "on"
+        "organizeImports": "on",
+        "useSortedPackageJson": "on"
       }
     }
   }

@@ -94,4 +94,14 @@ describe('exit codes', () => {
     expect(exitCode(drift)).toBe(0)
     expect(exitCode(drift, true)).toBe(2)
   })
+
+  it('is 1 when there are more new warnings than the limit, and says so', () => {
+    const limited = result([any, any], { maxWarnings: 1 })
+
+    expect(exitCode(result([any], { maxWarnings: 1 }))).toBe(0)
+    expect(exitCode(limited)).toBe(1)
+    expect(exitCode(result([any], { maxWarnings: 0 }))).toBe(1)
+    expect(formatPretty(limited)).toContain('The limit is 1 warning, so the warnings fail the check.')
+    expect(JSON.parse(formatAgent(limited).split('\n')[0] ?? '')).toMatchObject({ rule: 'pawl/max-warnings' })
+  })
 })

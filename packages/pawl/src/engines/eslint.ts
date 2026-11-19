@@ -2,13 +2,15 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { allTechnologies, detect } from '../detect.ts'
-import { SKIP_DIRS, toList, toPosix } from '../fs-utils.ts'
+import { toList, toPosix } from '../fs-utils.ts'
 import { IMPORTS_RULE, importRestrictions, SYNTAX_RULE, syntaxRestrictions } from '../guards.ts'
+import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../ignores.ts'
 import { PACKS, type Pack } from '../packs.ts'
-import { effectiveRules, loadPolicy, resolveSpecifier } from '../policy.ts'
+import { effectiveRules, findProjectRoot, loadPolicy, overrideRules, resolveSpecifier } from '../policy.ts'
 import { getRule, type Technology } from '../rules.ts'
+import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../runtime.ts'
 import { toolset } from '../tools.ts'
-import { type Finding, type Policy } from '../types.ts'
+import { type Finding, type Policy, type Runtime } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
 import { oxlintCovers } from './oxlint.ts'
 import { EngineError, runNode } from './run.ts'
@@ -19,76 +21,20 @@ export type FlatConfig = Record<string, unknown>
 const SCRIPT_FILES = ['**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}']
 
 /**
- * Globals for when the project does not have the `globals` package. ESLint knows none by itself,
- * so without a list its own `no-undef` would flag `console` and `window`.
+ * The globals of the runtimes the code runs in: from the project's `globals` package when it has
+ * one, else pawl's own short list. ESLint knows none by itself, so without a list its own
+ * `no-undef` would flag `console` and `window`.
  */
-const COMMON_GLOBALS = [
-  'console',
-  'globalThis',
-  'process',
-  'Buffer',
-  '__dirname',
-  '__filename',
-  'module',
-  'require',
-  'exports',
-  'setTimeout',
-  'clearTimeout',
-  'setInterval',
-  'clearInterval',
-  'setImmediate',
-  'clearImmediate',
-  'queueMicrotask',
-  'structuredClone',
-  'performance',
-  'fetch',
-  'URL',
-  'URLSearchParams',
-  'TextEncoder',
-  'TextDecoder',
-  'AbortController',
-  'AbortSignal',
-  'Event',
-  'EventTarget',
-  'CustomEvent',
-  'FormData',
-  'Headers',
-  'Request',
-  'Response',
-  'Blob',
-  'File',
-  'WebSocket',
-  'Worker',
-  'crypto',
-  'atob',
-  'btoa',
-  'window',
-  'document',
-  'navigator',
-  'location',
-  'history',
-  'localStorage',
-  'sessionStorage',
-  'alert',
-  'confirm',
-  'prompt',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'IntersectionObserver',
-  'MutationObserver',
-  'ResizeObserver',
-  'HTMLElement',
-  'Element',
-  'Node'
-]
-
-/** The project's `globals` package when it has one, else the short list above. */
-const globalsFor = async (root: string): Promise<Record<string, unknown>> => {
+const globalsFor = async (root: string, runtimes: readonly Runtime[]): Promise<Record<string, unknown>> => {
   const { module: all } = await importFromProject(root, 'globals')
+  const keys = [...new Set(runtimes.flatMap(runtime => RUNTIME_GLOBALS[runtime].globals))]
+  const extra = Object.fromEntries(extraGlobals(runtimes).map(name => [name, 'readonly']))
 
-  if (isRecord(all?.node) && isRecord(all.browser)) return { ...all.browser, ...all.node }
+  if (all && keys.every(key => isRecord(all[key]))) {
+    return Object.assign({}, ...keys.map(key => all[key]), extra) as Record<string, unknown>
+  }
 
-  return Object.fromEntries(COMMON_GLOBALS.map(name => [name, 'readonly']))
+  return Object.fromEntries(ownGlobals(runtimes).map(name => [name, 'readonly']))
 }
 
 const TS_FILES = ['**/*.{ts,mts,cts,tsx}']
@@ -119,6 +65,8 @@ export interface EslintPlanOptions {
   technologies?: readonly Technology[]
   /** Every dependency in the repo, used to switch packs on. */
   dependencies?: readonly string[]
+  /** Where the code runs, for the globals ESLint knows. Node and the browser when not given. */
+  runtimes?: readonly Runtime[]
 }
 
 /** Plugins whose package name does not follow the eslint-plugin-<prefix> convention. */
@@ -400,10 +348,9 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     }
   }
 
-  // A bare folder name is given both ways so ESLint skips the folder and everything in it.
+  // The defaults, the root .gitignore and the policy's own patterns, in that order, as pawl reads them.
   const ignores = [
-    ...[...SKIP_DIRS].map(dir => `**/${dir}/**`),
-    ...policy.ignore.flatMap(pattern => (/[*]/.test(pattern) ? [pattern] : [pattern, `${pattern}/**`]))
+    ...new Set([...ALWAYS_IGNORED.map(dir => `**/${dir}/**`), ...allIgnores(root, policy).flatMap(toEslintIgnores)])
   ]
   const config: FlatConfig[] = [{ name: 'pawl/ignores', ignores }]
   const otherPlugins = Object.fromEntries(
@@ -416,7 +363,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: await globalsFor(root),
+      globals: await globalsFor(root, options.runtimes ?? ['node', 'browser']),
       parserOptions: { ecmaFeatures: { jsx: true } }
     },
     linterOptions: { reportUnusedDisableDirectives: 'warn' },
@@ -488,18 +435,93 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     }
   }
 
+  // Overrides go last, so they win over the base rules and the packs for the files they name.
+  const loadedPlugins = new Map<string, unknown>([
+    ...[...plugins].flatMap(([prefix, loaded]): [string, unknown][] =>
+      loaded.module ? [[prefix, prefix === TS_PREFIX ? tseslint?.plugin : loaded.module]] : []
+    ),
+    ...packBlocks.map(({ pack, plugin }): [string, unknown] => [pack.prefix, plugin])
+  ])
+  for (const [index, override] of policy.overrides.entries()) {
+    const rules: Rules = {}
+    const twins: Rules = {}
+    const used: Record<string, unknown> = {}
+    const entries = overrideRules(override, { typescript, technologies }, policy)
+
+    for (const [name, level] of entries) {
+      if (name.startsWith('biome:') || name.startsWith('oxlint:') || name.startsWith('pawl/') || covered(name)) continue
+
+      const def = getRule(name)
+      const eslintName = name.startsWith('eslint:') ? name.slice('eslint:'.length) : name
+      const ruleOptions = override.options[name] ?? policy.options[name] ?? def?.options?.eslint
+      const value: RuleValue = level !== 'off' && ruleOptions ? [level, ...ruleOptions] : level
+      const prefix = splitRule(eslintName)
+
+      if (prefix) {
+        if (!loadedPlugins.has(prefix)) {
+          const loaded = await importFromProject(root, pluginPackage(prefix))
+
+          if (!loaded.module) {
+            notEnforced.push({ rule: name, needs: needs(pluginPackage(prefix), loaded) })
+
+            continue
+          }
+
+          loadedPlugins.set(prefix, loaded.module)
+        }
+
+        used[prefix] = loadedPlugins.get(prefix)
+      }
+
+      rules[eslintName] = value
+
+      // In TypeScript files the typescript-eslint twin of a core rule stands in for it, as in the base.
+      const twin = prefix ? undefined : def?.aliases?.find(alias => alias.startsWith(`${TS_PREFIX}/`))
+
+      if (twin && tseslint) {
+        twins[eslintName] = 'off'
+        twins[twin] = value
+      }
+    }
+
+    const files = override.files.map(toEngineGlob)
+
+    if (Object.keys(rules).length > 0) {
+      config.push({
+        name: `pawl/override/${index}`,
+        files,
+        ...(Object.keys(used).length > 0 ? { plugins: used } : {}),
+        rules
+      })
+    }
+
+    if (tseslint && Object.keys(twins).length > 0) {
+      // A file must match both the override and the TypeScript patterns.
+      config.push({
+        name: `pawl/override/${index}/typescript`,
+        files: files.map(glob => [glob, ...TS_FILES]),
+        plugins: { [TS_PREFIX]: tseslint.plugin },
+        rules: twins
+      })
+    }
+  }
+
   return { config, coveredByBiome, notEnforced, activePacks, availablePacks }
 }
 
 export interface EslintOptions {
-  /** Project root. Defaults to the directory ESLint was started in. */
+  /**
+   * Project root. Pass `import.meta.dirname` from eslint.config.js, so the root does not depend on
+   * where an editor starts ESLint. Without it, pawl looks up from the working directory for the
+   * nearest pawl config, then the nearest ESLint config, then the nearest package.json.
+   */
   root?: string
 }
 
 /** The plan for a project as it stands on disk. */
 export const eslintPlanFor = async (root: string, policy?: Policy): Promise<EslintPlan> => {
   const resolved = policy ?? (await loadPolicy(root))
-  const detection = detect(root)
+  const detection = detect(root, resolved)
 
   return eslintPlan({
     root,
@@ -509,7 +531,8 @@ export const eslintPlanFor = async (root: string, policy?: Policy): Promise<Esli
     typescript: detection.typescript,
     // One ESLint config covers the whole repo, so it takes every technology in it.
     technologies: allTechnologies(detection),
-    dependencies: detection.dependencies
+    dependencies: detection.dependencies,
+    runtimes: detection.runtimes
   })
 }
 
@@ -520,11 +543,11 @@ export const eslintPlanFor = async (root: string, policy?: Policy): Promise<Esli
  * // eslint.config.js
  * import { eslint } from '@santi020k/pawl'
  *
- * export default eslint()
+ * export default eslint({ root: import.meta.dirname })
  * ```
  */
-export const eslint = async ({ root = process.cwd() }: EslintOptions = {}): Promise<FlatConfig[]> =>
-  (await eslintPlanFor(root)).config
+export const eslint = async ({ root }: EslintOptions = {}): Promise<FlatConfig[]> =>
+  (await eslintPlanFor(root ?? findProjectRoot(process.cwd()))).config
 
 interface EslintMessage {
   ruleId: string | null

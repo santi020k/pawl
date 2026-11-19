@@ -1,11 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { type Detection, technologies as repoTechnologies } from '../detect.ts'
 import { readJsonc, toList, toPosix } from '../fs-utils.ts'
 import { guardOfMessage, importRestrictions, ruleFiles } from '../guards.ts'
-import { defaultPolicy, effectiveRules } from '../policy.ts'
+import { configIgnores, DEFAULT_IGNORES, toBiomeIgnore, toEngineGlob } from '../ignores.ts'
+import { defaultPolicy, effectiveRules, overrideRules } from '../policy.ts'
 import { GATED_TAGS, getRule, getRuleByBiome, isGated, type RuleTag, type Technology } from '../rules.ts'
-import { type Finding, type Policy, type SetupIssue } from '../types.ts'
+import { extraGlobals, RUNTIMES } from '../runtime.ts'
+import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../types.ts'
 import { EngineError, runNode } from './run.ts'
 
 /** The Biome version this release of pawl is tested with. Kept in step with package.json by a test. */
@@ -34,22 +37,42 @@ export interface BiomeContext {
   format?: boolean
   /** Every dependency in the repo. Switches on the import guards for the libraries it uses. */
   dependencies?: readonly string[]
+  /** Let Biome read the .gitignore. Only where there is one, or a git repo: Biome fails without either. */
+  vcs?: boolean
+  /** Where the code runs. Biome knows the Node and browser globals; the others are named for it. */
+  runtimes?: readonly Runtime[]
 }
 
-export const BIOME_CONFIG_FILES = ['biome.json', 'biome.jsonc']
+/** Biome reads the .gitignore when the policy wants it and there is a .gitignore or a git repo to read. */
+export const biomeVcs = (root: string, policy: Pick<Policy, 'gitignore'>): boolean =>
+  policy.gitignore && (existsSync(join(root, '.gitignore')) || existsSync(join(root, '.git')))
 
-const DEFAULT_IGNORES = [
-  '**/dist',
-  '**/build',
-  '**/coverage',
-  '**/.next',
-  '**/.astro',
-  '**/.nuxt',
-  '**/.svelte-kit',
-  '**/.output',
-  '**/.turbo',
-  '**/.pawl'
-]
+/**
+ * Biome's git settings. Turning `gitignore` off says so, so that a biome.json pawl wrote before
+ * stops reading the .gitignore once it is synced.
+ */
+const vcsConfig = (policy: Policy, vcs: boolean): JsonObject => {
+  if (vcs) return { vcs: { enabled: true, clientKind: 'git', useIgnoreFile: true } }
+
+  return policy.gitignore ? {} : { vcs: { useIgnoreFile: false } }
+}
+
+/** The Biome context for a project as it stands on disk. */
+export const biomeContextFor = (
+  root: string,
+  policy: Policy,
+  detection: Detection,
+  tools: { linter: string; formatter: string }
+): BiomeContext => ({
+  technologies: repoTechnologies(detection),
+  dependencies: detection.dependencies,
+  lint: tools.linter === 'biome',
+  format: tools.formatter === 'biome',
+  vcs: biomeVcs(root, policy),
+  runtimes: detection.runtimes
+})
+
+export const BIOME_CONFIG_FILES = ['biome.json', 'biome.jsonc']
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
@@ -57,45 +80,63 @@ type JsonObject = { [key: string]: Json }
 
 const BIOME_PREFIX = 'biome:'
 
-/** Biome ignores a folder by its name alone; a trailing `/**` is flagged by Biome itself. */
-const toBiomeIgnore = (pattern: string): string => `!${pattern.replace(/\/\*\*$/, '')}`
-
 /** Keep the gated technologies in one fixed order, so generated files do not churn. */
 const ordered = (technologies: readonly Technology[] = []): Technology[] =>
   GATED_TAGS.filter(technology => technologies.includes(technology))
 
-const lintRules = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObject => {
+/** Rules as Biome groups them: `{ group: { rule: value } }`, sorted so generated files do not churn. */
+const toGroups = (entries: readonly [string, Json][]): JsonObject => {
   const groups: Record<string, Record<string, Json>> = {}
 
-  const set = (biomeRule: string, value: Json): void => {
+  for (const [biomeRule, value] of entries) {
     const [group, name] = biomeRule.split('/') as [string, string]
 
     groups[group] ??= {}
     groups[group][name] = value
   }
 
-  for (const [name, level] of effectiveRules(policy)) {
-    const def = getRule(name)
-
-    if (name.startsWith(BIOME_PREFIX)) {
-      set(name.slice(BIOME_PREFIX.length), level)
-    } else if (def?.biome && include(def.tag)) {
-      const options = level === 'off' ? undefined : (def.options?.biome as JsonObject | undefined)
-
-      set(def.biome, options ? { level, options } : level)
-    }
-  }
-
   const rules: JsonObject = {}
 
   for (const group of Object.keys(groups).sort()) {
-    const entries = Object.entries(groups[group] ?? {}).sort(([a], [b]) => a.localeCompare(b))
-
-    rules[group] = Object.fromEntries(entries)
+    rules[group] = Object.fromEntries(Object.entries(groups[group] ?? {}).sort(([a], [b]) => a.localeCompare(b)))
   }
 
   return rules
 }
+
+/** One rule as Biome takes it, or undefined when Biome has no such rule or it is for another technology. */
+const biomeEntry = (name: string, level: Level, include: (tag: RuleTag) => boolean): [string, Json] | undefined => {
+  if (name.startsWith(BIOME_PREFIX)) return [name.slice(BIOME_PREFIX.length), level]
+
+  const def = getRule(name)
+
+  if (!def?.biome || !include(def.tag)) return undefined
+
+  const options = level === 'off' ? undefined : (def.options?.biome as JsonObject | undefined)
+
+  return [def.biome, options ? { level, options } : level]
+}
+
+/** The Biome entries of a list of rule levels, leaving out what Biome does not have. */
+const biomeEntries = (levels: Iterable<[string, Level]>, include: (tag: RuleTag) => boolean): [string, Json][] =>
+  [...levels].flatMap(([name, level]) => {
+    const entry = biomeEntry(name, level, include)
+
+    return entry ? [entry] : []
+  })
+
+const lintRules = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObject =>
+  toGroups(biomeEntries(effectiveRules(policy), include))
+
+/** The policy's overrides as Biome's: one per override that sets a rule Biome has. */
+const biomeOverrides = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObject[] =>
+  policy.overrides.flatMap(override => {
+    const entries = biomeEntries(overrideRules(override), include)
+
+    return entries.length > 0
+      ? [{ includes: override.files.map(toEngineGlob), linter: { rules: toGroups(entries) } }]
+      : []
+  })
 
 /**
  * The complete Biome configuration for a policy.
@@ -103,10 +144,13 @@ const lintRules = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObje
  */
 export const biomeConfig = (
   policy: Policy,
-  { technologies = [], lint = true, format = true, dependencies = [] }: BiomeContext = {}
+  { technologies = [], lint = true, format = true, dependencies = [], vcs = false, runtimes = [] }: BiomeContext = {}
 ): JsonObject => {
   const { style } = policy
-  const rules = lintRules(policy, tag => !isGated(tag) || technologies.includes(tag))
+  const include = (tag: RuleTag): boolean => !isGated(tag) || technologies.includes(tag)
+  const rules = lintRules(policy, include)
+  const overrides = lint ? biomeOverrides(policy, include) : []
+  const globals = extraGlobals(runtimes)
   const restricted = lint ? importRestrictions(policy, dependencies) : undefined
 
   const plugins = lint ? ruleFiles(policy, dependencies).map(({ file }) => `./${file}`) : []
@@ -120,8 +164,9 @@ export const biomeConfig = (
 
   return {
     $schema: `https://biomejs.dev/schemas/${BIOME_VERSION}/schema.json`,
+    ...vcsConfig(policy, vcs),
     files: {
-      includes: ['**', ...[...DEFAULT_IGNORES, ...policy.ignore].map(toBiomeIgnore)]
+      includes: ['**', ...configIgnores(policy).map(toBiomeIgnore)]
     },
     formatter: {
       enabled: format,
@@ -136,14 +181,17 @@ export const biomeConfig = (
         semicolons: style.semicolons ? 'always' : 'asNeeded',
         trailingCommas: style.trailingCommas,
         arrowParentheses: style.arrowParens === 'always' ? 'always' : 'asNeeded'
-      }
+      },
+      ...(globals.length > 0 ? { globals } : {})
     },
     linter: {
       enabled: lint,
       rules: { preset: 'recommended', ...rules }
     },
-    assist: { actions: { source: { organizeImports: 'on' } } },
-    ...(plugins.length > 0 ? { plugins } : {})
+    // package.json in the order the ecosystem expects. tsconfig has no such order, so it is left alone.
+    assist: { actions: { source: { organizeImports: 'on', useSortedPackageJson: 'on' } } },
+    ...(plugins.length > 0 ? { plugins } : {}),
+    ...(overrides.length > 0 ? { overrides } : {})
   }
 }
 
@@ -207,6 +255,8 @@ export const biomeTechConfig = (policy: Policy, technology: Technology): JsonObj
   const rules = lintRules({ ...policy, rules: {} }, tag => tag === technology)
 
   return {
+    // Tailwind's own at-rules, such as @apply and @theme, are errors to Biome's CSS parser otherwise.
+    ...(technology === 'tailwind' ? { css: { parser: { tailwindDirectives: true } } } : {}),
     linter: {
       domains: { [BIOME_DOMAINS[technology]]: 'recommended' },
       ...(Object.keys(rules).length > 0 ? { rules } : {})
@@ -248,6 +298,50 @@ const contains = (actual: Json | undefined, expected: Json): boolean => {
   return JSON.stringify(actual) === JSON.stringify(expected)
 }
 
+/** The global names pawl writes for a runtime. Any other name in `javascript.globals` is the project's own. */
+const PAWL_GLOBALS = new Set(extraGlobals(RUNTIMES))
+
+type Loose = Record<string, unknown>
+
+const isLoose = (value: unknown): value is Loose => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const globalsOf = (config: Loose): string[] => {
+  const list = isLoose(config.javascript) ? config.javascript.globals : undefined
+
+  return Array.isArray(list) ? list.filter((name): name is string => typeof name === 'string') : []
+}
+
+/** The runtime globals pawl wrote, sorted. */
+const ownedGlobals = (config: Loose): string[] =>
+  globalsOf(config)
+    .filter(name => PAWL_GLOBALS.has(name))
+    .sort()
+
+const withoutGlobals = (config: JsonObject): JsonObject => {
+  if (!isObject(config.javascript)) return config
+
+  const { globals: _globals, ...javascript } = config.javascript
+
+  return { ...config, javascript }
+}
+
+/**
+ * Put the runtime globals of `expected` into a biome.json, keeping the names the project added
+ * itself. A runtime the project no longer uses takes its names with it.
+ */
+export const syncBiomeGlobals = (config: Loose, expected: Loose): Loose => {
+  const globals = [...globalsOf(config).filter(name => !PAWL_GLOBALS.has(name)), ...globalsOf(expected)]
+  const javascript = isLoose(config.javascript) ? config.javascript : {}
+  const { globals: _globals, ...rest } = javascript
+  const next = globals.length > 0 ? { ...rest, globals } : rest
+
+  if (Object.keys(next).length > 0) return { ...config, javascript: next }
+
+  const { javascript: _javascript, ...withoutJavascript } = config
+
+  return withoutJavascript
+}
+
 /** Matches the published preset and, inside pawl's own repo, the preset file itself. */
 const PRESET_REFERENCE = /(?:^|\/)pawl\/biome$|(?:^|\/)pawl\.biome\.json$/
 
@@ -265,11 +359,16 @@ export const biomeProjectConfig = (
     biomeConfig(policy, context),
     biomeConfig(defaultPolicy(), { technologies: context.technologies ?? [] })
   )
+  // A later pattern wins in Biome, so the preset's ignores are undone by naming the folders again.
+  const includes = [
+    ...(policy.defaultIgnores ? [] : DEFAULT_IGNORES.map(pattern => toBiomeIgnore(`!${pattern}`))),
+    ...policy.ignore.map(toBiomeIgnore)
+  ]
 
   return {
     extends: [preset, ...ordered(context.technologies).map(technology => biomeTechPreset(technology, preset))],
     // Biome adds these to the preset's list, so only the project's own patterns go here.
-    ...(policy.ignore.length > 0 ? { files: { includes: policy.ignore.map(toBiomeIgnore) } } : {}),
+    ...(includes.length > 0 ? { files: { includes } } : {}),
     ...delta
   }
 }
@@ -319,8 +418,9 @@ export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeCon
   const { extends: expectedExtends, ...expected } = biomeProjectConfig(policy, context, preset)
   const present = extendsList(value)
   const extendsOk = (expectedExtends as Json[]).every(entry => present.includes(entry))
+  const globalsOk = JSON.stringify(ownedGlobals(value)) === JSON.stringify(ownedGlobals(expected))
 
-  if (!extendsOk || !contains(value, expected)) {
+  if (!extendsOk || !globalsOk || !contains(withoutGlobals(value), withoutGlobals(expected))) {
     return {
       status: 'stale',
       file,
@@ -436,6 +536,16 @@ const toFinding = (diagnostic: BiomeDiagnostic): Finding | undefined => {
 
   if (category === 'format') {
     return { ...base, engineRule: 'format', rule: 'pawl/format', message: 'File is not formatted.', fixable: true }
+  }
+
+  if (category === 'assist/source/useSortedPackageJson') {
+    return {
+      ...base,
+      engineRule: category,
+      rule: 'pawl/sort-package-json',
+      message: 'The fields of package.json are not in the usual order.',
+      fixable: true
+    }
   }
 
   if (category.startsWith('assist/')) {

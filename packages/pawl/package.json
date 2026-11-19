@@ -23,11 +23,8 @@
   },
   "license": "MIT",
   "author": "santi020k",
-  "type": "module",
   "sideEffects": false,
-  "bin": {
-    "pawl": "./dist/cli.js"
-  },
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -47,28 +44,36 @@
     "./biome/drizzle": "./presets/drizzle.biome.json",
     "./biome/playwright": "./presets/playwright.biome.json",
     "./biome/turbo": "./presets/turbo.biome.json",
+    "./schema.json": "./pawl.config.schema.json",
     "./package.json": "./package.json"
+  },
+  "bin": {
+    "pawl": "./dist/cli.js"
   },
   "files": [
     "dist",
     "presets",
+    "pawl.config.schema.json",
     "README.md"
   ],
-  "engines": {
-    "node": ">=22.18.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "preset": "node scripts/build-preset.ts",
     "docs:rules": "node scripts/build-rules-doc.ts && biome format --write ../../apps/docs/src/content/docs/reference/rules.md",
-    "oxlint-rules": "node scripts/build-oxlint-rules.ts"
+    "oxlint-rules": "node scripts/build-oxlint-rules.ts",
+    "preset": "node scripts/build-preset.ts",
+    "schema": "node scripts/build-schema.ts && biome format --write pawl.config.schema.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@angular-eslint/eslint-plugin": ">=22.0.0",
@@ -282,13 +287,11 @@
       "optional": true
     }
   },
-  "devDependencies": {
-    "@biomejs/biome": "catalog:",
-    "@types/node": "catalog:",
-    "eslint": "catalog:",
-    "oxlint": "catalog:",
-    "prettier": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

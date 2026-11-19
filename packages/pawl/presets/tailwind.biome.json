@@ -1,4 +1,9 @@
 {
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "linter": {
     "domains": {
       "tailwind": "recommended"

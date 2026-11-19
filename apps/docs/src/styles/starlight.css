@@ -1,0 +1,107 @@
+/*
+ * Starlight reads the pawl tokens from tokens.css.
+ * Starlight's scale runs from --sl-color-white (strongest text) to --sl-color-black (page background),
+ * and flips in light mode, so each step maps to the matching pawl token.
+ */
+
+:root {
+  --sl-font: var(--pawl-font);
+  --sl-font-mono: var(--pawl-font-mono);
+  --sl-content-width: 46rem;
+  --sl-nav-height: 4rem;
+
+  --sl-color-white: hsl(120 22% 96%);
+  --sl-color-gray-1: hsl(var(--ink));
+  --sl-color-gray-2: hsl(var(--ink-soft));
+  --sl-color-gray-3: hsl(var(--ink-muted));
+  --sl-color-gray-4: hsl(135 6% 36%);
+  --sl-color-gray-5: hsl(var(--line));
+  --sl-color-gray-6: hsl(var(--surface-muted));
+  --sl-color-black: hsl(var(--canvas));
+
+  --sl-color-accent-low: hsl(var(--brand-soft));
+  --sl-color-accent: hsl(var(--brand));
+  --sl-color-accent-high: hsl(82 90% 78%);
+
+  --sl-color-bg-nav: hsl(var(--canvas) / 0.82);
+  --sl-color-bg-sidebar: hsl(var(--canvas));
+  --sl-color-hairline-light: hsl(var(--line) / 0.7);
+  --sl-color-hairline: hsl(var(--line));
+}
+
+:root[data-theme="light"] {
+  --sl-color-white: hsl(var(--ink));
+  --sl-color-gray-1: hsl(140 10% 14%);
+  --sl-color-gray-2: hsl(var(--ink-soft));
+  --sl-color-gray-3: hsl(var(--ink-muted));
+  --sl-color-gray-4: hsl(129 6% 57%);
+  --sl-color-gray-5: hsl(var(--line));
+  --sl-color-gray-6: hsl(var(--surface-muted));
+  --sl-color-gray-7: hsl(var(--canvas));
+  --sl-color-black: hsl(var(--surface));
+
+  --sl-color-accent-low: hsl(var(--brand-soft));
+  --sl-color-accent: hsl(var(--brand));
+  --sl-color-accent-high: hsl(87 100% 15%);
+
+  --sl-color-bg-nav: hsl(var(--surface) / 0.86);
+  --sl-color-bg-sidebar: hsl(var(--surface));
+}
+
+/* A translucent header that blurs the page underneath, like the landing page. */
+header.header {
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+}
+
+.site-title {
+  gap: 0.6rem;
+  font-weight: 620;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  color: var(--sl-color-white);
+}
+
+.site-title img {
+  height: 1.375rem;
+  width: auto;
+}
+
+/* Headings use Geist's tighter display tracking. */
+.sl-markdown-content :is(h1, h2, h3, h4),
+h1#_top {
+  letter-spacing: -0.025em;
+  font-weight: 640;
+}
+
+/* The primary call to action is lime with near-black text in both themes, as on the landing page. */
+.sl-link-button.primary,
+.hero .action.primary {
+  background: hsl(var(--pawl-lime));
+  border-color: hsl(var(--pawl-lime));
+  color: hsl(var(--pawl-ink-on-lime));
+}
+
+/* Inline code picks up the lime tint. */
+.sl-markdown-content :not(pre) > code {
+  background: hsl(var(--brand-soft));
+  color: var(--sl-color-text-accent);
+  border: 1px solid hsl(var(--brand) / 0.18);
+  border-radius: 0.3rem;
+  padding: 0.1em 0.35em;
+}
+
+/* Tables read as data: mono header labels, hairline rows. */
+.sl-markdown-content table th {
+  font-family: var(--pawl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-3);
+}
+
+/* Lumen components inside a doc page keep their own spacing and typography. */
+.sl-markdown-content .not-content {
+  font-family: var(--pawl-font);
+}

@@ -1,0 +1,27 @@
+{
+  "name": "pawl-root",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fast guardrails for AI-written code. One standard, compiled for Biome and ESLint.",
+  "type": "module",
+  "packageManager": "pnpm@11.6.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "check": "pnpm --filter @santi020k/pawl run build && node packages/pawl/dist/cli.js check",
+    "fix": "pnpm --filter @santi020k/pawl run build && node packages/pawl/dist/cli.js fix",
+    "ok": "turbo run build typecheck test && node packages/pawl/dist/cli.js check",
+    "docs:dev": "pnpm --filter @santi020k/pawl-docs run dev",
+    "docs:build": "pnpm --filter @santi020k/pawl-docs run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  }
+}

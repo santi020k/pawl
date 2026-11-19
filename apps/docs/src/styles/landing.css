@@ -1,0 +1,82 @@
+/* Page-level styles for the landing page. Component styles live with their components. */
+
+html {
+  background: hsl(var(--canvas));
+  scroll-padding-top: 5rem;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: hsl(var(--canvas));
+  color: hsl(var(--ink));
+  font-family: var(--pawl-font);
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: hsl(var(--brand) / 0.3);
+  color: hsl(var(--ink));
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--brand));
+  outline-offset: 2px;
+}
+
+/* A band of the page: vertical rhythm only. Container owns the gutters. */
+.band {
+  padding-block: clamp(4rem, 9vw, 7.5rem);
+}
+
+.band + .band {
+  border-top: 1px solid hsl(var(--line) / 0.6);
+}
+
+.band-head {
+  max-width: 44rem;
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.band-head h2 {
+  margin: 0.5rem 0 0.75rem;
+  font-size: clamp(1.875rem, 3.6vw, 2.75rem);
+  line-height: 1.08;
+  font-weight: 640;
+  letter-spacing: -0.035em;
+  color: hsl(var(--ink));
+  text-wrap: balance;
+}
+
+.band-head p {
+  margin: 0;
+  font-size: 1.125rem;
+  color: hsl(var(--ink-soft));
+  text-wrap: pretty;
+}
+
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font: 500 0.75rem / 1 var(--pawl-font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--brand));
+}
+
+.kicker::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  background: currentColor;
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+}
+
+.lime {
+  color: hsl(var(--brand));
+}

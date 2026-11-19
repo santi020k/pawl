@@ -1,0 +1,294 @@
+{
+  "name": "@santi020k/pawl",
+  "version": "0.0.0",
+  "description": "Fast guardrails for AI-written code. One standard for Biome, Oxlint, ESLint and Prettier.",
+  "keywords": [
+    "lint",
+    "format",
+    "biome",
+    "eslint",
+    "code-quality",
+    "ai",
+    "agents",
+    "ratchet",
+    "baseline",
+    "prettier",
+    "oxlint"
+  ],
+  "homepage": "https://pawl.santi020k.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/santi020k/pawl.git",
+    "directory": "packages/pawl"
+  },
+  "license": "MIT",
+  "author": "santi020k",
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "pawl": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./biome": "./presets/pawl.biome.json",
+    "./biome/react": "./presets/react.biome.json",
+    "./biome/next": "./presets/next.biome.json",
+    "./biome/react-native": "./presets/react-native.biome.json",
+    "./biome/qwik": "./presets/qwik.biome.json",
+    "./biome/solid": "./presets/solid.biome.json",
+    "./biome/vue": "./presets/vue.biome.json",
+    "./biome/svelte": "./presets/svelte.biome.json",
+    "./biome/astro": "./presets/astro.biome.json",
+    "./biome/tailwind": "./presets/tailwind.biome.json",
+    "./biome/tanstack-query": "./presets/tanstack-query.biome.json",
+    "./biome/drizzle": "./presets/drizzle.biome.json",
+    "./biome/playwright": "./presets/playwright.biome.json",
+    "./biome/turbo": "./presets/turbo.biome.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "presets",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "preset": "node scripts/build-preset.ts",
+    "docs:rules": "node scripts/build-rules-doc.ts",
+    "oxlint-rules": "node scripts/build-oxlint-rules.ts"
+  },
+  "peerDependencies": {
+    "@angular-eslint/eslint-plugin": ">=22.0.0",
+    "@biomejs/biome": "2.6.8",
+    "@cspell/eslint-plugin": ">=10.0.0",
+    "@darraghor/eslint-plugin-nestjs-typed": ">=6.0.0",
+    "@eslint-react/eslint-plugin": ">=2.0.0",
+    "@eslint/js": ">=9.0.0",
+    "@eslint/markdown": ">=8.0.0",
+    "@graphql-eslint/eslint-plugin": ">=4.0.0",
+    "@html-eslint/eslint-plugin": "*",
+    "@next/eslint-plugin-next": ">=16.0.0",
+    "@santi020k/eslint-plugin-astro-doctor": ">=1.0.0",
+    "@stencil-community/eslint-plugin": "*",
+    "@tanstack/eslint-plugin-query": "*",
+    "@tanstack/eslint-plugin-router": "*",
+    "@vitest/eslint-plugin": ">=1.0.0",
+    "eslint": ">=9.22.0",
+    "eslint-plugin-astro": ">=1.0.0",
+    "eslint-plugin-better-tailwindcss": ">=4.0.0",
+    "eslint-plugin-compat": "*",
+    "eslint-plugin-cypress": ">=7.0.0",
+    "eslint-plugin-depend": "*",
+    "eslint-plugin-hono": "*",
+    "eslint-plugin-i18next": ">=6.0.0",
+    "eslint-plugin-jest": ">=29.0.0",
+    "eslint-plugin-jest-dom": ">=5.0.0",
+    "eslint-plugin-jsdoc": ">=63.0.0",
+    "eslint-plugin-jsonc": ">=3.0.0",
+    "eslint-plugin-jsx-a11y": ">=6.0.0",
+    "eslint-plugin-lit": "*",
+    "eslint-plugin-n": ">=18.0.0",
+    "eslint-plugin-package-json": ">=1.0.0",
+    "eslint-plugin-perfectionist": ">=5.0.0",
+    "eslint-plugin-playwright": ">=2.0.0",
+    "eslint-plugin-pnpm": ">=1.0.0",
+    "eslint-plugin-promise": ">=7.0.0",
+    "eslint-plugin-react-hooks": ">=7.0.0",
+    "eslint-plugin-regexp": ">=3.0.0",
+    "eslint-plugin-security": ">=4.0.0",
+    "eslint-plugin-solid": "*",
+    "eslint-plugin-sonarjs": ">=4.0.0",
+    "eslint-plugin-storybook": ">=10.0.0",
+    "eslint-plugin-svelte": ">=3.0.0",
+    "eslint-plugin-testing-library": ">=7.0.0",
+    "eslint-plugin-toml": "*",
+    "eslint-plugin-unicorn": ">=77.0.0",
+    "eslint-plugin-vercel-ai-security": ">=3.0.0",
+    "eslint-plugin-vue": ">=10.0.0",
+    "eslint-plugin-yml": ">=3.0.0",
+    "eslint-plugin-zod": ">=5.0.0",
+    "oxlint": ">=1.94.0",
+    "prettier": ">=3.0.0",
+    "typescript-eslint": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@angular-eslint/eslint-plugin": {
+      "optional": true
+    },
+    "@biomejs/biome": {
+      "optional": true
+    },
+    "@cspell/eslint-plugin": {
+      "optional": true
+    },
+    "@darraghor/eslint-plugin-nestjs-typed": {
+      "optional": true
+    },
+    "@eslint-react/eslint-plugin": {
+      "optional": true
+    },
+    "@eslint/js": {
+      "optional": true
+    },
+    "@eslint/markdown": {
+      "optional": true
+    },
+    "@graphql-eslint/eslint-plugin": {
+      "optional": true
+    },
+    "@html-eslint/eslint-plugin": {
+      "optional": true
+    },
+    "@next/eslint-plugin-next": {
+      "optional": true
+    },
+    "@santi020k/eslint-plugin-astro-doctor": {
+      "optional": true
+    },
+    "@stencil-community/eslint-plugin": {
+      "optional": true
+    },
+    "@tanstack/eslint-plugin-query": {
+      "optional": true
+    },
+    "@tanstack/eslint-plugin-router": {
+      "optional": true
+    },
+    "@vitest/eslint-plugin": {
+      "optional": true
+    },
+    "eslint": {
+      "optional": true
+    },
+    "eslint-plugin-astro": {
+      "optional": true
+    },
+    "eslint-plugin-better-tailwindcss": {
+      "optional": true
+    },
+    "eslint-plugin-compat": {
+      "optional": true
+    },
+    "eslint-plugin-cypress": {
+      "optional": true
+    },
+    "eslint-plugin-depend": {
+      "optional": true
+    },
+    "eslint-plugin-hono": {
+      "optional": true
+    },
+    "eslint-plugin-i18next": {
+      "optional": true
+    },
+    "eslint-plugin-jest": {
+      "optional": true
+    },
+    "eslint-plugin-jest-dom": {
+      "optional": true
+    },
+    "eslint-plugin-jsdoc": {
+      "optional": true
+    },
+    "eslint-plugin-jsonc": {
+      "optional": true
+    },
+    "eslint-plugin-jsx-a11y": {
+      "optional": true
+    },
+    "eslint-plugin-lit": {
+      "optional": true
+    },
+    "eslint-plugin-n": {
+      "optional": true
+    },
+    "eslint-plugin-package-json": {
+      "optional": true
+    },
+    "eslint-plugin-perfectionist": {
+      "optional": true
+    },
+    "eslint-plugin-playwright": {
+      "optional": true
+    },
+    "eslint-plugin-pnpm": {
+      "optional": true
+    },
+    "eslint-plugin-promise": {
+      "optional": true
+    },
+    "eslint-plugin-react-hooks": {
+      "optional": true
+    },
+    "eslint-plugin-regexp": {
+      "optional": true
+    },
+    "eslint-plugin-security": {
+      "optional": true
+    },
+    "eslint-plugin-solid": {
+      "optional": true
+    },
+    "eslint-plugin-sonarjs": {
+      "optional": true
+    },
+    "eslint-plugin-storybook": {
+      "optional": true
+    },
+    "eslint-plugin-svelte": {
+      "optional": true
+    },
+    "eslint-plugin-testing-library": {
+      "optional": true
+    },
+    "eslint-plugin-toml": {
+      "optional": true
+    },
+    "eslint-plugin-unicorn": {
+      "optional": true
+    },
+    "eslint-plugin-vercel-ai-security": {
+      "optional": true
+    },
+    "eslint-plugin-vue": {
+      "optional": true
+    },
+    "eslint-plugin-yml": {
+      "optional": true
+    },
+    "eslint-plugin-zod": {
+      "optional": true
+    },
+    "oxlint": {
+      "optional": true
+    },
+    "prettier": {
+      "optional": true
+    },
+    "typescript-eslint": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

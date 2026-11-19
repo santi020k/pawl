@@ -1,0 +1,31 @@
+# Working in this repo
+
+Pawl is a TypeScript library and CLI in `packages/pawl`. The website and docs are in `apps/docs`: Astro Starlight for the doc pages, Lumen UI for the landing page and custom components. See `apps/docs/README.md`.
+
+## Commands
+
+```sh
+pnpm install
+pnpm build && pnpm test   # tests run against the real Biome and ESLint
+pnpm typecheck
+pnpm check                # pawl checking its own code; must stay clean
+pnpm fix
+```
+
+## Rules of the codebase
+
+- Zero dependencies. Every engine, formatter and ESLint plugin is an optional peer. Use Node built-ins.
+- A pack in `src/packs.ts` is data only. Never import a plugin from pawl; load it from the project.
+- Source imports use the `.ts` extension. Only erasable TypeScript syntax: no enums, no parameter properties.
+- The rule catalog in `src/rules.ts` is the product. A test checks every Biome mapping against the pinned Biome schema.
+- After changing a rule, the style or the Biome version, run `pnpm --filter @santi020k/pawl run preset` and `pnpm --filter @santi020k/pawl run docs:rules`, and commit the results.
+- A rule for one technology (React, Qwik, Vue, Svelte, Turborepo) gets that technology's tag, so it only applies where the technology is used.
+- Pawl reads Biome's JSON reporter, which Biome calls experimental. That is why the Biome version is pinned exactly; recheck `runBiome` on every Biome upgrade.
+- After upgrading Oxlint, run `pnpm --filter @santi020k/pawl run oxlint-rules`. Oxlint rejects a config that names a rule it does not know.
+- Pawl never deletes or overwrites a user's existing tool config. `migrate` is the one exception to overwriting: it moves the old ESLint config aside under a new name first.
+- The policy carries rule options in ESLint's shape (`options`). They go to ESLint and Oxlint only; Biome options live in the catalog.
+- A guard in `src/guards.ts` is data only: imports and code patterns to refuse for one library. Every entry needs a message that says what to do instead. A code pattern has two forms that must match the same code: an ESLint selector and a GritQL pattern, which pawl writes into the project's `.pawl/rules/` for Biome. Test both against the real engines.
+- The Docker checks in `src/docker.ts` are the only rules pawl implements itself, because no engine reads those files. Keep each one a plain line scan with a test for a file that is wrong and one that is fine.
+- A new pack needs its plugin as an optional peer in `packages/pawl/package.json`, and a run against the real plugin before it ships.
+- Every engine failure must reach the user as a setup problem with exit code 2. Never report success when part of the check did not run.
+- Do not name a file `biome.json` anywhere but a project root: Biome treats each one as a nested configuration.

@@ -1,0 +1,5 @@
+{
+  "root": false,
+  "extends": ["../../biome.json", "../../packages/pawl/presets/astro.biome.json"],
+  "html": { "experimentalFullSupportEnabled": true }
+}

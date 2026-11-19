@@ -1,0 +1,26 @@
+{
+  "linter": {
+    "domains": {
+      "qwik": "recommended"
+    },
+    "rules": {
+      "a11y": {
+        "useValidAnchor": "warn"
+      },
+      "correctness": {
+        "noQwikUseVisibleTask": "warn",
+        "useImageSize": "warn",
+        "useQwikClasslist": "warn",
+        "useQwikLoaderLocation": "warn",
+        "useQwikMethodUsage": "error",
+        "useQwikValidLexicalScope": "error"
+      },
+      "security": {
+        "noScriptUrl": "warn"
+      },
+      "suspicious": {
+        "noReactSpecificProps": "error"
+      }
+    }
+  }
+}

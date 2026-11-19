@@ -1,0 +1,151 @@
+---
+import { Container } from '@santi020k/lumen-astro'
+
+import PawlMark from '../PawlMark.astro'
+
+const groups = [
+  {
+    title: 'Guide',
+    links: [
+      { label: 'Getting started', href: '/guide/getting-started/' },
+      { label: 'Coming from ESLint', href: '/guide/migrate/' },
+      { label: 'The ratchet', href: '/guide/ratchet/' },
+      { label: 'Coding agents', href: '/guide/agents/' }
+    ]
+  },
+  {
+    title: 'Reference',
+    links: [
+      { label: 'CLI', href: '/reference/cli/' },
+      { label: 'Rules', href: '/reference/rules/' },
+      { label: 'Packs', href: '/guide/packs/' },
+      { label: 'API', href: '/reference/api/' }
+    ]
+  },
+  {
+    title: 'Project',
+    links: [
+      { label: 'GitHub', href: 'https://github.com/santi020k/pawl' },
+      { label: 'Issues', href: 'https://github.com/santi020k/pawl/issues' },
+      { label: 'License (MIT)', href: 'https://github.com/santi020k/pawl/blob/main/LICENSE' }
+    ]
+  }
+]
+---
+
+<footer class="site-footer">
+  <Container class="site-footer__inner">
+    <div class="site-footer__brand">
+      <a class="brand" href="/" aria-label="pawl, home">
+        <PawlMark />
+        <span>pawl</span>
+      </a>
+      <p>Fast guardrails for AI-written code.</p>
+    </div>
+
+    {
+      groups.map(group => (
+        <nav aria-label={group.title}>
+          <h2>{group.title}</h2>
+          <ul>
+            {group.links.map(link => (
+              <li>
+                <a href={link.href}>{link.label}</a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ))
+    }
+  </Container>
+  <Container class="site-footer__legal">
+    <p>MIT licensed. Made by <a href="https://github.com/santi020k">santi020k</a>.</p>
+    <p>Built with Astro Starlight and Lumen UI.</p>
+  </Container>
+</footer>
+
+<style>
+  .site-footer {
+    border-top: 1px solid hsl(var(--line) / 0.7);
+    background: hsl(var(--surface));
+    padding-block: 3.5rem 2rem;
+    font-size: 0.9375rem;
+  }
+
+  .site-footer :global(.site-footer__inner) {
+    display: grid;
+    grid-template-columns: 1.5fr repeat(3, 1fr);
+    gap: 2rem;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    color: hsl(var(--ink));
+    text-decoration: none;
+    font-weight: 620;
+    font-size: 1.25rem;
+    letter-spacing: -0.02em;
+  }
+
+  .site-footer__brand p {
+    margin: 0.75rem 0 0;
+    color: hsl(var(--ink-muted));
+  }
+
+  h2 {
+    margin: 0 0 0.75rem;
+    font: 500 0.75rem/1 var(--pawl-font-mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: hsl(var(--ink-muted));
+  }
+
+  ul {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  nav a {
+    color: hsl(var(--ink-soft));
+    text-decoration: none;
+  }
+
+  nav a:hover {
+    color: hsl(var(--brand));
+  }
+
+  .site-footer :global(.site-footer__legal) {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 2rem;
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid hsl(var(--line) / 0.6);
+    color: hsl(var(--ink-muted));
+    font-size: 0.8125rem;
+  }
+
+  .site-footer__legal p {
+    margin: 0;
+  }
+
+  .site-footer__legal a {
+    color: inherit;
+  }
+
+  @media (max-width: 48rem) {
+    .site-footer :global(.site-footer__inner) {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .site-footer__brand {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

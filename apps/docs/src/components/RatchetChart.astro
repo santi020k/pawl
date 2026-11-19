@@ -1,0 +1,217 @@
+---
+/**
+ * How the ratchet behaves over a run of commits: the count the baseline allows only steps down,
+ * findings stay at or under it, and a change that adds findings fails instead of landing.
+ * Illustrative numbers. Colors come from the brand tokens, so it follows the theme.
+ */
+
+interface Props {
+  class?: string
+}
+
+const { class: className } = Astro.props
+
+const allowed = [24, 24, 24, 20, 20, 20, 16, 16, 16, 11, 11]
+const findings = [24, 23, 22, 20, 20, 19, 16, 16, 15, 11, 10]
+const rejectedAt = 7
+const rejectedValue = 19
+const locks = [3, 6, 9]
+
+const width = 720
+const height = 300
+const left = 44
+const right = 700
+const top = 28
+const bottom = 252
+const max = 28
+
+const x = (index: number): number => left + 16 + (index * (right - left - 32)) / (allowed.length - 1)
+const y = (value: number): number => bottom - (value * (bottom - top)) / max
+
+const stepPath = allowed
+  .map((value, index) => {
+    if (index === 0) return `M${x(0)} ${y(value)}`
+
+    const previous = allowed[index - 1] ?? value
+
+    return previous === value ? `H${x(index)}` : `H${x(index)} V${y(value)}`
+  })
+  .join(' ')
+
+const findingsPath = findings.map((value, index) => `${index === 0 ? 'M' : 'L'}${x(index)} ${y(value)}`).join(' ')
+
+const gridValues = [0, 10, 20]
+const rejectedFrom = findings[rejectedAt - 1] ?? 0
+---
+
+<figure class:list={['ratchet-chart', 'not-content', className]}>
+  <svg
+    viewBox={`0 0 ${width} ${height}`}
+    role="img"
+    aria-labelledby="ratchet-chart-title ratchet-chart-desc"
+  >
+    <title id="ratchet-chart-title">The ratchet over eleven commits</title>
+    <desc id="ratchet-chart-desc">
+      The number of findings the baseline allows starts at 24 and steps down to 20, 16 and 11 as the code improves. It never
+      goes back up. Findings stay at or under it. At commit 8 a change would have raised findings to 19, above the 16 allowed,
+      so the check failed and it did not land.
+    </desc>
+
+    {
+      gridValues.map(value => (
+        <g class="grid">
+          <line x1={left} x2={right} y1={y(value)} y2={y(value)} />
+          <text x={left - 10} y={y(value) + 4} text-anchor="end">
+            {value}
+          </text>
+        </g>
+      ))
+    }
+
+    <path class="allowed-area" d={`${stepPath} V${bottom} H${x(0)} Z`}></path>
+    <path class="allowed" d={stepPath}></path>
+    <path class="findings" d={findingsPath}></path>
+
+    {findings.map((value, index) => <circle class="finding" cx={x(index)} cy={y(value)} r="3.5" />)}
+
+    {
+      locks.map(index => (
+        <g class="lock" transform={`translate(${x(index)} ${y(allowed[index] ?? 0)})`}>
+          <circle r="5" />
+        </g>
+      ))
+    }
+
+    <g class="rejected">
+      <path d={`M${x(rejectedAt - 1)} ${y(rejectedFrom)} L${x(rejectedAt)} ${y(rejectedValue)}`}></path>
+      <g transform={`translate(${x(rejectedAt)} ${y(rejectedValue)})`}>
+        <circle r="9"></circle>
+        <path d="M-3.5 -3.5 L3.5 3.5 M3.5 -3.5 L-3.5 3.5"></path>
+      </g>
+      <text x={x(rejectedAt) + 16} y={y(rejectedValue) - 6}>New findings: check fails</text>
+    </g>
+
+    <text class="note" x={x(3) + 10} y={y(allowed[3] ?? 0) - 12}>pawl baseline</text>
+
+    <text class="axis" x={right} y={height - 14} text-anchor="end">commits →</text>
+  </svg>
+
+  <figcaption>
+    <span class="key key--allowed">Allowed by the baseline</span>
+    <span class="key key--findings">Findings</span>
+    <span class="key key--rejected">Blocked change</span>
+  </figcaption>
+</figure>
+
+<style>
+  .ratchet-chart {
+    margin: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  svg {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    font-family: var(--pawl-font-mono);
+  }
+
+  .grid line {
+    stroke: hsl(var(--line));
+    stroke-dasharray: 2 4;
+  }
+
+  .grid text,
+  .axis {
+    fill: hsl(var(--ink-muted));
+    font-size: 11px;
+  }
+
+  .allowed-area {
+    fill: hsl(var(--brand) / 0.07);
+  }
+
+  .allowed {
+    fill: none;
+    stroke: hsl(var(--brand));
+    stroke-width: 3;
+    stroke-linejoin: miter;
+  }
+
+  .findings {
+    fill: none;
+    stroke: hsl(var(--ink-soft));
+    stroke-width: 1.5;
+  }
+
+  .finding {
+    fill: hsl(var(--canvas));
+    stroke: hsl(var(--ink-soft));
+    stroke-width: 1.5;
+  }
+
+  .lock circle {
+    fill: hsl(var(--brand));
+    stroke: hsl(var(--canvas));
+    stroke-width: 2;
+  }
+
+  .note {
+    fill: hsl(var(--brand));
+    font-size: 11px;
+  }
+
+  .rejected path {
+    fill: none;
+    stroke: hsl(var(--danger));
+    stroke-width: 1.75;
+    stroke-dasharray: 4 3;
+  }
+
+  .rejected circle {
+    fill: hsl(var(--danger) / 0.14);
+    stroke: hsl(var(--danger));
+    stroke-width: 1.5;
+  }
+
+  .rejected g path {
+    stroke-dasharray: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .rejected text {
+    fill: hsl(var(--danger));
+    font-size: 11px;
+  }
+
+  figcaption {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    font: 0.75rem/1.4 var(--pawl-font-mono);
+    color: hsl(var(--ink-muted));
+  }
+
+  .key {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .key::before {
+    content: '';
+    width: 1.25rem;
+    height: 0;
+    border-top: 3px solid hsl(var(--brand));
+  }
+
+  .key--findings::before {
+    border-top: 1.5px solid hsl(var(--ink-soft));
+  }
+
+  .key--rejected::before {
+    border-top: 1.75px dashed hsl(var(--danger));
+  }
+</style>

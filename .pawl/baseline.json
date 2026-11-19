@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "findings": {},
+  "suppressions": {
+    "packages/pawl/test/baseline.test.ts": 7,
+    "packages/pawl/test/e2e.test.ts": 2
+  }
+}

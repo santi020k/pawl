@@ -1,0 +1,118 @@
+---
+/**
+ * A terminal window that shows recorded CLI output with the brand's colors.
+ * The text stays real text, so it can be selected, searched and read by screen readers.
+ * Long lines wrap rather than scroll, so the window never needs keyboard scrolling.
+ */
+import { type Line } from '../data/demo.ts'
+
+interface Props {
+  lines: readonly Line[]
+  title?: string
+  class?: string
+}
+
+const { lines, title = 'zsh', class: className } = Astro.props
+---
+
+<div class:list={['terminal', 'not-content', className]}>
+  <div class="terminal__bar" aria-hidden="true">
+    <span class="terminal__dots"><i></i><i></i><i></i></span>
+    <span class="terminal__title">{title}</span>
+  </div>
+  <pre class="terminal__body"><code>{lines.map(line => (
+    <span class="terminal__line">{line.length === 0 ? ' ' : line.map(([text, tone = 'plain']) => <span class={`t-${tone}`}>{text}</span>)}</span>
+  ))}</code></pre>
+</div>
+
+<style>
+  .terminal {
+    --terminal-bg: hsl(var(--surface));
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid hsl(var(--line));
+    border-radius: var(--ui-radius-lg);
+    background: var(--terminal-bg);
+    box-shadow: var(--ui-shadow-lg);
+  }
+
+  .terminal__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid hsl(var(--line));
+    background: hsl(var(--surface-muted));
+  }
+
+  .terminal__dots {
+    display: inline-flex;
+    gap: 0.375rem;
+  }
+
+  .terminal__dots i {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    background: hsl(var(--line));
+  }
+
+  .terminal__title {
+    font: 500 0.75rem/1 var(--pawl-font-mono);
+    color: hsl(var(--ink-muted));
+  }
+
+  .terminal__body {
+    margin: 0;
+    padding: 1rem 1.125rem 1.25rem;
+    font: 0.8125rem/1.65 var(--pawl-font-mono);
+    color: hsl(var(--ink));
+    background: transparent;
+  }
+
+  .terminal__line {
+    display: block;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .t-prompt {
+    color: hsl(var(--brand));
+  }
+
+  .t-command {
+    color: hsl(var(--ink));
+    font-weight: 600;
+  }
+
+  .t-path {
+    color: hsl(var(--ink));
+    text-decoration: underline;
+    text-decoration-color: hsl(var(--line));
+    text-underline-offset: 0.2em;
+  }
+
+  .t-error {
+    color: hsl(var(--danger));
+  }
+
+  .t-warn {
+    color: hsl(var(--warning));
+  }
+
+  .t-rule {
+    color: hsl(var(--accent));
+  }
+
+  .t-muted {
+    color: hsl(var(--ink-muted));
+  }
+
+  .t-ok {
+    color: hsl(var(--brand));
+  }
+
+  .t-plain {
+    color: hsl(var(--ink-soft));
+  }
+</style>

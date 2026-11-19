@@ -1,0 +1,12 @@
+{
+  "linter": {
+    "domains": {
+      "turborepo": "recommended"
+    },
+    "rules": {
+      "suspicious": {
+        "noUndeclaredEnvVars": "error"
+      }
+    }
+  }
+}

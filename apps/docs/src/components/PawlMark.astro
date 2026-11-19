@@ -1,0 +1,38 @@
+---
+/**
+ * The pawl mark: a checkmark with a ratchet notch in its rising arm.
+ * Inline, so it takes the brand color of the current theme. Every segment runs at 45 degrees.
+ */
+interface Props {
+  class?: string
+  label?: string
+}
+
+const { class: className, label } = Astro.props
+---
+
+<svg
+  class:list={['pawl-mark', className]}
+  viewBox="2.5 8.5 27 16"
+  fill="none"
+  role={label ? 'img' : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : 'true'}
+>
+  <path
+    d="M4.75 15.25 L10.75 21.25 L16.75 15.25 L19.75 18.25 L27.25 10.75"
+    stroke="currentColor"
+    stroke-width="3.4"
+    stroke-linejoin="miter"
+    stroke-miterlimit="10"
+  ></path>
+</svg>
+
+<style>
+  .pawl-mark {
+    display: block;
+    width: 2.125rem;
+    height: auto;
+    color: hsl(var(--brand));
+  }
+</style>

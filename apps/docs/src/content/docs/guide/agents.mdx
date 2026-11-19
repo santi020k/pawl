@@ -1,0 +1,102 @@
+---
+title: Coding agents
+description: Give a coding agent findings it can act on, and stop it from switching checks off.
+---
+
+import Terminal from '../../../components/Terminal.astro'
+import { sessions } from '../../../data/demo.ts'
+
+export const agentRun = sessions.find(session => session.id === 'agent')
+
+Pawl was built for code that an agent writes and a person reviews. Two things make that work: output the agent can act on, and a ratchet the agent cannot argue its way past.
+
+## Output for agents
+
+```sh
+pawl check --changed --format agent
+```
+
+One JSON object per line, errors first, and nothing at all when there is nothing to do. Where pawl knows how to fix a finding, the line carries a `fix`. Here is one, spread over several lines:
+
+```json wrap
+{
+  "file": "src/api.ts",
+  "line": 1,
+  "rule": "biome:correctness/noUndeclaredDependencies",
+  "message": "Dependency made-up-package isn't specified in package.json.",
+  "fix": "Check that the package exists and is the one you mean, then add it to package.json."
+}
+```
+
+Here is a real run, after an agent added a file that imports a package that is not installed, uses `any`, compares with `==`, and hides one finding behind a `biome-ignore` comment:
+
+{agentRun && <Terminal lines={agentRun.lines} title="agent run" />}
+
+`--changed` limits the run to files changed against `HEAD`, plus untracked ones, so the agent hears about its own work only. `--format json` prints the whole result as one document instead.
+
+## Disable comments fail
+
+A file that gains `biome-ignore`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` fails with `pawl/no-new-disable`. Switching a check off is not a way past it; fixing the code is. Existing disable comments are part of the [baseline](/guide/ratchet/), so this applies only to new ones.
+
+## Set it up
+
+```sh
+npx @santi020k/pawl init --agents
+```
+
+`--agents` adds up to three things.
+
+**A Claude Code hook**, so Claude Code sees the findings after every edit. It goes in `.claude/settings.json`, next to any hooks you already have:
+
+```json title=".claude/settings.json"
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx pawl check --changed --format agent"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**A Cursor hook**, in repos that already have a `.cursor` folder. Cursor does not read a hook's output back, so this hook applies safe fixes and formatting after each edit, and the `AGENTS.md` instructions tell the agent to run the check:
+
+```json title=".cursor/hooks.json"
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "npx pawl fix --changed"
+      }
+    ]
+  }
+}
+```
+
+**Instructions in `AGENTS.md`**, for every agent. Pawl writes them between `<!-- pawl:start -->` and `<!-- pawl:end -->` markers, so running `init` again updates its block and leaves the rest of the file alone:
+
+```md title="AGENTS.md"
+## Code quality
+
+This repo uses pawl. After editing code, run:
+
+    npx pawl check --changed --format agent
+
+It prints one JSON line per problem, each with a `fix`. No output means there is nothing to do.
+Run `npx pawl fix` to apply formatting and safe fixes.
+
+Do not silence a problem with a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`).
+New ones fail the check. Fix the code instead.
+```
+
+## Running init under an agent
+
+`init` offers a menu in a terminal. In CI or under a coding agent it uses `auto`, so an agent can set up a repo without getting stuck on a prompt. Add `--yes` to accept the plan without asking.

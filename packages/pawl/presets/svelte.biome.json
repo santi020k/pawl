@@ -1,0 +1,13 @@
+{
+  "linter": {
+    "domains": {
+      "svelte": "recommended"
+    },
+    "rules": {
+      "nursery": {
+        "noSvelteAtHtmlTags": "off",
+        "useSvelteRequireEachKey": "off"
+      }
+    }
+  }
+}

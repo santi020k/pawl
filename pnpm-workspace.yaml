@@ -1,0 +1,21 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+catalog:
+  "@astrojs/starlight": ^0.43.1
+  "@biomejs/biome": 2.6.8
+  "@fontsource-variable/geist": ^5.3.0
+  "@fontsource-variable/geist-mono": ^5.3.0
+  "@santi020k/lumen-astro": ^5.2.0
+  "@types/node": ^22.18.0
+  astro: ^7.4.0
+  eslint: ^10.15.0
+  oxlint: 1.94.0
+  prettier: ^3.10.0
+  turbo: ^2.11.0
+  typescript: ^7.0.2
+  vitest: ^5.1.0
+
+# Pawl's peers are all optional tools and plugins. Do not install them here just because they are listed.
+autoInstallPeers: false

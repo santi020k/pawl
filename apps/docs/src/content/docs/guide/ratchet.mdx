@@ -1,0 +1,60 @@
+---
+title: The ratchet
+description: How the baseline lets a repo adopt the standard without fixing everything first, and keeps it from slipping back.
+---
+
+import RatchetChart from '../../../components/RatchetChart.astro'
+
+A pawl is the part of a ratchet that stops it slipping backward. Pawl does the same for a codebase: the findings a repo has when it adopts the standard are recorded once, and from then on quality can only move forward.
+
+<RatchetChart />
+
+## The baseline
+
+`.pawl/baseline.json` records how many findings of each rule each file had when the repo adopted the standard. `pawl init` writes it. Commit it.
+
+```json title=".pawl/baseline.json"
+{
+  "version": 1,
+  "findings": {
+    "src/legacy.ts": {
+      "@typescript-eslint/no-explicit-any": 1,
+      "@typescript-eslint/prefer-for-of": 1,
+      "biome:correctness/noInnerDeclarations": 1,
+      "no-var": 2
+    },
+    "src/server.ts": {
+      "eqeqeq": 1
+    }
+  },
+  "suppressions": {}
+}
+```
+
+## What fails
+
+- Findings within those counts are allowed.
+- Anything beyond them fails the check.
+- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
+
+That last rule matters most when an agent writes the code: switching a check off is not a way past it.
+
+## Locking in improvements
+
+When the code improves, `pawl check` says so:
+
+```txt
+No new findings.
+2 existing findings allowed by the baseline.
+The code has fewer findings than the baseline allows. Run "pawl baseline" to lock that in.
+```
+
+Run `pawl baseline` to record the lower counts, and commit the file. From then on the repo cannot slip back past the improvement.
+
+`pawl baseline` records whatever the code has at that moment. A team can also use it to accept findings on purpose, and that shows up in review as a change to `.pawl/baseline.json`.
+
+## Why per file and rule
+
+Counts are per file and rule, not per line, so moving code around does not break the baseline, and neither do edits or merges.
+
+The cost is that when a file goes over its count, every finding of that rule in the file is shown, because pawl cannot tell which one is new.

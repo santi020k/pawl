@@ -28,4 +28,4 @@ Under Nx, `init` makes the root a project with `check` and `fix` as uncached tar
 
 ## A shared standard across repos
 
-For a standard shared by many repos rather than many packages, publish a [company policy](/guide/policy/#a-company-standard) and extend it from each one.
+For a standard shared by many repos rather than many packages, publish a [shared policy](/guide/policy/#a-shared-policy) and extend it from each one.

@@ -14,6 +14,7 @@ const TITLES: Partial<Record<RuleTag, string>> = {
   svelte: 'Svelte',
   imports: 'Imports and dependencies',
   tests: 'Tests',
+  formats: 'Markdown and YAML',
   turbo: 'Turborepo',
   pawl: 'Pawl'
 }
@@ -31,7 +32,9 @@ const level = (rule: RuleDef): string =>
   rule.strict && rule.strict !== rule.level ? `${rule.level} (${rule.strict} when strict)` : rule.level
 
 const row = (rule: RuleDef): string => {
-  const marks = [rule.guardrail ? 'guardrail' : '', rule.nursery ? 'unstable in Biome' : ''].filter(Boolean).join(', ')
+  const unstable = rule.nursery ? `unstable in ${rule.biome ? 'Biome' : 'Oxlint'}` : ''
+  const engine = !rule.biome && rule.tag !== 'pawl' ? 'Oxlint or an ESLint plugin' : ''
+  const marks = [rule.guardrail ? 'guardrail' : '', unstable, engine].filter(Boolean).join(', ')
 
   return `| \`${rule.name}\` | ${rule.summary.replaceAll('|', '\\|').replaceAll('<', '&lt;')} | ${level(rule)} | ${rule.biome ? `\`${rule.biome}\`` : ''} | ${marks} |`
 }
@@ -48,7 +51,7 @@ const lines = [
   '',
   `On top of these, pawl turns on Biome's own recommended rules for each technology a project uses: ${GATED_TAGS.join(', ')}.`,
   '',
-  'A **guardrail** rule guards against a mistake coding agents make often. A rule that is **unstable in Biome** is off unless the policy is strict.',
+  'A **guardrail** rule guards against a mistake coding agents make often. A rule that is **unstable** in the engine that enforces it is off unless the policy is strict. A rule with no Biome rule is enforced by Oxlint, or by ESLint with the plugin installed.',
   ''
 ]
 

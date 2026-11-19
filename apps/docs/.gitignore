@@ -1,0 +1,3 @@
+# Written by `santi-og generate` before every build.
+public/og/
+.og-cache.json

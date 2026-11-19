@@ -15,7 +15,7 @@ npx @santi020k/pawl migrate
 | File                 | Content                                                                                                                   |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `pawl.config.ts`     | The rule levels and options that differ from the standard, the packs for the plugins you use, the style, and your ignores |
-| `eslint.config.js`   | One line: `export default eslint()`. The old file is kept as `eslint.config.before-pawl.js`                               |
+| `eslint.config.js`   | One line: `export default eslint({ root: import.meta.dirname })`. The old file is kept as `eslint.config.before-pawl.js`  |
 | `.pawl/migration.md` | A full account of what was kept, what the formatter replaces, and what the standard adds                                  |
 
 Then it runs `init`, which installs the tools and records the baseline.

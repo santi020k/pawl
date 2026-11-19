@@ -1,3 +1,11 @@
 {
-  "extends": ["./packages/pawl/presets/pawl.biome.json", "./packages/pawl/presets/turbo.biome.json"]
+  "extends": ["./packages/pawl/presets/pawl.biome.json", "./packages/pawl/presets/turbo.biome.json"],
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "javascript": {
+    "globals": ["HTMLRewriter", "WebSocketPair"]
+  }
 }

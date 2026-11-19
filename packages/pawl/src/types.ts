@@ -21,8 +21,50 @@ export interface StyleOptions {
   arrowParens: 'as-needed' | 'always'
 }
 
+/** Where the code runs. Each one brings the global variables that runtime defines. */
+export type Runtime = 'node' | 'browser' | 'bun' | 'deno' | 'worker'
+
+/** A framework or library pawl recognises from the dependencies or the files. */
+export type Framework =
+  | 'react'
+  | 'next'
+  | 'vue'
+  | 'nuxt'
+  | 'svelte'
+  | 'angular'
+  | 'astro'
+  | 'solid'
+  | 'react-native'
+  | 'qwik'
+  | 'tailwind'
+  | 'tanstack-query'
+  | 'drizzle'
+  | 'playwright'
+  | 'hono'
+  | 'lit'
+  | 'nest'
+  | 'preact'
+  | 'react-router'
+  | 'tanstack-start'
+  | 'vite'
+
+/** What detection can be told to leave out: a framework, or Turborepo's rules. */
+export type Detectable = Framework | 'turbo'
+
+/** Rule levels and options for some files only. */
+export interface OverrideInput {
+  /** Glob patterns of the files. A pattern without a slash matches at any depth. */
+  files: readonly string[]
+  /** Rule levels for those files, by the same names as the policy's `rules`. */
+  rules?: Record<string, Level>
+  /** Rule options for those files, in ESLint's shape. ESLint and Oxlint take them. */
+  options?: Record<string, readonly unknown[]>
+}
+
 /** What a user or a company writes in `pawl.config.ts` or a policy package. */
 export interface PolicyInput {
+  /** The JSON schema of the file, for editors. Pawl ignores it. */
+  $schema?: string
   /** Other policies to build on: a package name, a relative path, or an inline policy. */
   extends?: string | PolicyInput | readonly (string | PolicyInput)[]
   /** Which engine lints and formats. `auto` picks from what the repo already uses. */
@@ -33,6 +75,8 @@ export interface PolicyInput {
   packs?: readonly string[]
   /** Turn on the stricter level of every rule that has one. A later layer cannot turn it off. */
   strict?: boolean
+  /** Fail the check when there are more new warnings than this. A later layer can lower it, not raise it. */
+  maxWarnings?: number
   style?: Partial<StyleOptions>
   /**
    * Rule levels by neutral name (ESLint's names). `biome:group/name` reaches a Biome-only rule,
@@ -44,10 +88,30 @@ export interface PolicyInput {
    * ESLint and Oxlint take them. Biome has its own option shapes and ignores them.
    */
   options?: Record<string, readonly unknown[]>
+  /** Rule levels and options for some files only, such as tests. Later entries win. */
+  overrides?: readonly OverrideInput[]
   /** Rules that later layers may tighten but never loosen. */
   locked?: readonly string[]
-  /** Extra glob patterns to skip. */
+  /** Extra glob patterns to skip. A pattern without a slash matches at any depth. */
   ignore?: readonly string[]
+  /** Skip what the root .gitignore lists. On by default. */
+  gitignore?: boolean
+  /** Skip build output, caches, lockfiles, AI tool folders and generated code. On by default. */
+  defaultIgnores?: boolean
+  /** Where the code runs, instead of what pawl detects. Sets the global variables the linters know. */
+  runtime?: Runtime | readonly Runtime[]
+  /**
+   * Work out the technologies from the dependencies and files. On by default.
+   * `false` turns detection off; `{ exclude }` leaves some technologies out.
+   */
+  detect?: boolean | { exclude?: readonly Detectable[] }
+}
+
+/** An override, merged. */
+export interface Override {
+  files: string[]
+  rules: Record<string, Level>
+  options: Record<string, unknown[]>
 }
 
 /** A later layer tried to loosen a locked rule. The stricter level was kept. */
@@ -69,8 +133,17 @@ export interface Policy {
   rules: Record<string, Level>
   /** Options by rule, in ESLint's shape. */
   options: Record<string, unknown[]>
+  overrides: Override[]
   locked: string[]
   ignore: string[]
+  gitignore: boolean
+  defaultIgnores: boolean
+  /** The runtimes the policy names, or undefined to use what pawl detects. */
+  runtime: Runtime[] | undefined
+  /** Detection on, off, or with some technologies left out. */
+  detect: { enabled: boolean; exclude: Detectable[] }
+  /** Undefined means warnings never fail the check. */
+  maxWarnings: number | undefined
   lockViolations: LockViolation[]
   /** Where each layer came from, defaults first. */
   sources: string[]

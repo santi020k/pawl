@@ -54,7 +54,7 @@ Pawl never deletes or overwrites a tool config you already have. It tells you wh
 | `keep`           | Stay on the engine the repo uses today and add the ratchet on top.  |
 | `biome`          | Biome only. Pawl stops running ESLint.                              |
 
-Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions), `--agents` (a Claude Code hook, a Cursor hook where `.cursor` exists, and instructions in `AGENTS.md`), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`. The [CLI reference](/reference/cli/) lists them all.
+Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (a Claude Code hook, a Cursor hook where `.cursor` exists, and instructions in `AGENTS.md`), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`. The [CLI reference](/reference/cli/) lists them all.
 
 Already on ESLint? [`pawl migrate`](/guide/migrate/) turns your config into a pawl policy first.
 
@@ -67,7 +67,7 @@ pawl fix                # apply safe fixes and format
 pawl baseline           # accept the current findings as the new baseline
 pawl sync               # rewrite biome.json after the policy changed
 pawl explain no-console # what a rule does, and its level in this repo
-pawl doctor             # check the setup
+pawl doctor             # check the setup and the tool versions
 ```
 
 The engines also work on their own: `npx biome check` and `npx eslint .` use the same config files.

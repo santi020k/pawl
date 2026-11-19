@@ -80,6 +80,40 @@ describe('eslintPlan', () => {
     expect(plan.notEnforced).toEqual([{ rule: 'vue/no-v-html', needs: 'eslint-plugin-vue' }])
   })
 
+  it('next to Biome, asks for no plugin for a rule Biome lacks unless the policy names it', async () => {
+    const quiet = await eslintPlan({
+      root: withPlugins(),
+      policy: defaultPolicy(),
+      biomeActive: true,
+      typescript: false
+    })
+
+    expect(quiet.notEnforced).toEqual([])
+    expect(JSON.stringify(quiet.config)).not.toContain('unicorn/prefer-spread')
+
+    const named = await eslintPlan({
+      root: withPlugins(),
+      policy: mergeLayers([{ source: 'repo', input: { rules: { 'unicorn/prefer-spread': 'error' } } }]),
+      biomeActive: true,
+      typescript: false
+    })
+
+    expect(named.notEnforced).toEqual([{ rule: 'unicorn/prefer-spread', needs: 'eslint-plugin-unicorn' }])
+  })
+
+  it('leaves to Oxlint the rules Oxlint enforces and Biome does not', async () => {
+    const plan = await eslintPlan({
+      root: withPlugins(),
+      policy: defaultPolicy(),
+      biomeActive: false,
+      oxlintActive: true,
+      typescript: false
+    })
+
+    expect(plan.coveredByBiome).toEqual(expect.arrayContaining(['unicorn/prefer-spread', 'promise/always-return']))
+    expect(plan.notEnforced.map(item => item.rule)).not.toContain('unicorn/prefer-spread')
+  })
+
   it('skips TypeScript and React rules for projects without them', async () => {
     const plan = await eslintPlan({
       root: withPlugins(),
@@ -122,7 +156,14 @@ describe('eslintPlan', () => {
     const ignores = block(plan.config, 'pawl/ignores')?.ignores as string[]
 
     expect(ignores).toEqual(
-      expect.arrayContaining(['**/dist/**', '**/node_modules/**', 'generated/**', 'vendor', 'vendor/**'])
+      expect.arrayContaining([
+        '**/dist',
+        '**/dist/**',
+        '**/node_modules/**',
+        'generated/**',
+        '**/vendor',
+        '**/vendor/**'
+      ])
     )
   })
 
@@ -172,6 +213,44 @@ describe('eslintPlan', () => {
       const plan = await eslintPlan({ ...options, root: project({ 'package.json': { name: 'fixture' } }), policy })
 
       expect(plan.notEnforced).toEqual([{ rule: 'The Unicorn pack', needs: 'eslint-plugin-unicorn' }])
+    })
+
+    it('takes the jsx-a11y catalog rules only with their pack when ESLint lints alone', async () => {
+      const root = project({ 'package.json': { name: 'fixture' } })
+      const eslintOnly = { ...options, root, biomeActive: false, technologies: ['react' as const] }
+      const quiet = await eslintPlan(eslintOnly)
+
+      expect(quiet.notEnforced.filter(item => item.rule.startsWith('jsx-a11y/'))).toEqual([])
+
+      // A rule the policy names itself is still reported when ESLint cannot run it.
+      const named = mergeLayers([{ source: 'repo', input: { rules: { 'jsx-a11y/alt-text': 'error' } } }])
+      const loud = await eslintPlan({ ...eslintOnly, policy: named })
+
+      expect(loud.notEnforced.filter(item => item.rule.startsWith('jsx-a11y/'))).toEqual([
+        { rule: 'jsx-a11y/alt-text', needs: 'eslint-plugin-jsx-a11y' }
+      ])
+    })
+
+    it('gives the active jsx-a11y pack the catalog levels and options of its rules', async () => {
+      const a11y = plugin(
+        'eslint-plugin-jsx-a11y',
+        "{ rules: { 'alt-text': {}, 'no-static-element-interactions': {}, 'anchor-ambiguous-text': {} }, flatConfigs: { recommended: { rules: { 'jsx-a11y/alt-text': 'warn', 'jsx-a11y/anchor-ambiguous-text': 'warn' } } } }"
+      )
+      const policy = mergeLayers([{ source: 'repo', input: { packs: ['jsx-a11y'] } }])
+      const plan = await eslintPlan({
+        ...options,
+        root: project({ 'package.json': { name: 'fixture' }, ...a11y }),
+        policy,
+        biomeActive: false,
+        technologies: ['react']
+      })
+      const block = plan.config.find(entry => entry.name === 'pawl/pack/jsx-a11y') as { rules: Record<string, unknown> }
+
+      expect(block.rules).toMatchObject({
+        'jsx-a11y/alt-text': 'error',
+        'jsx-a11y/anchor-ambiguous-text': 'warn',
+        'jsx-a11y/no-static-element-interactions': ['error', expect.objectContaining({ allowExpressionValues: true })]
+      })
     })
 
     it("uses a plugin's own flat config whole when it brings a parser, and adds levels after it", async () => {

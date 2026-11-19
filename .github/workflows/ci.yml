@@ -2,21 +2,79 @@ name: CI
 
 on:
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  validate:
+    name: Required checks (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
         with:
-          node-version-file: .nvmrc
-      - run: npm install --global corepack@latest && corepack enable
-      - run: pnpm install --frozen-lockfile
-      # Build, typecheck, test, then pawl checks its own code.
-      - run: pnpm ok
+          fetch-depth: 0
+
+      - name: Set up pnpm workspace
+        uses: santi020k/quality/actions/setup-pnpm@b456ccc07a80cac227cc314be16c8309557ea8e6 # v2.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          task-cache-path: .turbo/cache
+          task-cache-key: node-${{ matrix.node }}
+
+      - name: Require a changeset
+        if: >-
+          matrix.node == 22 &&
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-changelog') &&
+          !startsWith(github.head_ref, 'release/')
+        run: pnpm changeset status --since=origin/main
+
+      # Versions, changelogs and the branch name must agree before a release merges.
+      - name: Check the release branch
+        if: >-
+          matrix.node == 22 &&
+          github.event_name == 'pull_request' &&
+          startsWith(github.head_ref, 'release/')
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: node scripts/release.ts check "$HEAD_REF"
+
+      - name: Keep versions for release branches
+        if: >-
+          matrix.node == 22 &&
+          github.event_name == 'pull_request' &&
+          !startsWith(github.head_ref, 'release/')
+        run: node scripts/release.ts guard origin/main
+
+      # Build, typecheck, test, pawl on its own code, spelling, unused code, generated files.
+      - name: Validate repository
+        run: pnpm ok
+
+      - name: Diagnose the docs site with Astro Doctor
+        if: matrix.node == 22
+        run: pnpm --filter @santi020k/pawl-docs run doctor
+
+      # Reads the site that `pnpm ok` built: meta tags, social cards, JSON-LD, sitemap and robots.txt.
+      - name: Audit the docs site's SEO and social metadata
+        if: matrix.node == 22
+        run: pnpm --filter @santi020k/pawl-docs run audit
+
+      - name: Install the packed package like a consumer
+        run: pnpm run check:packed-install

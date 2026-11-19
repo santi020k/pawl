@@ -1,7 +1,7 @@
 import { type Level } from './types.ts'
 
 /** What a rule is about. The tags in `GATED_TAGS` name a technology the project must use. */
-export type RuleTag = 'core' | 'typescript' | 'imports' | 'tests' | 'pawl' | Technology
+export type RuleTag = 'core' | 'typescript' | 'imports' | 'tests' | 'formats' | 'pawl' | Technology
 
 /**
  * Tags whose rules only apply to projects that use that technology.
@@ -42,13 +42,13 @@ export interface RuleDef {
   level: Level
   /** Level when the policy is strict. Defaults to `level`. */
   strict?: Level
-  /** Biome's rule as `group/name`, when Biome has one. */
+  /** Biome's rule as `group/name`, when Biome has one. Without one, Oxlint or an ESLint plugin enforces it. */
   biome?: string
   /** Other ESLint names for the same check. A policy may use any of them. */
   aliases?: string[]
   /** Options for each engine, where the standard needs them. */
   options?: { biome?: Record<string, unknown>; eslint?: unknown[] }
-  /** Biome still marks its rule as unstable, so it is only on in a strict policy. */
+  /** The engine that enforces it still marks its rule as unstable, so it is only on in a strict policy. */
   nursery?: boolean
   /** The ESLint rule needs type information. */
   typeAware?: boolean
@@ -107,7 +107,9 @@ export const RULES: readonly RuleDef[] = [
     'error',
     'No async Promise executors.'
   ),
-  rule('core', 'no-unused-expressions', 'suspicious/noUnusedExpressions', 'error', 'No unused expressions.'),
+  rule('core', 'no-unused-expressions', 'suspicious/noUnusedExpressions', 'error', 'No unused expressions.', {
+    aliases: ['@typescript-eslint/no-unused-expressions']
+  }),
   rule('core', 'no-unsafe-finally', 'correctness/noUnsafeFinally', 'error', 'No control flow in finally blocks.'),
   rule('core', 'no-constant-condition', 'correctness/noConstantCondition', 'warn', 'No constant conditions.'),
   rule('core', 'no-redeclare', 'suspicious/noRedeclare', 'error', 'No redeclared variables.'),
@@ -148,7 +150,9 @@ export const RULES: readonly RuleDef[] = [
     { aliases: ['@typescript-eslint/no-useless-constructor'] }
   ),
   rule('core', 'no-useless-rename', 'complexity/noUselessRename', 'error', 'No renaming to the same name.'),
-  rule('core', 'no-useless-escape', 'complexity/noUselessEscapeInRegex', 'warn', 'No unnecessary escapes.'),
+  rule('core', 'no-useless-escape', 'complexity/noUselessEscapeInRegex', 'warn', 'No unnecessary escapes.', {
+    aliases: ['regexp/no-useless-escape']
+  }),
   rule('core', 'no-useless-concat', 'complexity/noUselessStringConcat', 'warn', 'No concatenating two literals.'),
   rule('core', 'no-unneeded-ternary', 'complexity/noUselessTernary', 'warn', 'No ternary where a simpler form exists.'),
   rule('core', 'no-nested-ternary', 'style/noNestedTernary', 'warn', 'No nested ternaries.'),
@@ -351,6 +355,77 @@ export const RULES: readonly RuleDef[] = [
     'Enforce the use of String.trimStart() and String.trimEnd() over String.trimLeft() and String.trimRight().'
   ),
   rule('core', 'unicorn/throw-new-error', 'style/useThrowNewError', 'warn', 'Require new when throwing an error.'),
+  rule(
+    'core',
+    'unicorn/prefer-optional-catch-binding',
+    'complexity/noUselessCatchBinding',
+    'warn',
+    'Leave out a catch binding that is never used.'
+  ),
+  rule('core', 'unicorn/prefer-array-find', 'complexity/useArrayFind', 'warn', 'Use .find() over .filter()[0].'),
+  rule(
+    'core',
+    'unicorn/prefer-string-starts-ends-with',
+    'nursery/useStringStartsEndsWith',
+    'off',
+    'Use startsWith() and endsWith() over a regular expression or a slice comparison.',
+    { strict: 'warn', nursery: true }
+  ),
+  // No Biome equivalent: Oxlint enforces these, or ESLint with eslint-plugin-unicorn.
+  rule(
+    'core',
+    'unicorn/consistent-function-scoping',
+    undefined,
+    'warn',
+    'Move a function to the outermost scope it can live in.'
+  ),
+  rule('core', 'unicorn/no-abusive-eslint-disable', undefined, 'warn', 'No disable comments that name no rule.', {
+    advice: 'Name the rule the comment switches off, or fix the finding instead.'
+  }),
+  rule(
+    'core',
+    'unicorn/no-typeof-undefined',
+    undefined,
+    'warn',
+    "Compare with undefined directly, not with typeof x === 'undefined'."
+  ),
+  rule('core', 'unicorn/prefer-array-flat', undefined, 'warn', 'Use .flat() over flattening an array by hand.'),
+  rule(
+    'core',
+    'unicorn/prefer-logical-operator-over-ternary',
+    undefined,
+    'warn',
+    'Use ?? or || over a ternary that repeats its condition.'
+  ),
+  rule(
+    'core',
+    'unicorn/prefer-spread',
+    undefined,
+    'warn',
+    'Use spread over Array.from(), concat(), slice() and split("") for copies.'
+  ),
+  rule(
+    'core',
+    'unicorn/prefer-string-replace-all',
+    undefined,
+    'warn',
+    'Use replaceAll() over replace() with a global regular expression.'
+  ),
+  rule(
+    'core',
+    'unicorn/prefer-ternary',
+    undefined,
+    'warn',
+    'Use a ternary over an if-else that only assigns or returns.'
+  ),
+  rule('core', 'promise/always-return', undefined, 'warn', 'Return a value or throw in every then() callback.'),
+  rule(
+    'core',
+    'promise/catch-or-return',
+    undefined,
+    'warn',
+    'Handle the rejection of a promise with catch(), or return the promise.'
+  ),
 
   // TypeScript
   rule('typescript', '@typescript-eslint/no-explicit-any', 'suspicious/noExplicitAny', 'warn', 'No explicit any.', {
@@ -542,6 +617,14 @@ export const RULES: readonly RuleDef[] = [
     'Enforce using the nullish coalescing operator (??) instead of logical or (||).',
     { strict: 'warn', nursery: true }
   ),
+  rule(
+    'typescript',
+    '@typescript-eslint/await-thenable',
+    'nursery/useAwaitThenable',
+    'off',
+    'No awaiting a value that is not a promise.',
+    { strict: 'error', typeAware: true, nursery: true }
+  ),
 
   // React
   rule('react', 'react-hooks/rules-of-hooks', 'correctness/useHookAtTopLevel', 'error', 'Call hooks at the top level.'),
@@ -592,6 +675,187 @@ export const RULES: readonly RuleDef[] = [
     'warn',
     'Enforce declaring components only within modules that export React Components exclusively.'
   ),
+  rule(
+    'react',
+    '@eslint-react/no-unstable-default-props',
+    'nursery/noReactObjectTypeAsDefaultProp',
+    'off',
+    'No object or array literals as default props, which make a new value on every render.',
+    { strict: 'warn', nursery: true }
+  ),
+
+  // Accessibility. The recommended rules of eslint-plugin-jsx-a11y, so Biome and Oxlint enforce
+  // them without the plugin. anchor-is-valid has no Biome mapping here: Biome's useValidAnchor is
+  // filed under qwik/jsx-a, and Biome's recommended set has it on anyway.
+  rule('react', 'jsx-a11y/alt-text', 'a11y/useAltText', 'error', 'Give images and image-like elements alt text.'),
+  rule('react', 'jsx-a11y/anchor-has-content', 'a11y/useAnchorContent', 'error', 'Give anchors content.'),
+  rule('react', 'jsx-a11y/anchor-is-valid', undefined, 'error', 'Require anchors to have a valid href.'),
+  rule(
+    'react',
+    'jsx-a11y/aria-activedescendant-has-tabindex',
+    'a11y/useAriaActivedescendantWithTabindex',
+    'error',
+    'Make elements with aria-activedescendant tabbable.'
+  ),
+  rule('react', 'jsx-a11y/aria-props', 'a11y/useValidAriaProps', 'error', 'Use only valid aria-* attributes.'),
+  rule('react', 'jsx-a11y/aria-proptypes', 'a11y/useValidAriaValues', 'error', 'Give aria-* attributes valid values.'),
+  rule('react', 'jsx-a11y/aria-role', 'a11y/useValidAriaRole', 'error', 'Use only valid ARIA roles.'),
+  rule(
+    'react',
+    'jsx-a11y/aria-unsupported-elements',
+    'a11y/noAriaUnsupportedElements',
+    'error',
+    'No ARIA on elements that do not support it.'
+  ),
+  rule('react', 'jsx-a11y/autocomplete-valid', 'a11y/useValidAutocomplete', 'error', 'Use valid autocomplete values.'),
+  rule(
+    'react',
+    'jsx-a11y/click-events-have-key-events',
+    'a11y/useKeyWithClickEvents',
+    'error',
+    'Pair click handlers with a keyboard handler.'
+  ),
+  rule('react', 'jsx-a11y/heading-has-content', 'a11y/useHeadingContent', 'error', 'Give headings content.'),
+  rule('react', 'jsx-a11y/html-has-lang', 'a11y/useHtmlLang', 'error', 'Give the html element a lang attribute.'),
+  rule('react', 'jsx-a11y/iframe-has-title', 'a11y/useIframeTitle', 'error', 'Give iframes a title.'),
+  rule('react', 'jsx-a11y/img-redundant-alt', 'a11y/noRedundantAlt', 'error', 'No "image" or "photo" in alt text.'),
+  rule(
+    'react',
+    'jsx-a11y/interactive-supports-focus',
+    'a11y/useFocusableInteractive',
+    'error',
+    'Make elements with interactive handlers focusable.',
+    {
+      options: {
+        eslint: [{ tabbable: ['button', 'checkbox', 'link', 'searchbox', 'spinbutton', 'switch', 'textbox'] }]
+      }
+    }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/label-has-associated-control',
+    'a11y/noLabelWithoutControl',
+    'error',
+    'Tie every label to a control.'
+  ),
+  rule('react', 'jsx-a11y/media-has-caption', 'a11y/useMediaCaption', 'error', 'Give audio and video captions.'),
+  rule(
+    'react',
+    'jsx-a11y/mouse-events-have-key-events',
+    'a11y/useKeyWithMouseEvents',
+    'error',
+    'Pair mouse over and out with focus and blur.'
+  ),
+  rule('react', 'jsx-a11y/no-access-key', 'a11y/noAccessKey', 'error', 'No accessKey attributes.'),
+  rule('react', 'jsx-a11y/no-autofocus', 'a11y/noAutofocus', 'error', 'No autoFocus.'),
+  rule(
+    'react',
+    'jsx-a11y/no-distracting-elements',
+    'a11y/noDistractingElements',
+    'error',
+    'No marquee or blink elements.'
+  ),
+  rule(
+    'react',
+    'jsx-a11y/no-interactive-element-to-noninteractive-role',
+    'a11y/noInteractiveElementToNoninteractiveRole',
+    'error',
+    'No non-interactive roles on interactive elements.',
+    { options: { eslint: [{ tr: ['none', 'presentation'], canvas: ['img'] }] } }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/no-noninteractive-element-interactions',
+    'a11y/noNoninteractiveElementInteractions',
+    'error',
+    'No event handlers on non-interactive elements.',
+    {
+      options: {
+        eslint: [
+          {
+            handlers: [
+              'onClick',
+              'onError',
+              'onLoad',
+              'onMouseDown',
+              'onMouseUp',
+              'onKeyPress',
+              'onKeyDown',
+              'onKeyUp'
+            ],
+            alert: ['onKeyUp', 'onKeyDown', 'onKeyPress'],
+            body: ['onError', 'onLoad'],
+            dialog: ['onKeyUp', 'onKeyDown', 'onKeyPress'],
+            iframe: ['onError', 'onLoad'],
+            img: ['onError', 'onLoad']
+          }
+        ]
+      }
+    }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/no-noninteractive-element-to-interactive-role',
+    'a11y/noNoninteractiveElementToInteractiveRole',
+    'error',
+    'No interactive roles on non-interactive elements.',
+    {
+      options: {
+        eslint: [
+          {
+            ul: ['listbox', 'menu', 'menubar', 'radiogroup', 'tablist', 'tree', 'treegrid'],
+            ol: ['listbox', 'menu', 'menubar', 'radiogroup', 'tablist', 'tree', 'treegrid'],
+            li: ['menuitem', 'menuitemradio', 'menuitemcheckbox', 'option', 'row', 'tab', 'treeitem'],
+            table: ['grid'],
+            td: ['gridcell'],
+            fieldset: ['radiogroup', 'presentation']
+          }
+        ]
+      }
+    }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/no-noninteractive-tabindex',
+    'a11y/noNoninteractiveTabindex',
+    'error',
+    'No tabIndex on non-interactive elements.',
+    { options: { eslint: [{ tags: [], roles: ['tabpanel'], allowExpressionValues: true }] } }
+  ),
+  rule('react', 'jsx-a11y/no-redundant-roles', 'a11y/noRedundantRoles', 'error', 'No roles an element already has.'),
+  rule(
+    'react',
+    'jsx-a11y/no-static-element-interactions',
+    'a11y/noStaticElementInteractions',
+    'error',
+    'No event handlers on static elements such as div.',
+    {
+      options: {
+        eslint: [
+          {
+            allowExpressionValues: true,
+            handlers: ['onClick', 'onMouseDown', 'onMouseUp', 'onKeyPress', 'onKeyDown', 'onKeyUp']
+          }
+        ]
+      }
+    }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/role-has-required-aria-props',
+    'a11y/useAriaPropsForRole',
+    'error',
+    'Give each role the ARIA attributes it requires.'
+  ),
+  rule(
+    'react',
+    'jsx-a11y/role-supports-aria-props',
+    'a11y/useAriaPropsSupportedByRole',
+    'error',
+    'Use only ARIA attributes the role supports.'
+  ),
+  rule('react', 'jsx-a11y/scope', 'a11y/noHeaderScope', 'error', 'Use scope only on th elements.'),
+  rule('react', 'jsx-a11y/tabindex-no-positive', 'a11y/noPositiveTabindex', 'error', 'No positive tabIndex values.'),
 
   // Qwik
   rule(
@@ -692,6 +956,13 @@ export const RULES: readonly RuleDef[] = [
     'Require a type for every prop of a Vue component.',
     { strict: 'warn', nursery: true }
   ),
+  rule(
+    'vue',
+    'vue/component-definition-name-casing',
+    undefined,
+    'warn',
+    'Write the name of a component definition in PascalCase.'
+  ),
 
   // Svelte
   rule(
@@ -722,11 +993,16 @@ export const RULES: readonly RuleDef[] = [
     'correctness/noUndeclaredDependencies',
     'error',
     'No importing a package that package.json does not declare.',
-    { guardrail: true, advice: 'Check that the package exists and is the one you mean, then add it to package.json.' }
+    {
+      guardrail: true,
+      aliases: ['n/no-extraneous-import'],
+      advice: 'Check that the package exists and is the one you mean, then add it to package.json.'
+    }
   ),
   rule('imports', 'import/no-unresolved', 'correctness/noUnresolvedImports', 'off', 'No imports that do not resolve.', {
     strict: 'error',
     guardrail: true,
+    aliases: ['n/no-missing-import'],
     advice: 'Fix the path or the export name. Do not invent modules.'
   }),
   rule('imports', 'import/no-cycle', 'suspicious/noImportCycles', 'off', 'No import cycles.', { strict: 'error' }),
@@ -739,6 +1015,12 @@ export const RULES: readonly RuleDef[] = [
   ),
   rule('imports', 'import/no-self-import', 'nursery/noSelfImport', 'off', 'Forbid a module from importing itself.', {
     strict: 'error',
+    nursery: true
+  }),
+  // No Biome rule. Biome's import sorting merges duplicate imports; Oxlint enforces both.
+  rule('imports', 'import/no-duplicates', undefined, 'warn', 'Import from a module in one statement, not several.'),
+  rule('imports', 'import/export', undefined, 'off', 'No exporting the same name twice.', {
+    strict: 'warn',
     nursery: true
   }),
 
@@ -782,6 +1064,36 @@ export const RULES: readonly RuleDef[] = [
     'suspicious/noIdenticalTestTitle',
     'error',
     'Disallow identical titles in test suites and test cases.'
+  ),
+  // No Biome equivalent: Oxlint enforces these, or ESLint with @vitest/eslint-plugin.
+  rule('tests', 'vitest/prefer-to-be', undefined, 'warn', 'Use toBe() to compare primitive values.'),
+  rule('tests', 'vitest/prefer-to-have-length', undefined, 'warn', 'Use toHaveLength() to check a length.'),
+  rule('tests', 'vitest/valid-expect', undefined, 'error', 'Call expect() with one value and a matcher.'),
+
+  // Markdown and YAML files
+  rule(
+    'formats',
+    'markdown/fenced-code-language',
+    'nursery/useFencedCodeLanguage',
+    'off',
+    'Name the language of every fenced code block.',
+    { strict: 'error', nursery: true }
+  ),
+  rule(
+    'formats',
+    'markdown/heading-increment',
+    'nursery/useConsistentHeadingLevel',
+    'off',
+    'Raise heading levels one at a time.',
+    { strict: 'error', nursery: true }
+  ),
+  rule(
+    'formats',
+    'yml/no-empty-sequence-entry',
+    'nursery/noYamlEmptySequenceEntries',
+    'off',
+    'No empty entries in a YAML list.',
+    { strict: 'error', nursery: true }
   ),
 
   // Turborepo

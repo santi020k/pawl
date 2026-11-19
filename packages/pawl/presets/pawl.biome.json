@@ -3,16 +3,45 @@
   "files": {
     "includes": [
       "**",
+      "!**/.pawl",
       "!**/dist",
       "!**/build",
       "!**/coverage",
+      "!**/.turbo",
       "!**/.next",
+      "!**/.open-next",
       "!**/.astro",
       "!**/.nuxt",
       "!**/.svelte-kit",
       "!**/.output",
-      "!**/.turbo",
-      "!**/.pawl"
+      "!**/.vercel",
+      "!**/.wrangler",
+      "!**/playwright-report",
+      "!**/test-results",
+      "!**/*.tsbuildinfo",
+      "!**/pnpm-lock.yaml",
+      "!**/yarn.lock",
+      "!**/package-lock.json",
+      "!**/bun.lock",
+      "!**/bun.lockb",
+      "!**/.changeset",
+      "!**/.agent",
+      "!**/.agents",
+      "!**/.aider*",
+      "!**/.claude",
+      "!**/.clinerules",
+      "!**/.codex",
+      "!**/.copilot",
+      "!**/.cursor",
+      "!**/.gemini",
+      "!**/.kiro",
+      "!**/.opencode",
+      "!**/.roo",
+      "!**/.windsurf",
+      "!**/__generated__",
+      "!**/*.generated.*",
+      "!**/*.gen.*",
+      "!**/.prisma"
     ]
   },
   "formatter": {
@@ -38,6 +67,7 @@
         "noBannedTypes": "warn",
         "noExcessiveNestedTestSuites": "error",
         "noUselessCatch": "error",
+        "noUselessCatchBinding": "warn",
         "noUselessConstructor": "warn",
         "noUselessEscapeInRegex": "warn",
         "noUselessRename": "error",
@@ -47,6 +77,7 @@
         "noUselessUndefined": "warn",
         "noUselessUndefinedInitialization": "warn",
         "noVoid": "warn",
+        "useArrayFind": "warn",
         "useArraySome": "warn",
         "useArrowFunction": "warn",
         "useFlatMap": "warn",
@@ -83,11 +114,16 @@
         "noUselessAssignment": "off",
         "noUselessSpread": "off",
         "noUselessTypeAssertion": "off",
+        "noYamlEmptySequenceEntries": "off",
+        "useAwaitThenable": "off",
         "useCatchErrorName": "off",
         "useConsistentFunctionStyle": "off",
+        "useConsistentHeadingLevel": "off",
+        "useFencedCodeLanguage": "off",
         "useIncludes": "off",
         "useNullishCoalescing": "off",
-        "usePromiseRejectErrors": "off"
+        "usePromiseRejectErrors": "off",
+        "useStringStartsEndsWith": "off"
       },
       "performance": {
         "noAwaitInLoops": "off"
@@ -181,7 +217,8 @@
   "assist": {
     "actions": {
       "source": {
-        "organizeImports": "on"
+        "organizeImports": "on",
+        "useSortedPackageJson": "on"
       }
     }
   }

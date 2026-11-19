@@ -32,6 +32,11 @@ export interface Pack {
   auto?: 'linter' | 'linter-ts'
   /** Some of its rules need type information. */
   typeAware?: boolean
+  /**
+   * The catalog has rules from this plugin so Biome and Oxlint enforce them natively.
+   * ESLint takes those rules only when the pack is on, or when the policy names one.
+   */
+  withPack?: boolean
   /** Levels the standard sets on top of the preset. */
   rules: Record<string, Level>
 }
@@ -64,13 +69,11 @@ export const PACKS: readonly Pack[] = [
     auto: 'linter-ts',
     typeAware: true,
     rules: {
-      '@typescript-eslint/await-thenable': 'error',
       '@typescript-eslint/no-unnecessary-condition': 'off',
       '@typescript-eslint/no-unsafe-argument': 'warn',
       '@typescript-eslint/no-unsafe-assignment': 'error',
       '@typescript-eslint/no-unsafe-call': 'error',
       '@typescript-eslint/no-unsafe-member-access': 'error',
-      '@typescript-eslint/no-unused-expressions': 'off',
       '@typescript-eslint/restrict-template-expressions': 'warn',
       '@typescript-eslint/unbound-method': 'warn'
     }
@@ -84,18 +87,7 @@ export const PACKS: readonly Pack[] = [
     when: [],
     rules: {
       'unicorn/consistent-destructuring': 'warn',
-      'unicorn/consistent-function-scoping': 'warn',
-      'unicorn/no-abusive-eslint-disable': 'warn',
-      'unicorn/no-typeof-undefined': 'warn',
-      'unicorn/prefer-array-find': 'warn',
-      'unicorn/prefer-array-flat': 'warn',
-      'unicorn/prefer-logical-operator-over-ternary': 'warn',
-      'unicorn/prefer-optional-catch-binding': 'warn',
-      'unicorn/prefer-spread': 'warn',
-      'unicorn/prefer-string-replace-all': 'warn',
-      'unicorn/prefer-string-starts-ends-with': 'warn',
-      'unicorn/prefer-switch': 'warn',
-      'unicorn/prefer-ternary': 'warn'
+      'unicorn/prefer-switch': 'warn'
     }
   },
   {
@@ -139,7 +131,7 @@ export const PACKS: readonly Pack[] = [
     prefix: 'promise',
     when: [],
     preset: ['configs', 'flat/recommended'],
-    rules: { 'promise/always-return': 'warn', 'promise/catch-or-return': 'warn' }
+    rules: {}
   },
   {
     name: 'perfectionist',
@@ -192,43 +184,43 @@ export const PACKS: readonly Pack[] = [
     rules: {
       'zod/array-style': 'error',
       'zod/prefer-enum-over-literal-union': 'error',
-      'zod/prefer-loose-object': 'error',
+      'zod/prefer-loose-object': 'off',
       'zod/prefer-meta': 'error',
-      'zod/prefer-meta-last': 'error',
-      'zod/prefer-nullish': 'error',
-      'zod/prefer-strict-object': 'error',
+      'zod/prefer-meta-last': 'off',
+      'zod/prefer-nullish': 'off',
+      'zod/prefer-strict-object': 'off',
       'zod/prefer-string-schema-with-trim': 'error',
-      'zod/prefer-trim-before-string-length-checks': 'error'
+      'zod/prefer-trim-before-string-length-checks': 'off'
     }
   },
   {
     name: 'stencil',
     title: 'Stencil',
-    plugin: '@stencil-community/eslint-plugin',
-    range: '*',
-    prefix: '@stencil-community',
+    plugin: '@stencil/eslint-plugin',
+    range: '>=1.2.0',
+    prefix: 'stencil',
     when: ['@stencil/core'],
     files: ['**/*.{ts,tsx}'],
     typeAware: true,
     rules: {
-      '@stencil-community/async-methods': 'error',
-      '@stencil-community/ban-prefix': 'error',
-      '@stencil-community/decorators-context': 'error',
-      '@stencil-community/decorators-style': 'error',
-      '@stencil-community/element-type': 'error',
-      '@stencil-community/host-data-deprecated': 'error',
-      '@stencil-community/methods-must-be-public': 'error',
-      '@stencil-community/no-unused-watch': 'error',
-      '@stencil-community/own-methods-must-be-private': 'error',
-      '@stencil-community/own-props-must-be-private': 'error',
-      '@stencil-community/prefer-vdom-listener': 'error',
-      '@stencil-community/props-must-be-public': 'error',
-      '@stencil-community/props-must-be-readonly': 'error',
-      '@stencil-community/render-returns-host': 'error',
-      '@stencil-community/required-jsdoc': 'error',
-      '@stencil-community/reserved-member-names': 'error',
-      '@stencil-community/single-export': 'error',
-      '@stencil-community/strict-mutable': 'error'
+      'stencil/async-methods': 'error',
+      'stencil/ban-prefix': 'error',
+      'stencil/decorators-context': 'error',
+      'stencil/decorators-style': 'error',
+      'stencil/element-type': 'error',
+      'stencil/host-data-deprecated': 'error',
+      'stencil/methods-must-be-public': 'error',
+      'stencil/no-unused-watch': 'error',
+      'stencil/own-methods-must-be-private': 'error',
+      'stencil/own-props-must-be-private': 'error',
+      'stencil/prefer-vdom-listener': 'error',
+      'stencil/props-must-be-public': 'error',
+      'stencil/props-must-be-readonly': 'error',
+      'stencil/render-returns-host': 'error',
+      'stencil/required-jsdoc': 'error',
+      'stencil/reserved-member-names': 'error',
+      'stencil/single-export': 'error',
+      'stencil/strict-mutable': 'error'
     }
   },
   {
@@ -240,9 +232,9 @@ export const PACKS: readonly Pack[] = [
     when: ['@testing-library/react', '@testing-library/dom', '@testing-library/vue', '@testing-library/svelte'],
     rules: {
       'testing-library/await-async-queries': 'error',
-      'testing-library/no-await-sync-queries': 'error',
-      'testing-library/no-debugging-utils': 'warn',
-      'testing-library/no-dom-import': 'error',
+      'testing-library/no-await-sync-queries': 'off',
+      'testing-library/no-debugging-utils': 'off',
+      'testing-library/no-dom-import': 'off',
       'testing-library/no-unnecessary-act': 'warn',
       'testing-library/prefer-find-by': 'warn',
       'testing-library/prefer-screen-queries': 'error'
@@ -276,7 +268,7 @@ export const PACKS: readonly Pack[] = [
     prefix: 'vitest',
     when: ['vitest'],
     preset: ['configs', 'recommended', 'rules'],
-    rules: { 'vitest/prefer-to-be': 'warn', 'vitest/prefer-to-have-length': 'warn', 'vitest/valid-expect': 'error' }
+    rules: {}
   },
   {
     name: 'playwright',
@@ -349,7 +341,7 @@ export const PACKS: readonly Pack[] = [
     preset: ['configs', 'flat/recommended'],
     spread: true,
     files: ['**/*.vue'],
-    rules: { 'vue/component-definition-name-casing': 'warn', 'vue/padding-line-between-blocks': 'warn' }
+    rules: { 'vue/padding-line-between-blocks': 'warn' }
   },
   {
     name: 'svelte',
@@ -373,7 +365,7 @@ export const PACKS: readonly Pack[] = [
     preset: ['configs', 'flat/recommended'],
     spread: true,
     files: ['**/*.{yml,yaml}'],
-    rules: { 'yml/no-empty-mapping-value': 'error', 'yml/no-empty-sequence-entry': 'error' }
+    rules: { 'yml/no-empty-mapping-value': 'error' }
   },
   {
     name: 'jsonc',
@@ -398,10 +390,8 @@ export const PACKS: readonly Pack[] = [
     spread: true,
     files: ['**/*.md'],
     rules: {
-      'markdown/fenced-code-language': 'error',
-      'markdown/heading-increment': 'error',
       'markdown/no-duplicate-headings': 'off',
-      'markdown/no-empty-links': 'error',
+      'markdown/no-empty-links': 'off',
       'markdown/no-html': 'off',
       'markdown/no-invalid-label-refs': 'error',
       'markdown/no-missing-label-refs': 'off'
@@ -425,6 +415,7 @@ export const PACKS: readonly Pack[] = [
     prefix: 'jsx-a11y',
     when: [],
     preset: ['flatConfigs', 'recommended'],
+    withPack: true,
     rules: {}
   },
   {

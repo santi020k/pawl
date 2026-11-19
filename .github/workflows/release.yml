@@ -1,0 +1,114 @@
+name: Release
+
+# A release is prepared on a release/v<version> branch and merged into main through a pull request.
+# This workflow then publishes the versions npm does not have yet, checks them and creates the
+# v<version> tag and GitHub release on the merged commit. It does nothing when main holds no new
+# version, and it is safe to run again after a failure.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/release.yml"
+      - "packages/pawl/**"
+      - "packages/pawl-policy/**"
+      - "scripts/release.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Publishing and tagging must finish as one run.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    name: Publish and tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@santi020k/pawl
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm workspace
+        uses: santi020k/quality/actions/setup-pnpm@b456ccc07a80cac227cc314be16c8309557ea8e6 # v2.1.0
+        with:
+          node-version: 22
+
+      # npm trusted publishing (OIDC) needs a recent npm; no NPM_TOKEN is stored.
+      - name: Install npm with trusted publishing support
+        run: |
+          npm install --global npm@12.1.0
+          test "$(npm --version)" = "12.1.0"
+
+      - name: Plan the release
+        id: plan
+        run: |
+          node scripts/release.ts plan >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Validate repository
+        if: steps.plan.outputs.publish == 'true'
+        run: pnpm ok
+
+      - name: Install the packed package like a consumer
+        if: steps.plan.outputs.publish == 'true'
+        run: pnpm run check:packed-install
+
+      - name: Publish to npm with provenance
+        if: steps.plan.outputs.publish == 'true'
+        run: pnpm run release
+
+      # Only a 404 means the release is missing; any other failure stops the run.
+      - name: Find the GitHub release
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          if FOUND=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${VERSION}" --jq .tag_name 2>&1); then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$FOUND" | grep -q "HTTP 404"; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not look up the release v${VERSION}: ${FOUND}"
+            exit 1
+          fi
+
+      - name: Verify the published packages
+        if: steps.plan.outputs.publish == 'true' || steps.find.outputs.released == 'false'
+        run: node scripts/release.ts verify
+
+      - name: Create the tag and GitHub release
+        if: steps.find.outputs.released == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          # A published tag never moves: refuse one that points at another commit. The last line is
+          # the commit of an annotated tag.
+          REFS=$(git ls-remote origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
+          TAGGED=$(printf '%s\n' "$REFS" | tail -n 1 | cut -f1)
+          if [ -n "$TAGGED" ] && [ "$TAGGED" != "$GITHUB_SHA" ]; then
+            echo "::error::The tag ${TAG} points at ${TAGGED}, not at ${GITHUB_SHA}. Release a new version instead."
+            exit 1
+          fi
+          node scripts/release.ts notes "${RUNNER_TEMP}/release-notes.md"
+          PRERELEASE=""
+          case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file "${RUNNER_TEMP}/release-notes.md" $PRERELEASE

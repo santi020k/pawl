@@ -1,0 +1,56 @@
+# Contributing
+
+Thank you for improving pawl. Read [AGENTS.md](AGENTS.md) first: it holds the rules of the codebase.
+
+## Setup
+
+Use Node.js 22.18 or newer and pnpm (the version in `packageManager`):
+
+```sh
+pnpm install
+pnpm hooks:install   # commit-msg, pre-commit and pre-push hooks, run by Quality
+pnpm ok              # the full gate CI runs
+```
+
+The hooks come from [`quality.yml`](quality.yml) and need the [Quality CLI](https://github.com/santi020k/quality).
+
+## Commits
+
+Commits follow Conventional Commits. `pnpm commit` opens [Commitprompt](https://github.com/santi020k/commitprompt), and the `commit-msg` hook validates every message.
+
+## Changesets
+
+Run `pnpm changeset` for any user-visible change to `@santi020k/pawl`. Choose patch, minor or major by semantic versioning and describe the effect for users. Changes that do not affect the package can use the `skip-changelog` label instead.
+
+## Pull requests
+
+Use a Conventional Commit title, keep changes focused and add tests for behavior changes. After changing a rule, the style or the Biome version, regenerate the presets and the rules page; `pnpm ok` fails if they are out of date.
+
+## Releases
+
+`@santi020k/pawl` and `@santi020k/pawl-policy` share one version. A release is a pull request from a `release/v<version>` branch into `main`; nothing else changes a version, and CI refuses a version change on any other branch.
+
+1. Start from an up-to-date `main` and create the branch. Changesets decides the version: run `pnpm changeset status` to see it, then `git switch -c release/v<version>`.
+2. Run `pnpm version-packages`. It consumes the changesets and writes the versions, the changelogs and the lockfile. It needs a `GITHUB_TOKEN` to link pull requests in the changelog. Commit the result.
+3. Run `pnpm release:check`, then push the branch and open the pull request with `gh pr create --template release.md`. CI runs the same check: the branch name, every package version and the changelogs must agree, no changeset may be left, and the version must be new on npm and untagged.
+4. Merge the pull request. `.github/workflows/release.yml` runs on `main`: it validates the repository, publishes the versions npm does not have with provenance through trusted publishing, installs them from the registry, then creates the `v<version>` tag and the GitHub release on the merged commit.
+5. Check the release on npm and GitHub, then delete the release branch.
+
+The workflow publishes only what is missing, so a failed run is fixed with "Re-run failed jobs" on that same run, which keeps the release commit. Do not merge anything else into `main` until the release run is green; the workflow refuses to release a later commit that carries new changesets. A published version or tag is never replaced: fix a bad release with a new version. To roll back, deprecate the version with `npm deprecate` and release a fix.
+
+### First release and setup
+
+npm trusted publishing cannot create a package, so a new package gets a placeholder first: version `0.0.0`, published by hand, with only a `package.json` (its name and `repository`) and a README that says to install a real version. Do this right before the release pull request merges, because npm drops a trusted publisher that has not published within 2 days of being added:
+
+1. Publish the placeholder of each new package with `npm publish --access public` from a temporary directory.
+2. Add `release.yml` as its trusted publisher, allowed to publish: `npx npm@12 trust github <package> --repo santi020k/pawl --file release.yml --env npm --allow-publish`.
+3. Merge. The Release run publishes the real version through trusted publishing, with provenance, which also validates the trusted publisher.
+4. Deprecate the placeholder: `npm deprecate <package>@0.0.0 "Placeholder. Install 0.1.0 or later."`
+
+If a Release run stops because a package is not on npm, do steps 1 and 2 for it, then choose "Re-run failed jobs" on that run.
+
+The `npm` and `docs-production` environments on GitHub allow only the `main` branch; `docs-production` holds the Cloudflare secrets described in [apps/docs/README.md](apps/docs/README.md#deploy). Protect `main` so that it takes pull requests only and requires the CI checks.
+
+## Secrets
+
+Runtime secrets live in Infisical. `.infisical.json` is added once the pawl Infisical project exists; the manual `infisical-connection.yml` workflow then checks the OIDC connection with the `INFISICAL_IDENTITY_ID` and `INFISICAL_PROJECT_SLUG` repository variables. Never commit a secret or an `.env` file.

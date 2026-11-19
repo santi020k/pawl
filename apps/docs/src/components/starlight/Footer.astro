@@ -1,0 +1,30 @@
+---
+/**
+ * Starlight's footer (edit link, last updated and pagination), followed by a small credit line.
+ */
+import Default from '@astrojs/starlight/components/Footer.astro'
+---
+
+<Default />
+<p class="pawl-credit">
+  MIT licensed. Made by <a href="https://santi020k.com">santi020k</a>.
+</p>
+
+<style>
+  .pawl-credit {
+    margin: 2rem 0 0;
+    padding-top: 1rem;
+    border-top: 1px solid var(--sl-color-hairline);
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+
+  .pawl-credit a {
+    color: inherit;
+    text-underline-offset: 0.2em;
+  }
+
+  .pawl-credit a:hover {
+    color: var(--sl-color-white);
+  }
+</style>

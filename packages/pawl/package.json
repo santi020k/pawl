@@ -1,6 +1,6 @@
 {
   "name": "@santi020k/pawl",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Fast guardrails for AI-written code. One standard for Biome, Oxlint, ESLint and Prettier.",
   "keywords": [
     "lint",
@@ -23,11 +23,8 @@
   },
   "license": "MIT",
   "author": "santi020k",
-  "type": "module",
   "sideEffects": false,
-  "bin": {
-    "pawl": "./dist/cli.js"
-  },
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -47,28 +44,36 @@
     "./biome/drizzle": "./presets/drizzle.biome.json",
     "./biome/playwright": "./presets/playwright.biome.json",
     "./biome/turbo": "./presets/turbo.biome.json",
+    "./schema.json": "./pawl.config.schema.json",
     "./package.json": "./package.json"
+  },
+  "bin": {
+    "pawl": "./dist/cli.js"
   },
   "files": [
     "dist",
     "presets",
+    "pawl.config.schema.json",
     "README.md"
   ],
-  "engines": {
-    "node": ">=22.18.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "docs:rules": "node scripts/build-rules-doc.ts && biome format --write ../../apps/docs/src/content/docs/reference/rules.md",
+    "oxlint-rules": "node scripts/build-oxlint-rules.ts",
     "preset": "node scripts/build-preset.ts",
-    "docs:rules": "node scripts/build-rules-doc.ts",
-    "oxlint-rules": "node scripts/build-oxlint-rules.ts"
+    "schema": "node scripts/build-schema.ts && biome format --write pawl.config.schema.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@angular-eslint/eslint-plugin": ">=22.0.0",
@@ -82,7 +87,7 @@
     "@html-eslint/eslint-plugin": "*",
     "@next/eslint-plugin-next": ">=16.0.0",
     "@santi020k/eslint-plugin-astro-doctor": ">=1.0.0",
-    "@stencil-community/eslint-plugin": "*",
+    "@stencil/eslint-plugin": ">=1.2.0",
     "@tanstack/eslint-plugin-query": "*",
     "@tanstack/eslint-plugin-router": "*",
     "@vitest/eslint-plugin": ">=1.0.0",
@@ -158,7 +163,7 @@
     "@santi020k/eslint-plugin-astro-doctor": {
       "optional": true
     },
-    "@stencil-community/eslint-plugin": {
+    "@stencil/eslint-plugin": {
       "optional": true
     },
     "@tanstack/eslint-plugin-query": {
@@ -282,13 +287,10 @@
       "optional": true
     }
   },
-  "devDependencies": {
-    "@biomejs/biome": "catalog:",
-    "@types/node": "catalog:",
-    "eslint": "catalog:",
-    "oxlint": "catalog:",
-    "prettier": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

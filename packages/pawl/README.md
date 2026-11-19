@@ -18,11 +18,11 @@ npx @santi020k/pawl init
 | `keep`           | Stay on the engine the repo uses today and add the ratchet on top.  |
 | `biome`          | Biome only. Pawl stops running ESLint.                              |
 
-Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions), `--agents` (a Claude Code hook, a Cursor hook where `.cursor` exists, and instructions in `AGENTS.md`), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`.
+Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (a Claude Code hook, a Cursor hook where `.cursor` exists, and instructions in `AGENTS.md`), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`.
 
 `init` writes:
 
-- `biome.json`, a few lines that extend the standard;
+- `biome.json`, a few lines that extend the standard and turn on Biome's `.gitignore` support;
 - `check` and `fix` scripts in `package.json`;
 - `.vscode/settings.json`, so the editor formats and fixes on save;
 - `.pawl/baseline.json`, the findings the repo already has.
@@ -38,7 +38,7 @@ npx @santi020k/pawl migrate
 `migrate` reads your `eslint.config.js` the way ESLint resolves it, compares it with the pawl standard, and writes the difference:
 
 - `pawl.config.ts` with the rule levels and options that differ, the packs for the plugins you use, the style from your formatting rules or Prettier config, and your ignores.
-- `eslint.config.js` as one line, `export default eslint()`. The old file is kept as `eslint.config.before-pawl.js`.
+- `eslint.config.js` as one line, `export default eslint({ root: import.meta.dirname })`. The old file is kept as `eslint.config.before-pawl.js`.
 - `.pawl/migration.md`, a full account: what was kept, what the formatter replaces, what the standard adds.
 
 Then it runs `init`, so the tools are installed and the baseline is recorded. `--dry-run` shows the plan and changes nothing. `--keep-config` leaves the ESLint config file alone.
@@ -54,7 +54,9 @@ pawl fix                # apply safe fixes and format
 pawl baseline           # accept the current findings as the new baseline
 pawl sync               # rewrite biome.json after the policy changed
 pawl explain no-console # what a rule does, and its level in this repo
-pawl doctor             # check the setup
+pawl doctor             # check the setup and the tool versions
+pawl doctor --format json  # the same, as one JSON document for CI
+pawl check --max-warnings 0  # also fail on new warnings
 ```
 
 The engines also work on their own: `npx biome check` and `npx eslint .` use the same config files.
@@ -64,7 +66,7 @@ The engines also work on their own: `npx biome check` and `npx eslint .` use the
 | Code | Meaning                                                                                       |
 | ---- | --------------------------------------------------------------------------------------------- |
 | 0    | No new errors                                                                                 |
-| 1    | New errors                                                                                    |
+| 1    | New errors, or more new warnings than `--max-warnings` or the policy's `maxWarnings` allows   |
 | 2    | A setup problem: an engine could not run, or, with `--ci`, the config drifted from the policy |
 
 `--ci` is on automatically when the `CI` environment variable is `true`.
@@ -97,8 +99,7 @@ A repo on the default standard needs no config file. To change something, add `p
 import { definePolicy } from '@santi020k/pawl'
 
 export default definePolicy({
-  extends: '@acme/pawl-policy',
-  strict: true,
+  extends: '@santi020k/pawl-policy',
   rules: { 'no-console': 'off' },
   ignore: ['generated/**']
 })
@@ -106,33 +107,47 @@ export default definePolicy({
 
 Then run `pawl sync`. `pawl.config.js`, `.mjs` and `.json` work too.
 
-| Option      | Meaning                                                                                        |
-| ----------- | ---------------------------------------------------------------------------------------------- |
-| `extends`   | Policies to build on: a package, a relative path, or an inline policy. Later ones win.         |
-| `engine`    | The linter: `auto` (default), `biome`, `oxlint` or `eslint`.                                   |
-| `strict`    | Use the stricter level of every rule that has one. A later layer cannot turn it off.           |
-| `style`     | `indent`, `lineWidth`, `quotes`, `semicolons`, `trailingCommas`, `arrowParens`.                |
-| `rules`     | Levels by rule name: `off`, `warn` or `error`.                                                 |
-| `options`   | Options by rule name, in ESLint's shape. ESLint and Oxlint take them; Biome uses pawl's own.   |
-| `packs`     | Optional packs to switch on. `unicorn/recommended` starts a pack from the plugin's own preset. |
-| `formatter` | `auto` (default), `biome` or `prettier`.                                                       |
-| `locked`    | Rules that later layers may tighten but not loosen.                                            |
-| `ignore`    | Extra glob patterns to skip.                                                                   |
+| Option           | Meaning                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| `extends`        | Policies to build on: a package, a relative path, or an inline policy. Later ones win.         |
+| `engine`         | The linter: `auto` (default), `biome`, `oxlint` or `eslint`.                                   |
+| `formatter`      | `auto` (default), `biome` or `prettier`.                                                       |
+| `strict`         | Use the stricter level of every rule that has one. A later layer cannot turn it off.           |
+| `maxWarnings`    | Fail the check on more new warnings than this. A later layer can only lower it.                |
+| `style`          | `indent`, `lineWidth`, `quotes`, `semicolons`, `trailingCommas`, `arrowParens`.                |
+| `rules`          | Levels by rule name: `off`, `warn` or `error`.                                                 |
+| `options`        | Options by rule name, in ESLint's shape. ESLint and Oxlint take them; Biome uses pawl's own.   |
+| `overrides`      | Levels and options for some files only: `[{ files: ['*.test.ts'], rules: { ... } }]`.          |
+| `packs`          | Optional packs to switch on. `unicorn/recommended` starts a pack from the plugin's own preset. |
+| `locked`         | Rules that later layers may tighten but not loosen.                                            |
+| `ignore`         | Extra glob patterns to skip. A pattern without a slash matches at any depth.                   |
+| `gitignore`      | Skip what the root `.gitignore` lists. On by default.                                          |
+| `defaultIgnores` | Skip build output, caches, lockfiles, AI tool folders and generated code. On by default.       |
+| `runtime`        | `node`, `browser`, `bun`, `deno` or `worker`, instead of what pawl detects.                    |
+| `detect`         | `false` turns detection off; `{ exclude: ['tailwind'] }` leaves a technology out.              |
 
-Rule names are ESLint's names. Use `biome:group/name` for a rule only Biome has. Any other name pawl does not know is passed to ESLint.
+Rule names are ESLint's names. Use `biome:group/name` for a rule only Biome has. Any other name pawl does not know is passed to ESLint. An option pawl does not know stops the run, so a typo never passes in silence. `pawl.config.json` can point `$schema` at `./node_modules/@santi020k/pawl/pawl.config.schema.json` for editor completion.
+
+### What pawl skips
+
+Every engine skips the same files: build output and caches, test reports, lockfiles, the folders AI coding tools keep (`.claude`, `.cursor` and others), generated code (`__generated__`, `*.gen.*`, `.prisma`), what the root `.gitignore` lists, and your `ignore` list. Biome reads the `.gitignore` through its git integration, pawl turns it into ESLint's patterns, and Oxlint reads it itself.
+
+### Runtimes
+
+Pawl works out where the code runs, from the dependencies and config files, and gives each linter those globals: Node, the browser, Bun, Deno or Cloudflare Workers. Name them with `runtime` when it guesses wrong.
 
 The default style is 2 spaces, single quotes, no semicolons, no trailing commas and a line width of 120.
 
-### A company standard
+### A shared policy
 
-Publish a package whose default export is a policy:
+A policy can live in an npm package whose default export is a policy. [`@santi020k/pawl-policy`](../pawl-policy) is a real one: the strict policy Santiago Molina uses on his own projects. Extend it, fork it, or publish your own under your own scope, such as `@acme/pawl-policy`:
 
 ```js
 // @acme/pawl-policy/index.js
 export default {
-  strict: true,
+  extends: '@santi020k/pawl-policy',
   rules: { 'no-console': 'error' },
-  locked: ['no-console', '@typescript-eslint/no-explicit-any']
+  locked: ['no-console']
 }
 ```
 
@@ -151,11 +166,12 @@ Counts are per file and rule, not per line, so moving code around does not break
 
 ## Rules
 
-The standard has 145 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome can enforce without a plugin is here, at the level it had.
+The standard has 200 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome or Oxlint can enforce without a plugin is here, at the level it had.
 
 - Rules for React, Qwik, Vue, Svelte and Turborepo apply only where that technology is used.
 - For each technology a project uses, pawl also turns on the rules Biome itself recommends for it: React, Next.js, React Native, Qwik, Solid, Vue, Svelte, Astro, Tailwind CSS, TanStack Query, Drizzle, Playwright and Turborepo.
-- Rules Biome still marks as unstable are off unless the policy is `strict`.
+- Rules their engine still marks as unstable are off unless the policy is `strict`.
+- 17 rules have no Biome equivalent. Oxlint enforces them, or ESLint where the project has the plugin's pack on. With Biome as the linter they do not run, and `pawl explain` says so.
 - An old name for the same check works too: `@typescript-eslint/no-unused-vars` sets `no-unused-vars`.
 
 `pawl explain <rule>` shows a rule's level in your repo and which engine rule enforces it.
@@ -188,9 +204,11 @@ pawl init --engine eslint --formatter prettier # say it up front
 
 Or in the policy: `engine: 'eslint'`, `formatter: 'prettier'`. Any mix works: Biome can lint while Prettier formats, and ESLint can lint while Biome formats.
 
-Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases.
+Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases. `pawl doctor` checks the installed Biome against it, and Node, ESLint, Oxlint, Prettier and the pack plugins against the versions pawl declares.
 
-Oxlint enforces 112 of the standard's 145 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
+Biome also lints and formats CSS and GraphQL, sorts `package.json` fields in the usual order, and parses Tailwind's at-rules in projects that use Tailwind.
+
+Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
 
 ## Packs
 
@@ -223,27 +241,34 @@ The ESLint config stays one line:
 // eslint.config.js
 import { eslint } from '@santi020k/pawl'
 
-export default eslint()
+export default eslint({ root: import.meta.dirname })
 ```
+
+The root keeps the config independent of the folder an editor starts ESLint in.
 
 ## Guards
 
 A guard is a set of checks for one library that needs no plugin. It switches on when the project depends on the library.
 
-| Guard                                          | On when the project uses                 | What it refuses                                                     |
-| ---------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------- |
-| `ai-keys`                                      | Any AI SDK below                         | An API key written in the code, and `dangerouslyAllowBrowser: true` |
-| `ai-sdk`                                       | `ai`, `@ai-sdk/*`                        | Imports of package internals                                        |
-| `openai`, `anthropic`                          | `openai`, `@anthropic-ai/sdk`            | Imports of package internals                                        |
-| `openai-agents`                                | `@openai/agents`                         | Internals, and agents from the base OpenAI client                   |
-| `google-genai`                                 | `@google/genai`, `@google/generative-ai` | Internals, and the legacy `@google/generative-ai` SDK               |
-| `langchain`, `llamaindex`, `mastra`, `autogen` | Those packages                           | Imports of package internals                                        |
-| `mcp`                                          | `@modelcontextprotocol/sdk`              | Imports of internal modules                                         |
-| `hono`                                         | `hono`                                   | Internals, and a hand-written wildcard CORS header                  |
-| `de-morgan`                                    | Opt-in: `pawl add de-morgan`             | `!(a && b)` and `!(a                                                |     | b)` |
+| Guard                                          | On when the project uses                 | What it refuses                                                                                                               |
+| ---------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `ai-keys`                                      | Any AI SDK below                         | An API key written in the code, and `dangerouslyAllowBrowser: true`                                                           |
+| `ai-sdk`                                       | `ai`, `@ai-sdk/*`                        | Imports of package internals                                                                                                  |
+| `openai`, `anthropic`                          | `openai`, `@anthropic-ai/sdk`            | Imports of package internals                                                                                                  |
+| `openai-agents`                                | `@openai/agents`                         | Internals, and agents from the base OpenAI client                                                                             |
+| `google-genai`                                 | `@google/genai`, `@google/generative-ai` | Internals, and the legacy `@google/generative-ai` SDK                                                                         |
+| `langchain`, `llamaindex`, `mastra`, `autogen` | Those packages                           | Imports of package internals                                                                                                  |
+| `mcp`                                          | `@modelcontextprotocol/sdk`              | Imports of internal modules                                                                                                   |
+| `hono`                                         | `hono`                                   | Internals, and a hand-written wildcard CORS header                                                                            |
+| `zod`                                          | `zod`                                    | `.optional().nullable()`, `z.object().strict()` or `.passthrough()`, `.trim()` after a length check, a method after `.meta()` |
+| `testing-library`                              | Any Testing Library package              | `await` on a synchronous `getBy` or `queryBy` query                                                                           |
+| `testing-library-debug`                        | Any Testing Library package              | `screen.debug()`, `prettyDOM()` and other debugging calls (warn)                                                              |
+| `testing-library-dom`                          | A framework's Testing Library package    | Imports of `@testing-library/dom` in place of the framework's one                                                             |
+| `nuxt`                                         | `nuxt`                                   | `process.client`, `process.server` and the other flags `import.meta` has                                                      |
+| `de-morgan`                                    | Opt-in: `pawl add de-morgan`             | `!(a && b)` and `!(a \|\| b)`                                                                                                 |
 
 - Import restrictions are enforced by the linter you use: Biome, Oxlint or ESLint.
-- Code patterns (keys, `dangerouslyAllowBrowser`, the CORS header, De Morgan) run in Biome as rules pawl writes itself, into `.pawl/rules/`. Commit that folder; `pawl sync` keeps it current. ESLint runs the same patterns as selectors.
+- Code patterns (keys, `dangerouslyAllowBrowser`, the CORS header, the Zod, Testing Library and Nuxt patterns, De Morgan) run in Biome as rules pawl writes itself, into `.pawl/rules/`. Commit that folder; `pawl sync` keeps it current. ESLint runs the same patterns as selectors.
 - With Oxlint as the only linter, the code patterns do not run. `pawl doctor` says so.
 - Your own `no-restricted-imports` and `no-restricted-syntax` options in the policy are merged with the guards.
 - Set a guard's level with `rules: { 'pawl/ai-keys': 'warn' }`, or `'off'`. `'no-restricted-imports': 'off'` turns every import guard off.
@@ -273,9 +298,19 @@ Pawl checks these itself, since no engine reads them. The checks run with `pawl 
 
 `pawl explain docker-no-root` shows a check and how to fix what it finds.
 
+## Markdown files
+
+Pawl also checks Markdown files itself, skipping code blocks, code spans, HTML comments and front matter.
+
+| Check                                 | Level | What it finds                                                  |
+| ------------------------------------- | ----- | -------------------------------------------------------------- |
+| `pawl/markdown-no-empty-links`        | error | A link with no destination: `[text]()` or `[text](#)`          |
+| `pawl/markdown-no-duplicate-headings` | off   | A heading with the same text as an earlier one in the document |
+| `pawl/markdown-no-missing-label-refs` | off   | A reference such as `[text][label]` with no `[label]:` line    |
+
 ## API
 
-Everything the CLI does is exported: `check`, `planInit`, `applyInit`, `detect`, `loadPolicy`, `definePolicy`, `eslint`, `biomeProjectConfig`, `RULES` and the types. See `src/index.ts`.
+Everything the CLI does is exported: `check`, `doctor`, `planInit`, `applyInit`, `detect`, `loadPolicy`, `definePolicy`, `eslint`, `biomeProjectConfig`, `RULES`, `POLICY_SCHEMA` and the types. See `src/index.ts`. The policy's JSON schema is `@santi020k/pawl/schema.json`.
 
 ## License
 

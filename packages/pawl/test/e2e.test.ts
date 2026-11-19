@@ -7,6 +7,7 @@ import { check, exitCode } from '../src/check.ts'
 import { BIOME_PRESET, BIOME_REACT_PRESET } from '../src/engines/biome.ts'
 import { applyInit, formatWritten, planAdd, planInit, recordBaseline } from '../src/init.ts'
 import { formatAgent } from '../src/output.ts'
+import { VERSION } from '../src/version.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 const json = (root: string, file: string): unknown => JSON.parse(readFileSync(join(root, file), 'utf8'))
@@ -60,7 +61,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET] })
     expect(json(root, 'package.json')).toMatchObject({
       scripts: { check: 'pawl check', fix: 'pawl fix' },
-      devDependencies: { '@santi020k/pawl': '^0.0.0' }
+      devDependencies: { '@santi020k/pawl': `^${VERSION}` }
     })
     expect(baselined).toBe(3)
     expect(json(root, BASELINE_FILE)).toEqual({
@@ -199,7 +200,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET], linter: { enabled: false } })
     expect(json(root, 'package.json')).toMatchObject({
       devDependencies: {
-        '@santi020k/pawl': '^0.0.0',
+        '@santi020k/pawl': `^${VERSION}`,
         '@biomejs/biome': '2.6.8',
         eslint: '^10.0.0',
         '@eslint/js': '^10.0.0'
@@ -237,7 +238,15 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
 
     applyInit(plan)
     expect(readFileSync(join(root, 'eslint.config.js'), 'utf8')).toContain("import { eslint } from '@santi020k/pawl'")
-    expect(readFileSync(join(root, '.github/workflows/pawl.yml'), 'utf8')).toContain('pnpm install --frozen-lockfile')
+    const workflow = readFileSync(join(root, '.github/workflows/pawl.yml'), 'utf8')
+
+    expect(workflow).toContain('pnpm install --frozen-lockfile')
+    // Every action is pinned to a commit, and the doctor report is kept even when the check fails.
+    expect(workflow.match(/uses: \S+/g)?.every(line => /@[0-9a-f]{40}$/.test(line))).toBe(true)
+    expect(workflow).toContain('run: npx pawl doctor --format json > pawl-doctor.json')
+    expect(workflow).toContain('path: pawl-doctor.json')
+    expect(workflow.match(/if: always\(\)/g)).toHaveLength(2)
+    expect(workflow).toContain('permissions:\n  contents: read')
     expect(json(root, '.claude/settings.json')).toMatchObject({
       hooks: {
         PostToolUse: [

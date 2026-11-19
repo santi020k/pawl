@@ -97,6 +97,10 @@ Do not silence a problem with a disable comment (`biome-ignore`, `eslint-disable
 New ones fail the check. Fix the code instead.
 ```
 
+### Codex
+
+Codex reads `AGENTS.md` at the start of every session, so the block above is all it needs: it runs `pawl check --changed --format agent` after it edits code and fixes what it reports. Pawl does not write a Codex hook. Codex ignores the plain output of a `PostToolUse` hook, so a hook that runs the check would not reach the model.
+
 ## Running init under an agent
 
 `init` offers a menu in a terminal. In CI or under a coding agent it uses `auto`, so an agent can set up a repo without getting stuck on a prompt. Add `--yes` to accept the plan without asking.

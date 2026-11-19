@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json
+# quality.yml — one code-quality workflow for this repository
+# This repository is pawl, so Quality treats it as Pawl-managed and leaves Biome,
+# Oxlint, ESLint and Prettier to pawl and its baseline. `pnpm ok`, which runs pawl
+# on its own code, is the canonical check. Biome stays enabled for
+# `quality format` and `quality fix` only, so its checks never run twice.
+version: 1
+output: pretty
+tools:
+  biome:
+    enabled: true
+    check: false
+    required: true
+  astro-check:
+    enabled: true
+    check: false
+    required: true
+  cspell:
+    enabled: true
+    check: false
+    required: true
+  knip:
+    enabled: true
+    check: false
+    required: true
+tasks:
+  repository-check:
+    name: Repository check (ok)
+    command: pnpm
+    args:
+      - run
+      - ok
+    required: true
+    parser: generic
+hooks:
+  commit-msg:
+    steps:
+      - name: Validate commit message with Commitprompt
+        command: pnpm
+        args: [exec, commitprompt, validate, --input]
+        pass_hook_args: true
+  pre-commit:
+    steps:
+      - name: Check with pawl and cspell
+        command: pnpm
+        args: [run, pre-commit]
+  pre-push:
+    steps:
+      - name: Run the full gate
+        command: pnpm
+        args: [run, pre-push]

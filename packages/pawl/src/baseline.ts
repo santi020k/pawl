@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { listFiles, makeIgnore, readJson, writeJson } from './fs-utils.ts'
+import { listFiles, readJson, writeJson } from './fs-utils.ts'
 import { type Finding } from './types.ts'
 
 export const BASELINE_FILE = '.pawl/baseline.json'
@@ -42,8 +42,11 @@ export const readBaseline = (root: string): Baseline | undefined => {
 export const writeBaseline = (root: string, baseline: Baseline): void => writeJson(join(root, BASELINE_FILE), baseline)
 
 /** Find every comment that switches a check off. */
-export const scanSuppressions = (root: string, ignore: readonly string[], files?: readonly string[]): Suppression[] => {
-  const ignored = makeIgnore(ignore)
+export const scanSuppressions = (
+  root: string,
+  ignored: (file: string) => boolean,
+  files?: readonly string[]
+): Suppression[] => {
   const found: Suppression[] = []
 
   for (const file of files ?? listFiles(root)) {

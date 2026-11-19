@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyBaseline, createBaseline, newSuppressions, scanSuppressions } from '../src/baseline.ts'
+import { makeIgnore } from '../src/ignores.ts'
 import { type Finding } from '../src/types.ts'
 import { project } from './helpers.ts'
 
@@ -75,7 +76,7 @@ describe('disable-comment ratchet', () => {
   })
 
   it('finds comments that switch a check off, in source files only', () => {
-    const found = scanSuppressions(root, ['generated/**'])
+    const found = scanSuppressions(root, makeIgnore(['generated/**']))
 
     expect(found.map(item => `${item.file}:${item.line} ${item.text}`)).toEqual([
       'src/a.ts:1 eslint-disable-next-line',
@@ -86,7 +87,7 @@ describe('disable-comment ratchet', () => {
   })
 
   it('fails only files that gained a comment since the baseline', () => {
-    const found = scanSuppressions(root, ['generated/**'])
+    const found = scanSuppressions(root, makeIgnore(['generated/**']))
     const baseline = createBaseline(
       [],
       found.filter(item => item.line !== 5)

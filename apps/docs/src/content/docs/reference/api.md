@@ -23,7 +23,7 @@ export default definePolicy({ rules: { 'no-console': 'off' } })
 ```js title="eslint.config.js"
 import { eslint } from '@santi020k/pawl'
 
-export default eslint()
+export default eslint({ root: import.meta.dirname })
 ```
 
 ## Exports
@@ -43,12 +43,13 @@ export default eslint()
 | ESLint   | `eslint`, `eslintPlan`, `eslintPlanFor`                                                                                                                                    |
 | Oxlint   | `oxlintConfig`, `oxlintCovers`, `checkOxlintConfig`, `OXLINT_RULES`, `OXLINT_VERSION`                                                                                      |
 | Prettier | `prettierConfig`, `checkPrettierConfig`                                                                                                                                    |
+| Doctor   | `doctor`, `formatDoctor`, `satisfies`                                                                                                                                      |
 | Tools    | `toolset`                                                                                                                                                                  |
 | Version  | `VERSION`                                                                                                                                                                  |
 
 ## Types
 
-`Policy`, `PolicyInput`, `StyleOptions`, `Level`, `Finding`, `SetupIssue`, `LockViolation`, `EngineChoice`, `EngineName`, `FormatterChoice`, `FormatterName`, `CheckOptions`, `CheckResult`, `Baseline`, `BaselineResult`, `Suppression`, `Detection`, `Framework`, `PackageManager`, `WorkspaceTool`, `InitOptions`, `InitPlan`, `InitAction`, `InitMode`, `MigrateOptions`, `MigratePlan`, `RuleChange`, `OutputFormat`, `Pack`, `RuleDef`, `RuleTag`, `RuleContext`, `Technology`, `Toolset`, `BiomeContext`, `EslintOptions`, `EslintPlan`, `EslintPlanOptions`, `FlatConfig`.
+`Policy`, `PolicyInput`, `StyleOptions`, `Level`, `Finding`, `SetupIssue`, `LockViolation`, `EngineChoice`, `EngineName`, `FormatterChoice`, `FormatterName`, `CheckOptions`, `CheckResult`, `Baseline`, `BaselineResult`, `Suppression`, `Detection`, `DetectOptions`, `Detectable`, `FileFormat`, `Framework`, `Runtime`, `Override`, `OverrideInput`, `DoctorReport`, `Compatibility`, `JsonSchema`, `OxlintContext`, `PackageManager`, `WorkspaceTool`, `InitOptions`, `InitPlan`, `InitAction`, `InitMode`, `MigrateOptions`, `MigratePlan`, `RuleChange`, `OutputFormat`, `Pack`, `RuleDef`, `RuleTag`, `RuleContext`, `Technology`, `Toolset`, `BiomeContext`, `EslintOptions`, `EslintPlan`, `EslintPlanOptions`, `FlatConfig`.
 
 ## Biome presets
 
@@ -57,5 +58,7 @@ A project's `biome.json` extends the standard through the package's Biome entry 
 ```json title="biome.json"
 { "extends": ["@santi020k/pawl/biome"] }
 ```
+
+The policy's JSON schema is `@santi020k/pawl/schema.json`.
 
 Technology presets live under `@santi020k/pawl/biome/<technology>`: `react`, `next`, `react-native`, `qwik`, `solid`, `vue`, `svelte`, `astro`, `tailwind`, `tanstack-query`, `drizzle`, `playwright` and `turbo`. See [Monorepos](/guide/monorepos/) for how `init` uses them.

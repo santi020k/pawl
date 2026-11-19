@@ -16,7 +16,7 @@ A pawl is the part of a ratchet that stops it slipping backward. This tool does 
 - **Optional packs.** 50 packs cover what only an ESLint plugin can check. Pawl holds the rules; the project installs the plugin.
 - **A ratchet.** Existing findings go into a baseline. New findings fail the check, and so do new comments that switch a check off.
 - **Output for coding agents.** `pawl check --changed --format agent` prints one compact JSON line per finding, with the fix.
-- **A company standard.** A company publishes one policy package. Repos extend it, and the company can lock rules so repos cannot loosen them.
+- **A shared standard.** A team publishes one policy package, like [`@santi020k/pawl-policy`](packages/pawl-policy). Repos extend it, and the company can lock rules so repos cannot loosen them.
 - **Engines stay visible.** `biome check` and `eslint .` keep working on their own, and every finding shows the engine's own rule name.
 
 ## Usage
@@ -31,10 +31,11 @@ See [packages/pawl/README.md](packages/pawl/README.md) for the full reference.
 
 ## This repository
 
-| Path            | What it is                                                                   |
-| --------------- | ---------------------------------------------------------------------------- |
-| `packages/pawl` | The library and CLI, published as `@santi020k/pawl`                          |
-| `apps/docs`     | The website and docs for pawl.santi020k.com (Astro Starlight, with Lumen UI) |
+| Path                   | What it is                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `packages/pawl`        | The library and CLI, published as `@santi020k/pawl`                          |
+| `packages/pawl-policy` | Santiago Molina's strict policy, published as `@santi020k/pawl-policy`       |
+| `apps/docs`            | The website and docs for pawl.santi020k.com (Astro Starlight, with Lumen UI) |
 
 It is a pnpm workspace run with Turborepo, and it lints itself with pawl.
 
@@ -45,8 +46,13 @@ pnpm test         # unit and end-to-end tests, against the real Biome and ESLint
 pnpm typecheck
 pnpm check        # pawl checking its own code
 pnpm fix
-pnpm ok           # everything above, as CI would run it
+pnpm ok           # everything above plus spelling, unused code and generated files, as CI runs it
+pnpm hooks:install  # Git hooks from quality.yml (needs the Quality CLI)
+pnpm commit       # a Conventional Commit, through Commitprompt
+pnpm changeset    # record a user-visible change for the next release
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the release process and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 After changing a rule or the style, regenerate the Biome presets and the rules page of the docs:
 
@@ -86,7 +92,7 @@ Status on 2026-11-18, checked against eslint-config-basic 3.6, Biome 2.6.8 and E
 | ------------ | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | ESLint       | The engine                                                                       | A linter you can choose, and the host for every optional pack                                   |
 | Biome        | Compatibility only: turns off overlapping ESLint rules                           | The default linter and formatter when you leave the choice to pawl                              |
-| Oxlint       | Compatibility only: turns off overlapping ESLint rules                           | A linter you can choose. It enforces 112 of the 145 rules; ESLint can host the packs next to it |
+| Oxlint       | Compatibility only: turns off overlapping ESLint rules                           | A linter you can choose. It enforces 162 of the 200 rules; ESLint can host the packs next to it |
 | Prettier     | Compatibility only                                                               | A formatter you can choose                                                                      |
 | TypeScript 7 | TypeScript files cannot be linted: typescript-eslint 8.73 does not load under it | Works through Biome, which does not use the compiler                                            |
 
@@ -116,7 +122,7 @@ The old config set 260 rules itself. Rules it inherited from plugin presets are 
 - "Strict only" rules are ones Biome still marks as unstable.
 - Of the 120 not in pawl, 7 were left out on purpose.
 
-The rule-by-rule list is in [docs/rules-from-eslint-config-basic.md](docs/rules-from-eslint-config-basic.md). Pawl also has rules the old config did not set: the catalog holds 145.
+The rule-by-rule list is in [docs/rules-from-eslint-config-basic.md](docs/rules-from-eslint-config-basic.md). Pawl also has rules the old config did not set: the catalog holds 200.
 
 ### Frameworks
 

@@ -4,24 +4,42 @@
   "private": true,
   "description": "Fast guardrails for AI-written code. One standard, compiled for Biome and ESLint.",
   "type": "module",
-  "packageManager": "pnpm@11.6.0",
-  "engines": {
-    "node": ">=22.18.0"
-  },
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
-    "test": "turbo run test",
-    "typecheck": "turbo run typecheck",
+    "changeset": "changeset",
     "check": "pnpm --filter @santi020k/pawl run build && node packages/pawl/dist/cli.js check",
-    "fix": "pnpm --filter @santi020k/pawl run build && node packages/pawl/dist/cli.js fix",
-    "ok": "turbo run build typecheck test && node packages/pawl/dist/cli.js check",
+    "check:generated": "pnpm --filter @santi020k/pawl run preset && pnpm --filter @santi020k/pawl run docs:rules && pnpm --filter @santi020k/pawl run schema && git diff --exit-code -- packages/pawl/presets packages/pawl/pawl.config.schema.json apps/docs/src/content/docs/reference/rules.md",
+    "check:packed-install": "node scripts/check-packed-install.ts",
+    "commit": "commitprompt",
+    "dev": "turbo run dev",
+    "docs:build": "pnpm --filter @santi020k/pawl-docs run build",
     "docs:dev": "pnpm --filter @santi020k/pawl-docs run dev",
-    "docs:build": "pnpm --filter @santi020k/pawl-docs run build"
+    "fix": "pnpm --filter @santi020k/pawl run build && node packages/pawl/dist/cli.js fix",
+    "hooks:install": "quality hooks install",
+    "lint:knip": "knip",
+    "lint:spell": "cspell . --gitignore --cache --no-progress --show-suggestions",
+    "ok": "turbo run build typecheck test && pnpm run test:scripts && node packages/pawl/dist/cli.js check && pnpm run lint:spell && pnpm run lint:knip && pnpm run check:generated",
+    "pre-commit": "pnpm run check && pnpm run lint:spell",
+    "pre-push": "pnpm run ok",
+    "release": "turbo run build && node scripts/release.ts publish",
+    "release:check": "node scripts/release.ts check",
+    "test": "turbo run test",
+    "test:scripts": "node --test \"scripts/*.test.ts\"",
+    "typecheck": "turbo run typecheck",
+    "version-packages": "changeset version && pnpm install --lockfile-only"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@changesets/changelog-github": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@santi020k/commitprompt": "catalog:",
+    "cspell": "catalog:",
+    "knip": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:"
+  },
+  "packageManager": "pnpm@11.6.0",
+  "engines": {
+    "node": ">=22.18.0"
   }
 }

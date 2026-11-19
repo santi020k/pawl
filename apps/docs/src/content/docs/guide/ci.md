@@ -15,14 +15,24 @@ pawl check --ci
 | Exit code | Meaning                                                                                       |
 | --------- | --------------------------------------------------------------------------------------------- |
 | 0         | No new errors                                                                                 |
-| 1         | New errors                                                                                    |
+| 1         | New errors, or more new warnings than the limit allows                                        |
 | 2         | A setup problem: an engine could not run, or, with `--ci`, the config drifted from the policy |
 
 Pawl never reports success when part of the check did not run: an engine failure is a setup problem, exit code 2.
 
+### Warnings in CI
+
+Warnings pass by default. To fail on them in CI only, put the limit in the CI command:
+
+```sh
+pawl check --ci --max-warnings 0
+```
+
+To fail on them everywhere, set [`maxWarnings`](/reference/config/#maxwarnings) in the policy. A command line can lower that limit but not raise it. Pawl has no setting that behaves one way locally and another in CI: the place that runs CI is the place to say what CI demands.
+
 ### GitHub Actions
 
-`init --workflow` writes `.github/workflows/pawl.yml`. For an npm project it looks like this:
+`init --workflow` writes `.github/workflows/pawl.yml`. It runs the check, then `pawl doctor --format json` and uploads its report as the `pawl-doctor` artifact, so the tool versions and any drift are on record even when the check fails. Every action is pinned to a commit. For an npm project it looks like this:
 
 ```yaml title=".github/workflows/pawl.yml"
 name: pawl
@@ -32,17 +42,32 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: npm ci
       - run: npx pawl check --ci
+      - name: Check the setup and the tool versions
+        if: always()
+        run: npx pawl doctor --format json > pawl-doctor.json
+      - name: Upload the doctor report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pawl-doctor
+          path: pawl-doctor.json
+          if-no-files-found: warn
 ```
+
+The doctor step fails the job when it finds a problem, such as a Biome other than the pinned one or a tool older than pawl supports.
 
 For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for Bun it adds `oven-sh/setup-bun`. If the workflow file already exists, `init` leaves it alone.
 

@@ -6,14 +6,22 @@ import {
   scanSuppressions,
   writeBaseline
 } from './baseline.ts'
-import { allTechnologies, detect, packageTechnologies, technologies } from './detect.ts'
+import { detect, packageTechnologies } from './detect.ts'
 import { checkDocker } from './docker.ts'
-import { checkBiomeConfig, checkBiomePackages, checkRuleFiles, type EngineRun, runBiome } from './engines/biome.ts'
+import {
+  biomeContextFor,
+  checkBiomeConfig,
+  checkBiomePackages,
+  checkRuleFiles,
+  type EngineRun,
+  runBiome
+} from './engines/biome.ts'
 import { eslintInstalled, runEslint } from './engines/eslint.ts'
-import { checkOxlintConfig, oxlintInstalled, runOxlint } from './engines/oxlint.ts'
+import { checkOxlintConfig, oxlintContextFor, oxlintInstalled, runOxlint } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled, runPrettier } from './engines/prettier.ts'
 import { EngineError } from './engines/run.ts'
-import { changedFiles, makeIgnore } from './fs-utils.ts'
+import { changedFiles } from './fs-utils.ts'
+import { ignoreMatcher } from './ignores.ts'
 import { loadPolicy } from './policy.ts'
 import { toolset } from './tools.ts'
 import { type EngineName, type Finding, type Policy, type SetupIssue } from './types.ts'
@@ -30,6 +38,8 @@ export interface CheckOptions {
   updateBaseline?: boolean
   /** Reuse a policy that is already loaded. */
   policy?: Policy
+  /** Fail when there are more new warnings than this. The policy's `maxWarnings`, when lower, wins. */
+  maxWarnings?: number
 }
 
 export interface CheckResult {
@@ -46,6 +56,8 @@ export interface CheckResult {
   canShrinkBaseline: boolean
   /** True when there were no files to look at, such as `--changed` on a clean tree. */
   nothingToCheck: boolean
+  /** More new warnings than this fail the check. Undefined means warnings never fail it. */
+  maxWarnings?: number
 }
 
 export const EXIT_OK = 0
@@ -64,13 +76,27 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'biome-config-missing'
 ]
 
+/** True when the result has more new warnings than its limit allows. */
+export const tooManyWarnings = (result: CheckResult): boolean =>
+  result.maxWarnings !== undefined &&
+  result.findings.filter(finding => finding.severity === 'warn').length > result.maxWarnings
+
 /** Exit code for a result. Setup problems only fail the run in CI, where drift must not pass. */
 export const exitCode = (result: CheckResult, ci = false): number => {
   if (result.setup.some(issue => BLOCKING.includes(issue.code))) return EXIT_SETUP
 
   if (ci && result.setup.length > 0) return EXIT_SETUP
 
+  if (tooManyWarnings(result)) return EXIT_FINDINGS
+
   return result.findings.some(finding => finding.severity === 'error') ? EXIT_FINDINGS : EXIT_OK
+}
+
+/** The lower of two warning limits, so a command line cannot loosen what the policy sets. */
+const lowerLimit = (...limits: (number | undefined)[]): number | undefined => {
+  const given = limits.filter((limit): limit is number => limit !== undefined)
+
+  return given.length > 0 ? Math.min(...given) : undefined
 }
 
 const byPosition = (a: Finding, b: Finding): number =>
@@ -104,7 +130,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const setup: SetupIssue[] = []
   const commands: string[] = []
   const engines: EngineName[] = []
-  const ignored = makeIgnore(policy.ignore)
+  const ignored = ignoreMatcher(root, policy)
   const scoped = options.files ?? (options.changed ? changedFiles(root) : undefined)
   const files = scoped?.filter(file => !ignored(file))
   const empty = files !== undefined && files.length === 0
@@ -119,19 +145,14 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
   const findings: Finding[] = []
   const tools = toolset(root, policy)
+  const detection = detect(root, policy)
   const scope = files ? { files } : {}
   const write = options.fix === true
 
   if (tools.biome) {
     engines.push('biome')
 
-    const detection = detect(root)
-    const context = {
-      technologies: technologies(detection),
-      dependencies: detection.dependencies,
-      lint: tools.linter === 'biome',
-      format: tools.formatter === 'biome'
-    }
+    const context = biomeContextFor(root, policy, detection, tools)
     const config = checkBiomeConfig(root, policy, context)
 
     if (config.issue) setup.push(config.issue)
@@ -165,11 +186,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   if (tools.linter === 'oxlint') {
     engines.push('oxlint')
 
-    const config = checkOxlintConfig(root, policy, {
-      typescript: true,
-      technologies: allTechnologies(detect(root)),
-      dependencies: detect(root).dependencies
-    })
+    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
 
     if (config.issue) setup.push(config.issue)
 
@@ -217,9 +234,12 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   // Pawl's own checks for the files no engine reads.
   if (!empty) findings.push(...checkDocker({ root, policy, ...scope }))
 
+  const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
+  const limit = maxWarnings === undefined ? {} : { maxWarnings }
+
   // The policy's ignore list applies at once, even before the engine config is synced.
   const kept = findings.filter(finding => !ignored(finding.file))
-  const suppressions = empty ? [] : scanSuppressions(root, policy.ignore, files)
+  const suppressions = empty ? [] : scanSuppressions(root, ignored, files)
 
   if (options.updateBaseline) {
     writeBaseline(root, createBaseline(kept, suppressions))
@@ -232,7 +252,8 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
       commands,
       hasBaseline: true,
       canShrinkBaseline: false,
-      nothingToCheck: empty
+      nothingToCheck: empty,
+      ...limit
     }
   }
 
@@ -248,6 +269,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     hasBaseline: baseline !== undefined,
     // A partial run cannot tell whether findings elsewhere are gone.
     canShrinkBaseline: files === undefined && canShrink,
-    nothingToCheck: empty
+    nothingToCheck: empty,
+    ...limit
   }
 }

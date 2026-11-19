@@ -122,7 +122,14 @@ describe('eslintPlan', () => {
     const ignores = block(plan.config, 'pawl/ignores')?.ignores as string[]
 
     expect(ignores).toEqual(
-      expect.arrayContaining(['**/dist/**', '**/node_modules/**', 'generated/**', 'vendor', 'vendor/**'])
+      expect.arrayContaining([
+        '**/dist',
+        '**/dist/**',
+        '**/node_modules/**',
+        'generated/**',
+        '**/vendor',
+        '**/vendor/**'
+      ])
     )
   })
 

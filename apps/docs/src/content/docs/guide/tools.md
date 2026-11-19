@@ -61,7 +61,7 @@ ESLint is the host for every optional [pack](/guide/packs/). The config stays on
 ```js title="eslint.config.js"
 import { eslint } from '@santi020k/pawl'
 
-export default eslint()
+export default eslint({ root: import.meta.dirname })
 ```
 
 ## When an engine cannot enforce a rule

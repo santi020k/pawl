@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://unpkg.com/@santi020k/pawl/pawl.config.schema.json",
+  "title": "pawl policy",
+  "description": "The policy of a repo: https://pawl.santi020k.com/reference/config/",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema of this file, for editors. Pawl ignores it."
+    },
+    "extends": {
+      "description": "Policies to build on: a package name, a path relative to this file, or a list of them.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#"
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "engine": {
+      "type": "string",
+      "enum": ["auto", "biome", "oxlint", "eslint"],
+      "description": "The linter. `auto` is Biome, with ESLint next to it when the repo has a flat config."
+    },
+    "formatter": {
+      "type": "string",
+      "enum": ["auto", "biome", "prettier"],
+      "description": "The formatter. `auto` is Biome, unless the linter is not Biome and the repo has a Prettier config."
+    },
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional packs to switch on. `unicorn/recommended` starts a pack from the plugin preset."
+    },
+    "strict": {
+      "type": "boolean",
+      "description": "Use the stricter level of every rule that has one."
+    },
+    "maxWarnings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Fail the check when there are more new warnings than this. A later layer can only lower it."
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "indent": {
+          "enum": [2, 4, "tab"]
+        },
+        "lineWidth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quotes": {
+          "type": "string",
+          "enum": ["single", "double"]
+        },
+        "semicolons": {
+          "type": "boolean"
+        },
+        "trailingCommas": {
+          "type": "string",
+          "enum": ["none", "all"]
+        },
+        "arrowParens": {
+          "type": "string",
+          "enum": ["as-needed", "always"]
+        }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "description": "Rule levels by ESLint's rule names. `biome:group/name` reaches a rule only Biome has.",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["off", "warn", "error"]
+      }
+    },
+    "options": {
+      "type": "object",
+      "description": "Rule options in ESLint's shape, by the same names as `rules`. ESLint and Oxlint take them.",
+      "additionalProperties": {
+        "type": "array"
+      }
+    },
+    "overrides": {
+      "type": "array",
+      "description": "Rule levels and options for some files only. Later entries win.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["files"],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Glob patterns of the files. A pattern without a slash matches at any depth."
+          },
+          "rules": {
+            "type": "object",
+            "description": "Rule levels by ESLint's rule names. `biome:group/name` reaches a rule only Biome has.",
+            "additionalProperties": {
+              "type": "string",
+              "enum": ["off", "warn", "error"]
+            }
+          },
+          "options": {
+            "type": "object",
+            "description": "Rule options in ESLint's shape, by the same names as `rules`. ESLint and Oxlint take them.",
+            "additionalProperties": {
+              "type": "array"
+            }
+          }
+        }
+      }
+    },
+    "locked": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Rules that later layers may tighten but never loosen."
+    },
+    "ignore": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Extra glob patterns to skip. A pattern without a slash matches at any depth."
+    },
+    "gitignore": {
+      "type": "boolean",
+      "description": "Skip what the root .gitignore lists. On by default."
+    },
+    "defaultIgnores": {
+      "type": "boolean",
+      "description": "Skip build output, caches, lockfiles, AI tool folders and generated code. On by default."
+    },
+    "runtime": {
+      "description": "Where the code runs, instead of what pawl detects.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["node", "browser", "bun", "deno", "worker"]
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["node", "browser", "bun", "deno", "worker"]
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "detect": {
+      "description": "Work out the technologies from the dependencies and files. `false` turns it off.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "exclude": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "react",
+                  "next",
+                  "vue",
+                  "nuxt",
+                  "svelte",
+                  "angular",
+                  "astro",
+                  "solid",
+                  "react-native",
+                  "qwik",
+                  "tailwind",
+                  "tanstack-query",
+                  "drizzle",
+                  "playwright",
+                  "hono",
+                  "lit",
+                  "nest",
+                  "preact",
+                  "react-router",
+                  "tanstack-start",
+                  "vite",
+                  "turbo"
+                ]
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      ]
+    }
+  }
+}

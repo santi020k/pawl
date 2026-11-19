@@ -1,0 +1,183 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { check } from '../src/check.ts'
+import { biomeConfig, biomeProjectConfig, biomeVcs } from '../src/engines/biome.ts'
+import { eslintPlan } from '../src/engines/eslint.ts'
+import { oxlintConfig } from '../src/engines/oxlint.ts'
+import {
+  allIgnores,
+  configIgnores,
+  DEFAULT_IGNORES,
+  fromGitignoreLine,
+  ignoreMatcher,
+  makeIgnore,
+  toBiomeIgnore,
+  toEslintIgnores
+} from '../src/ignores.ts'
+import { applyInit, planInit } from '../src/init.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy.ts'
+import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
+
+const policyWith = (input: Parameters<typeof mergeLayers>[0][number]['input']) =>
+  mergeLayers([{ source: 'repo', input }])
+
+describe('.gitignore lines', () => {
+  it('match at any depth without a slash, and from the root with one', () => {
+    expect(fromGitignoreLine('dist')).toBe('**/dist')
+    expect(fromGitignoreLine('dist/')).toBe('**/dist')
+    expect(fromGitignoreLine('/dist')).toBe('dist')
+    expect(fromGitignoreLine('src/out/')).toBe('src/out')
+    expect(fromGitignoreLine('*.log')).toBe('**/*.log')
+    expect(fromGitignoreLine('!keep.log')).toBe('!**/keep.log')
+    expect(fromGitignoreLine('\\#file')).toBe('**/#file')
+  })
+
+  it('skip blank lines and comments', () => {
+    expect(fromGitignoreLine('')).toBeUndefined()
+    expect(fromGitignoreLine('   ')).toBeUndefined()
+    expect(fromGitignoreLine('# build output')).toBeUndefined()
+  })
+
+  it('follow the last pattern that matches, so ! re-includes a file', () => {
+    const ignored = makeIgnore(['**/*.log', '!**/keep.log'])
+
+    expect(ignored('a/b.log')).toBe(true)
+    expect(ignored('a/keep.log')).toBe(false)
+    expect(ignored('node_modules/x/keep.log')).toBe(true)
+  })
+})
+
+describe('the shared ignore list', () => {
+  it('holds build output, lockfiles, AI tool folders and generated code', () => {
+    const ignored = makeIgnore(DEFAULT_IGNORES)
+
+    for (const file of [
+      'dist/a.js',
+      'apps/web/.vercel/output.js',
+      '.wrangler/state.json',
+      'playwright-report/index.html',
+      'tsconfig.tsbuildinfo',
+      'pnpm-lock.yaml',
+      'packages/a/bun.lock',
+      '.claude/settings.json',
+      '.cursor/rules/a.md',
+      '.aider.chat.history.md',
+      'src/__generated__/types.ts',
+      'src/routes.gen.ts',
+      'src/schema.generated.ts'
+    ]) {
+      expect(ignored(file), file).toBe(true)
+    }
+
+    for (const file of ['src/generated.ts', 'src/a.ts', 'README.md', 'src/generator/index.ts']) {
+      expect(ignored(file), file).toBe(false)
+    }
+  })
+
+  it('is the same list in every engine, and the policy adds to it', () => {
+    const policy = policyWith({ ignore: ['vendor'] })
+    const biome = biomeConfig(policy) as { files: { includes: string[] } }
+    const oxlint = oxlintConfig(policy) as { ignorePatterns: string[] }
+
+    expect(configIgnores(policy)).toEqual(['.pawl', ...DEFAULT_IGNORES, 'vendor'])
+    expect(biome.files.includes).toEqual(['**', ...configIgnores(policy).map(toBiomeIgnore)])
+    expect(oxlint.ignorePatterns).toContain('**/.vercel')
+    expect(oxlint.ignorePatterns.at(-1)).toBe('**/vendor')
+    expect(toEslintIgnores('vendor')).toEqual(['**/vendor', '**/vendor/**'])
+    expect(toEslintIgnores('generated/**')).toEqual(['generated/**'])
+  })
+
+  it('can be turned off, which the project biome.json undoes by naming each folder again', () => {
+    const policy = policyWith({ defaultIgnores: false })
+
+    expect(configIgnores(policy)).toEqual(['.pawl'])
+    expect(biomeProjectConfig(policy).files).toEqual({ includes: DEFAULT_IGNORES.map(pattern => `**/${pattern}`) })
+    expect(biomeProjectConfig(defaultPolicy()).files).toBeUndefined()
+  })
+})
+
+describe('.gitignore in every engine', { timeout: 60_000 }, () => {
+  const files = {
+    '.gitignore': '# output\nout/\nlogs-*.js\n!logs-keep.js\n',
+    'src/a.js': 'debugger\n',
+    'out/b.js': 'debugger\n',
+    'logs-a.js': 'debugger\n',
+    'logs-keep.js': 'debugger\n'
+  }
+  const flagged = (result: Awaited<ReturnType<typeof check>>): string[] =>
+    [...new Set(result.findings.filter(finding => finding.rule === 'no-debugger').map(finding => finding.file))].sort()
+
+  it('is read into the patterns of pawl and ESLint, unless the policy says not to', async () => {
+    const root = project(files)
+
+    expect(allIgnores(root, defaultPolicy()).slice(-3)).toEqual(['**/out', '**/logs-*.js', '!**/logs-keep.js'])
+    expect(ignoreMatcher(root, defaultPolicy())('out/b.js')).toBe(true)
+    expect(ignoreMatcher(root, defaultPolicy())('logs-keep.js')).toBe(false)
+    expect(allIgnores(root, policyWith({ gitignore: false }))).not.toContain('**/out')
+
+    const plan = await eslintPlan({ root, policy: defaultPolicy(), biomeActive: true, typescript: false })
+    const ignores = plan.config.find(entry => entry.name === 'pawl/ignores')?.ignores
+
+    expect(ignores).toEqual(expect.arrayContaining(['**/out', '**/out/**', '**/logs-*.js', '!**/logs-keep.js']))
+  })
+
+  it('is followed by the real Biome, through its own git integration', async () => {
+    const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' }, ...files })
+
+    link(root)
+    applyInit(await planInit({ root, install: false, editor: false }))
+
+    expect(JSON.parse(readFileSync(join(root, 'biome.json'), 'utf8'))).toMatchObject({
+      vcs: { enabled: true, clientKind: 'git', useIgnoreFile: true }
+    })
+    expect(flagged(await check({ root }))).toEqual(['logs-keep.js', 'src/a.js'])
+
+    // Without a .gitignore or a git repo, Biome would refuse the setting, so pawl leaves it out.
+    expect(biomeVcs(project({ 'package.json': { name: 'fixture' } }), defaultPolicy())).toBe(false)
+    expect(biomeVcs(root, policyWith({ gitignore: false }))).toBe(false)
+
+    // Opting out lints what git ignores.
+    write(root, { 'pawl.config.json': { gitignore: false } })
+    applyInit(await planInit({ root, install: false, editor: false }))
+
+    const all = await check({ root })
+
+    expect(JSON.parse(readFileSync(join(root, 'biome.json'), 'utf8')).vcs).toMatchObject({ useIgnoreFile: false })
+    expect(flagged(all)).toEqual(['logs-a.js', 'logs-keep.js', 'out/b.js', 'src/a.js'])
+  })
+
+  it.runIf(existsSync(join(PACKAGE_ROOT, 'dist/index.js')))('is followed by the real ESLint', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'eslint', formatter: 'prettier' },
+      'eslint.config.js':
+        "import { eslint } from '@santi020k/pawl'\n\nexport default eslint({ root: import.meta.dirname })\n",
+      '.prettierrc.json': '{}\n',
+      ...files
+    })
+
+    link(root, { eslint: true, prettier: true })
+
+    const result = await check({ root })
+
+    expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+    expect(flagged(result)).toEqual(['logs-keep.js', 'src/a.js'])
+  })
+
+  it('is followed by the real Oxlint, which reads it itself', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'oxlint' },
+      ...files
+    })
+
+    link(root)
+    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    const result = await check({ root })
+
+    expect(result.setup).toEqual([])
+    expect(flagged(result)).toEqual(['logs-keep.js', 'src/a.js'])
+  })
+})

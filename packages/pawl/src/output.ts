@@ -1,4 +1,4 @@
-import { BLOCKING, type CheckResult } from './check.ts'
+import { BLOCKING, type CheckResult, tooManyWarnings } from './check.ts'
 import { getRule } from './rules.ts'
 import { type Finding } from './types.ts'
 
@@ -78,6 +78,10 @@ export const formatPretty = (
       .join(', ')
 
     lines.push(`${summary}.${fixable > 0 ? ` Run "${fixCommand}" to fix ${fixable} of them.` : ''}`)
+
+    if (tooManyWarnings(result)) {
+      lines.push(c.red(`The limit is ${plural(result.maxWarnings ?? 0, 'warning')}, so the warnings fail the check.`))
+    }
   }
 
   if (result.baselined > 0)
@@ -117,6 +121,16 @@ export const formatAgent = (result: CheckResult): string => {
     message: issue.message,
     ...(issue.fix ? { fix: issue.fix } : {})
   }))
+
+  if (tooManyWarnings(result)) {
+    lines.push({
+      file: '',
+      line: 0,
+      rule: 'pawl/max-warnings',
+      message: `The limit is ${plural(result.maxWarnings ?? 0, 'warning')}, so the warnings fail the check.`,
+      fix: 'Fix the warnings below.'
+    })
+  }
 
   const ordered = [...result.findings].sort((a, b) => Number(b.severity === 'error') - Number(a.severity === 'error'))
 

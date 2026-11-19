@@ -1,13 +1,16 @@
 import { expect, it, describe as suite } from 'vitest'
 import {
   allTechnologies,
+  DETECTABLE,
   describe,
   detect,
+  filePacks,
   needsEslint,
   packageTechnologies,
   technologies,
   usesReact
 } from '../src/detect.ts'
+import { mergeLayers } from '../src/policy.ts'
 import { project } from './helpers.ts'
 
 suite('detect', () => {
@@ -84,5 +87,120 @@ suite('detect', () => {
     expect(detection.packageManager).toBeUndefined()
     expect(detection.frameworks).toEqual([])
     expect(detection.git).toBe(false)
+  })
+
+  it('recognises more frameworks, and Vite only when no framework runs it', () => {
+    const detection = detect(
+      project({
+        'package.json': {
+          dependencies: { hono: '1', lit: '1', '@nestjs/core': '1', preact: '1', vite: '1' },
+          devDependencies: { '@react-router/dev': '1', '@tanstack/react-start': '1' }
+        }
+      })
+    )
+
+    expect(detection.frameworks).toEqual(['hono', 'lit', 'nest', 'preact', 'react-router', 'tanstack-start'])
+    expect(describe(detection)).toBe('JavaScript, Hono, Lit, NestJS, Preact, React Router, TanStack Start, npm')
+    expect(detect(project({ 'package.json': { devDependencies: { vite: '1', react: '1' } } })).frameworks).toEqual([
+      'react',
+      'vite'
+    ])
+    expect(detect(project({ 'package.json': { dependencies: { '@remix-run/react': '1' } } })).frameworks).toEqual([
+      'react-router'
+    ])
+  })
+
+  it('finds TypeScript from any of the usual tsconfig files', () => {
+    for (const file of ['tsconfig.base.json', 'tsconfig.app.json', 'tsconfig.node.json']) {
+      expect(detect(project({ 'package.json': {}, [file]: {} })).typescript, file).toBe(true)
+    }
+
+    expect(detect(project({ 'package.json': {}, 'tsconfig.eslint.json': {} })).typescript).toBe(false)
+  })
+
+  it('finds Astro from its components when no package declares it', () => {
+    const files = detect(project({ 'package.json': {}, 'src/pages/index.astro': '---\n---\n' }))
+
+    expect(files.frameworks).toEqual(['astro'])
+    expect(technologies(files)).toEqual(['astro'])
+
+    // In a monorepo whose docs app declares Astro, the components stay that package's.
+    const monorepo = detect(
+      project({
+        'package.json': { workspaces: ['apps/*'] },
+        'apps/docs/package.json': { dependencies: { astro: '5' } },
+        'apps/docs/src/pages/index.astro': '---\n---\n'
+      })
+    )
+
+    expect(monorepo.rootFrameworks).toEqual([])
+    expect(packageTechnologies(monorepo)).toEqual({ 'apps/docs': ['astro'] })
+  })
+
+  it('looks at the files for formats a pack lints, and suggests those packs', () => {
+    const detection = detect(
+      project({
+        'package.json': {},
+        'README.md': '# hi\n',
+        'pnpm-workspace.yaml': 'packages: []\n',
+        '.github/workflows/ci.yml': 'on: push\n',
+        '.vscode/settings.jsonc': '{}\n',
+        'config/app.toml': 'a = 1\n',
+        'src/schema/user.graphql': 'type User { id: ID }\n',
+        'cspell.config.yaml': 'words: []\n',
+        'node_modules/x/notes.mdx': '# skipped\n'
+      })
+    )
+
+    expect(detection.formats).toEqual(['graphql', 'markdown', 'toml', 'yaml'])
+    expect(detection.tools.cspell).toBe('cspell.config.yaml')
+    expect(filePacks(detection)).toEqual(['markdown', 'yaml', 'toml', 'graphql', 'cspell'])
+    expect(filePacks(detect(project({ 'package.json': { devDependencies: { jsdoc: '4' } } })))).toEqual(['jsdoc'])
+  })
+
+  it('works out where the code runs', () => {
+    const runtimes = (files: Record<string, string | object>) => detect(project(files)).runtimes
+
+    expect(runtimes({ 'package.json': {} })).toEqual(['node', 'browser'])
+    expect(runtimes({ 'package.json': { dependencies: { react: '19' } } })).toEqual(['node', 'browser'])
+    expect(runtimes({ 'package.json': { dependencies: { '@nestjs/core': '11' } } })).toEqual(['node'])
+    expect(runtimes({ 'package.json': { devDependencies: { 'bun-types': '1' } } })).toEqual(['node', 'bun'])
+    expect(runtimes({ 'package.json': {}, 'bunfig.toml': '' })).toEqual(['node', 'bun'])
+    expect(runtimes({ 'deno.json': {} })).toEqual(['deno'])
+    expect(runtimes({ 'package.json': {}, 'deno.jsonc': '{}' })).toEqual(['node', 'deno'])
+    expect(runtimes({ 'package.json': {}, 'wrangler.toml': 'name = "x"\n' })).toEqual(['node', 'worker'])
+    expect(runtimes({ 'package.json': { dependencies: { hono: '4', react: '19', wrangler: '4' } } })).toEqual([
+      'node',
+      'browser',
+      'worker'
+    ])
+  })
+
+  it('takes the runtimes the policy names, and can be turned off or told to leave a technology out', () => {
+    const root = project({
+      'package.json': { dependencies: { react: '19', tailwindcss: '4' } },
+      'turbo.json': {},
+      'README.md': '# hi\n'
+    })
+    const policy = (input: Parameters<typeof mergeLayers>[0][number]['input']) =>
+      mergeLayers([{ source: 'repo', input }])
+
+    expect(detect(root, policy({ runtime: 'bun' })).runtimes).toEqual(['bun'])
+    expect(detect(root, policy({ runtime: ['node', 'worker'] })).runtimes).toEqual(['node', 'worker'])
+
+    const off = detect(root, policy({ detect: false }))
+
+    expect(off.frameworks).toEqual([])
+    expect(off.formats).toEqual([])
+    expect(off.runtimes).toEqual(['node', 'browser'])
+    expect(allTechnologies(off)).toEqual([])
+    expect(off.excluded).toEqual(DETECTABLE)
+    // The dependencies stay: packs and guards follow what the project installs.
+    expect(off.dependencies).toEqual(['react', 'tailwindcss'])
+
+    const some = detect(root, policy({ detect: { exclude: ['tailwind', 'turbo'] } }))
+
+    expect(some.frameworks).toEqual(['react'])
+    expect(allTechnologies(some)).toEqual(['react'])
   })
 })

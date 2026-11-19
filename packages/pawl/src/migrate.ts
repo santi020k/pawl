@@ -3,14 +3,18 @@ import { extname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { allTechnologies, detect } from './detect.ts'
 import { eslintPlan, importFromProject, importPlugin, packPreset, pluginPreset } from './engines/eslint.ts'
-import { listFiles, readJson, SKIP_DIRS, writeText } from './fs-utils.ts'
-import { type InitAction, policyFile } from './init.ts'
+import { listFiles, readJson, writeText } from './fs-utils.ts'
+import { ALWAYS_IGNORED, DEFAULT_IGNORES, WALK_SKIP } from './ignores.ts'
+import { ESLINT_CONFIG, type InitAction, policyFile } from './init.ts'
 import { getPack, PACKS, type Pack } from './packs.ts'
 import { DEFAULT_STYLE, effectiveRules, findConfigFile, resolvePolicy } from './policy.ts'
 import { getRule, type RuleDef } from './rules.ts'
 import { ESLINT_CONFIG_FILES } from './tools.ts'
 import { type Level, type PolicyInput, type StyleOptions } from './types.ts'
 import { PACKAGE_NAME } from './version.ts'
+
+/** Patterns pawl skips by default, so a migrated config need not list them. */
+const COVERED = new Set([...ALWAYS_IGNORED, ...DEFAULT_IGNORES])
 
 /** Where the full account of a migration is written. */
 export const MIGRATION_REPORT = '.pawl/migration.md'
@@ -180,7 +184,7 @@ const isFormatting = (name: string, config: EslintConfig, core: CoreRules): bool
 }
 
 const pickSamples = (root: string, typescript: boolean): string[][] => {
-  const files = listFiles(root).filter(file => !file.split('/').some(part => SKIP_DIRS.has(part)))
+  const files = listFiles(root).filter(file => !file.split('/').some(part => WALK_SKIP.has(part)))
   // Source files first: they carry the rules that matter most.
   const ordered = [...files.filter(file => file.startsWith('src/')), ...files.filter(file => !file.startsWith('src/'))]
   const groups: string[][] = []
@@ -331,7 +335,7 @@ const readIgnores = async (file: string): Promise<string[] | undefined> => {
       ...new Set(
         patterns
           .map(pattern => pattern.replace(/\/\*\*(\/\*)?$/, '').replace(/\/$/, ''))
-          .filter(pattern => pattern.length > 0 && !SKIP_DIRS.has(pattern.replace(/^\*\*\//, '')))
+          .filter(pattern => pattern.length > 0 && !COVERED.has(pattern.replace(/^\*\*\//, '')))
       )
     ]
   } catch {
@@ -394,14 +398,12 @@ const readLegacyIgnores = (root: string): string[] => {
   return readFileSync(file, 'utf8')
     .split(/\r?\n/)
     .map(line => line.trim().replace(/^\//, '').replace(/\/$/, ''))
-    .filter(line => line.length > 0 && !line.startsWith('#') && !line.startsWith('!') && !SKIP_DIRS.has(line))
+    .filter(line => line.length > 0 && !line.startsWith('#') && !line.startsWith('!') && !COVERED.has(line))
 }
 
 const sameOptions = (a: unknown[], b: unknown[]): boolean => JSON.stringify(a) === JSON.stringify(b)
 
 const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
-
-const NEW_CONFIG = `import { eslint } from '${PACKAGE_NAME}'\n\nexport default eslint()\n`
 
 const NEW_EXTENSION: Record<string, string> = { '.cjs': '.mjs', '.cts': '.mts' }
 
@@ -721,7 +723,7 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
       path: target,
       kind: 'create',
       summary: 'eslint() from pawl',
-      apply: () => writeText(join(root, target), NEW_CONFIG)
+      apply: () => writeText(join(root, target), ESLINT_CONFIG)
     })
     notes.push(`${legacyName} is no longer read. Delete it when you are happy with the result.`)
 
@@ -733,7 +735,7 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
       summary: `eslint() from pawl; the old config is kept as ${backup}`,
       apply: () => {
         renameSync(sourcePath, join(root, backup))
-        writeText(join(root, target), NEW_CONFIG)
+        writeText(join(root, target), ESLINT_CONFIG)
       }
     })
   } else {

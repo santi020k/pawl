@@ -3,26 +3,33 @@ import { join } from 'node:path'
 import { BASELINE_FILE } from './baseline.ts'
 import { BLOCKING, check } from './check.ts'
 import {
-  allTechnologies,
   type Detection,
   describe,
   detect,
+  filePacks,
   needsEslint,
   type PackageManager,
-  packageTechnologies,
-  technologies
+  packageTechnologies
 } from './detect.ts'
 import {
   BIOME_PRESET,
   BIOME_VERSION,
   type BiomeContext,
+  biomeContextFor,
   biomeProjectConfig,
   checkBiomeConfig,
   checkBiomePackages,
   checkRuleFiles,
-  runBiome
+  runBiome,
+  syncBiomeGlobals
 } from './engines/biome.ts'
-import { checkOxlintConfig, OXLINT_CONFIG_FILE, oxlintConfig } from './engines/oxlint.ts'
+import {
+  checkOxlintConfig,
+  mergeOxlintConfig,
+  OXLINT_CONFIG_FILE,
+  oxlintConfig,
+  oxlintContextFor
+} from './engines/oxlint.ts'
 import { OXLINT_VERSION } from './engines/oxlint-rules.ts'
 import { checkPrettierConfig, prettierConfig } from './engines/prettier.ts'
 import { readJson, readJsonc, toList, writeJson, writeText } from './fs-utils.ts'
@@ -189,7 +196,13 @@ export const planBiomeConfig = (
       kind: 'update',
       summary: 'bring it in line with the policy',
       apply: () =>
-        writeJson(path, { ...mergeDeep(value, expected), extends: mergeExtends(expected.extends, value.extends) })
+        writeJson(
+          path,
+          syncBiomeGlobals(
+            { ...mergeDeep(value, expected), extends: mergeExtends(expected.extends, value.extends) },
+            expected
+          )
+        )
     }
   }
 
@@ -267,9 +280,10 @@ export const planBiomePackages = (
   return actions
 }
 
-const ESLINT_CONFIG = `import { eslint } from '${PACKAGE_NAME}'
+/** The ESLint config pawl writes. The root is the config file's folder, wherever ESLint is started from. */
+export const ESLINT_CONFIG = `import { eslint } from '${PACKAGE_NAME}'
 
-export default eslint()
+export default eslint({ root: import.meta.dirname })
 `
 
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/
@@ -303,15 +317,27 @@ const toSource = (value: unknown, depth: number): string => {
 export const policyFile = (policy: PolicyInput): string =>
   `import { definePolicy } from '${PACKAGE_NAME}'\n\nexport default definePolicy(${toSource(policy, 0)})\n`
 
+/** The actions the workflow uses, pinned by commit so a moved tag cannot change what runs. */
+const ACTIONS = {
+  checkout: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+  setupNode: 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
+  uploadArtifact: 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2',
+  setupBun: 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0'
+}
+
 /** The step that makes each package manager available on a GitHub runner. */
 const WORKFLOW_SETUP: Record<PackageManager, string> = {
   npm: '',
-  bun: '      - uses: oven-sh/setup-bun@v2\n',
+  bun: `      - uses: ${ACTIONS.setupBun}\n`,
   pnpm: '      - run: npm install --global corepack@latest && corepack enable\n',
   yarn: '      - run: npm install --global corepack@latest && corepack enable\n'
 }
 
-const workflowFile = (manager: PackageManager): string => {
+/**
+ * The GitHub workflow: the check on every pull request, then the doctor's report as an artifact,
+ * which shows the tool versions and any drift even when the check fails.
+ */
+export const workflowFile = (manager: PackageManager): string => {
   const install = manager === 'npm' ? 'npm ci' : `${manager} install --frozen-lockfile`
   const setup = WORKFLOW_SETUP[manager]
 
@@ -322,16 +348,29 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ${ACTIONS.checkout}
+      - uses: ${ACTIONS.setupNode}
         with:
           node-version: 22
 ${setup}      - run: ${install}
       - run: npx pawl check --ci
+      - name: Check the setup and the tool versions
+        if: always()
+        run: npx pawl doctor --format json > pawl-doctor.json
+      - name: Upload the doctor report
+        if: always()
+        uses: ${ACTIONS.uploadArtifact}
+        with:
+          name: pawl-doctor
+          path: pawl-doctor.json
+          if-no-files-found: warn
 `
 }
 
@@ -716,7 +755,7 @@ export const planPrettierConfig = (
 
 /** Bring .oxlintrc.json in line with the policy. Used by `init` and `sync`. */
 export const planOxlintConfig = (root: string, policy: Policy, detection: Detection): InitAction | undefined => {
-  const context = { typescript: true, technologies: allTechnologies(detection), dependencies: detection.dependencies }
+  const context = oxlintContextFor(detection)
   const state = checkOxlintConfig(root, policy, context)
   const path = join(root, OXLINT_CONFIG_FILE)
 
@@ -729,7 +768,7 @@ export const planOxlintConfig = (root: string, policy: Policy, detection: Detect
     kind: state.status === 'missing' ? 'create' : 'update',
     summary: 'the pawl standard for Oxlint',
     // Keys pawl does not manage, such as "settings", stay as the project wrote them.
-    apply: () => writeJson(path, { ...current, ...oxlintConfig(policy, context) })
+    apply: () => writeJson(path, mergeOxlintConfig(current, oxlintConfig(policy, context)))
   }
 }
 
@@ -753,7 +792,9 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     )
   }
 
-  const detection = detect(root)
+  // Only what differs from what pawl would work out by itself is written to the policy file.
+  const loaded = await loadPolicy(root)
+  const detection = detect(root, loaded)
   const { tools } = detection
   const actions: InitAction[] = []
   const notes: string[] = []
@@ -771,8 +812,6 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     ...(wantsEslint ? (['eslint'] as const) : [])
   ]
 
-  // Only what differs from what pawl would work out by itself is written to the policy file.
-  const loaded = await loadPolicy(root)
   const pinned: PolicyInput = {}
 
   if (linter !== 'biome') pinned.engine = linter
@@ -819,12 +858,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   }
 
   if (usesBiome) {
-    const context = {
-      technologies: technologies(detection),
-      dependencies: detection.dependencies,
-      lint: linter === 'biome',
-      format: formatter === 'biome'
-    }
+    const context = biomeContextFor(root, policy, detection, { linter, formatter })
 
     push(planBiomeConfig(root, policy, context, notes))
 
@@ -883,8 +917,15 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   ]
   const hasManifest = existsSync(join(root, 'package.json'))
   const packages = hasManifest ? [...new Set(wanted)].filter(name => !present.has(name)) : []
-  const suggestions = suggestedPacks(new Set(detection.dependencies)).filter(
-    pack => !requestedPacks.includes(pack.name) && !present.has(pack.plugin)
+  const suggestions = [
+    ...suggestedPacks(new Set(detection.dependencies)),
+    ...filePacks(detection).flatMap(name => getPack(name) ?? [])
+  ].filter(
+    (pack, index, all) =>
+      all.indexOf(pack) === index &&
+      !requestedPacks.includes(pack.name) &&
+      !policy.packs.includes(pack.name) &&
+      !present.has(pack.plugin)
   )
 
   if (suggestions.length > 0) {
@@ -925,7 +966,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     push({
       path: '.github/workflows/pawl.yml',
       kind: 'create',
-      summary: 'run "pawl check --ci" on every pull request',
+      summary: 'run "pawl check --ci" on every pull request and keep the doctor report',
       apply: () => writeText(join(root, '.github/workflows/pawl.yml'), workflowFile(detection.packageManager ?? 'npm'))
     })
   }
@@ -1032,8 +1073,8 @@ export const planAdd = async (root: string, names: readonly string[], install = 
     throw new Error(`${problem} Packs: ${PACKS.map(pack => pack.name).join(', ')}.`)
   }
 
-  const detection = detect(root)
   const loaded = await loadPolicy(root)
+  const detection = detect(root, loaded)
   const actions: InitAction[] = []
   const notes: string[] = []
 

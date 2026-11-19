@@ -39,7 +39,7 @@ The landing page uses the hand-made `public/og.jpg`. Every doc page gets its own
 
 ## Deploy
 
-`.github/workflows/deploy-docs.yml` builds the site and deploys `dist` to the Cloudflare Pages project `pawl-docs` with `wrangler pages deploy`. It runs on a push to `main` that touches `apps/docs/`, `packages/pawl/` or the lockfile, and on demand from the Actions tab. It uses the GitHub environment `docs-production`, which needs two secrets:
+`.github/workflows/deploy-docs.yml` builds the site and deploys `dist` to the Cloudflare Pages project `pawl-docs` with `wrangler pages deploy`. It runs on a push to `main` that touches `apps/docs/`, `packages/pawl/` or the lockfile, and on demand from the Actions tab. It uses the GitHub environment `docs-production`, which gets two secrets from Doppler (project `pawl`, config `prd`) through a Doppler sync. Change them in Doppler, not in GitHub:
 
 | Secret                  | What it is                                               |
 | ----------------------- | -------------------------------------------------------- |

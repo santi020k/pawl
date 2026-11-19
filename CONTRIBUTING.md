@@ -53,4 +53,8 @@ The `npm` and `docs-production` environments on GitHub allow only the `main` bra
 
 ## Secrets
 
-Runtime secrets live in Infisical. `.infisical.json` is added once the pawl Infisical project exists; the manual `infisical-connection.yml` workflow then checks the OIDC connection with the `INFISICAL_IDENTITY_ID` and `INFISICAL_PROJECT_SLUG` repository variables. Never commit a secret or an `.env` file.
+Secrets live in Doppler, in the `pawl` project, never in the repository. The `prd` config holds what the docs deploy needs, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, and a Doppler sync writes them to the `docs-production` environment on GitHub. Change a secret in Doppler; a value edited in GitHub is overwritten by the next sync.
+
+Publishing to npm needs no secret at all: it goes through trusted publishing.
+
+For local work, `doppler setup` reads [`doppler.yaml`](doppler.yaml) and selects the `dev` config, and `doppler run -- <command>` runs a command with its secrets. Never commit a secret or an `.env` file.

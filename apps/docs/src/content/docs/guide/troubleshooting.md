@@ -113,7 +113,7 @@ setup  "no-console" is locked at "error" by the policy this repo extends. pawl.c
        Remove the "no-console" override from pawl.config.ts.
 ```
 
-The policy this repo extends locks the rule. The stricter level is kept. Remove the override. See [A company standard](/guide/policy/#a-company-standard).
+The policy this repo extends locks the rule. The stricter level is kept. Remove the override. See [A shared policy](/guide/policy/#a-shared-policy).
 
 ### A pack does not run
 

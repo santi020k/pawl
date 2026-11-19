@@ -16,7 +16,7 @@ A pawl is the part of a ratchet that stops it slipping backward. This tool does 
 - **Optional packs.** 50 packs cover what only an ESLint plugin can check. Pawl holds the rules; the project installs the plugin.
 - **A ratchet.** Existing findings go into a baseline. New findings fail the check, and so do new comments that switch a check off.
 - **Output for coding agents.** `pawl check --changed --format agent` prints one compact JSON line per finding, with the fix.
-- **A company standard.** A company publishes one policy package. Repos extend it, and the company can lock rules so repos cannot loosen them.
+- **A shared standard.** A team publishes one policy package, like [`@santi020k/pawl-policy`](packages/pawl-policy). Repos extend it, and the company can lock rules so repos cannot loosen them.
 - **Engines stay visible.** `biome check` and `eslint .` keep working on their own, and every finding shows the engine's own rule name.
 
 ## Usage
@@ -31,10 +31,11 @@ See [packages/pawl/README.md](packages/pawl/README.md) for the full reference.
 
 ## This repository
 
-| Path            | What it is                                                                   |
-| --------------- | ---------------------------------------------------------------------------- |
-| `packages/pawl` | The library and CLI, published as `@santi020k/pawl`                          |
-| `apps/docs`     | The website and docs for pawl.santi020k.com (Astro Starlight, with Lumen UI) |
+| Path                   | What it is                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `packages/pawl`        | The library and CLI, published as `@santi020k/pawl`                          |
+| `packages/pawl-policy` | Santiago Molina's strict policy, published as `@santi020k/pawl-policy`       |
+| `apps/docs`            | The website and docs for pawl.santi020k.com (Astro Starlight, with Lumen UI) |
 
 It is a pnpm workspace run with Turborepo, and it lints itself with pawl.
 

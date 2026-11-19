@@ -95,22 +95,31 @@ const policyFiles = [
     code: `import { definePolicy } from '@santi020k/pawl'
 
 export default definePolicy({
-  extends: '@acme/pawl-policy',
-  strict: true,
+  extends: '@santi020k/pawl-policy',
   rules: { 'no-console': 'off' },
   ignore: ['generated/**']
 })`
   },
   {
     value: 'company',
-    label: 'Company policy package',
+    label: '@santi020k/pawl-policy',
     language: 'js',
-    code: `// index.js of @acme/pawl-policy: an npm package your company
-// publishes once (@acme stands for your own scope). Every repo extends it.
+    code: `// A real policy package on npm: the strict standard pawl's author uses.
+// Fork it, or publish your own under your scope, such as @acme/pawl-policy.
 export default {
   strict: true,
-  rules: { 'no-console': 'error' },
-  locked: ['no-console', '@typescript-eslint/no-explicit-any']
+  rules: {
+    'no-shadow': 'error',
+    'no-param-reassign': 'error',
+    'prefer-promise-reject-errors': 'error'
+    // ...
+  },
+  locked: [
+    'eqeqeq',
+    '@typescript-eslint/no-explicit-any',
+    '@typescript-eslint/ban-ts-comment'
+    // ...
+  ]
 }`
   }
 ]
@@ -157,8 +166,8 @@ const features = [
     href: '/guide/guards/#dockerfiles-and-compose-files'
   },
   {
-    title: 'A company standard',
-    body: 'Publish one policy package. Repos extend it and may tighten any rule, but locked rules cannot be loosened.',
+    title: 'A shared standard',
+    body: 'Extend @santi020k/pawl-policy or publish your own. Repos may tighten any rule, but locked rules cannot be loosened.',
     href: '/guide/policy/'
   },
   {
@@ -379,12 +388,12 @@ const engines = [
           <CodeTabs ariaLabel="A repo policy and the company policy it extends" items={policyFiles} copy />
 
           <div class="band-head">
-            <p class="kicker">A company standard</p>
+            <p class="kicker">A shared standard</p>
             <h2 id="policy-title">One policy for every repo.</h2>
             <p>
               A repo on the default standard needs no config file. To change something, add <code>pawl.config.ts</code>. To set the
-              standard for a whole company, publish a small npm package with the shared policy, such as
-              <code>@acme/pawl-policy</code> under your own scope, and lock the rules that matter.
+              standard for many repos, extend a policy package such as <code>@santi020k/pawl-policy</code>, or publish your own
+              under your scope and lock the rules that matter.
             </p>
             <ButtonLink href="/guide/policy/" variant="inline" showArrow>Read about policies</ButtonLink>
           </div>

@@ -10,8 +10,7 @@ A repo on the default standard needs no config file. To change something, add `p
 import { definePolicy } from '@santi020k/pawl'
 
 export default definePolicy({
-  extends: '@acme/pawl-policy', // your company's shared policy package, see below
-  strict: true,
+  extends: '@santi020k/pawl-policy', // a shared policy package, see below
   rules: { 'no-console': 'off' },
   ignore: ['generated/**']
 })
@@ -109,19 +108,51 @@ export default definePolicy({ detect: { exclude: ['tailwind'] } })
 
 With `detect: false`, no technology rules apply and the runtimes are Node and the browser. Packs and guards still follow the dependencies the project installs.
 
-## A company standard
+## A shared policy
 
-Publish a package whose default export is a policy. In these examples it is called `@acme/pawl-policy`: `@acme` stands for your company's npm scope, and the name is up to you. It is an ordinary package, public or private, that every repo installs as a dev dependency and names in `extends`.
+A policy can live in an npm package, so many repos share one standard. The package's default export is a policy, and each repo installs it as a dev dependency and names it in `extends`.
 
-```js title="@acme/pawl-policy/index.js"
+### A real one: `@santi020k/pawl-policy`
+
+[`@santi020k/pawl-policy`](https://www.npmjs.com/package/@santi020k/pawl-policy) is the policy Santiago Molina uses on his own projects. It turns on `strict`, makes more correctness rules fail instead of warn, and locks the rules that matter most:
+
+```js title="@santi020k/pawl-policy/index.js"
 export default {
   strict: true,
-  rules: { 'no-console': 'error' },
-  locked: ['no-console', '@typescript-eslint/no-explicit-any']
+  rules: {
+    'no-shadow': 'error',
+    'no-param-reassign': 'error',
+    'prefer-promise-reject-errors': 'error'
+    // ...
+  },
+  locked: [
+    'eqeqeq',
+    '@typescript-eslint/no-explicit-any',
+    '@typescript-eslint/ban-ts-comment'
+    // ...
+  ]
 }
 ```
 
+[The whole file](https://github.com/santi020k/pawl/blob/main/packages/pawl-policy/index.js) is short. Use it as it is, or read it as an example of a policy package:
+
+```sh
+npm install --save-dev @santi020k/pawl-policy
+```
+
 Repos extend it. A repo can still tighten any rule, but an attempt to loosen a locked one is ignored and reported by `pawl check` and `pawl doctor`.
+
+### Your own
+
+It is a personal policy, and it changes when its author's standard does. For a team or a company, fork it, or publish your own package under your own scope, such as `@acme/pawl-policy`. It can be public or private; pawl only needs to resolve it from the repo.
+
+```js title="@acme/pawl-policy/index.js"
+export default {
+  extends: '@santi020k/pawl-policy', // optional: start from it, then change what you need
+  rules: { 'no-console': 'error' },
+  locked: ['no-console']
+}
+```
 
 :::note
 Policy packages must ship JavaScript, because Node does not run TypeScript from `node_modules`.

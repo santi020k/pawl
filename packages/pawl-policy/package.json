@@ -1,0 +1,50 @@
+{
+  "name": "@santi020k/pawl-policy",
+  "version": "0.1.0",
+  "description": "Santiago Molina's strict pawl policy: the default standard, made stricter, with the rules that matter locked.",
+  "keywords": [
+    "pawl",
+    "pawl-policy",
+    "lint",
+    "biome",
+    "eslint",
+    "oxlint",
+    "code-quality",
+    "strict"
+  ],
+  "homepage": "https://pawl.santi020k.com/guide/policy/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/santi020k/pawl.git",
+    "directory": "packages/pawl-policy"
+  },
+  "license": "MIT",
+  "author": "santi020k",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@santi020k/pawl": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

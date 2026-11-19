@@ -99,8 +99,7 @@ A repo on the default standard needs no config file. To change something, add `p
 import { definePolicy } from '@santi020k/pawl'
 
 export default definePolicy({
-  extends: '@acme/pawl-policy',
-  strict: true,
+  extends: '@santi020k/pawl-policy',
   rules: { 'no-console': 'off' },
   ignore: ['generated/**']
 })
@@ -139,16 +138,16 @@ Pawl works out where the code runs, from the dependencies and config files, and 
 
 The default style is 2 spaces, single quotes, no semicolons, no trailing commas and a line width of 120.
 
-### A company standard
+### A shared policy
 
-Publish a package whose default export is a policy:
+A policy can live in an npm package whose default export is a policy. [`@santi020k/pawl-policy`](../pawl-policy) is a real one: the strict policy Santiago Molina uses on his own projects. Extend it, fork it, or publish your own under your own scope, such as `@acme/pawl-policy`:
 
 ```js
 // @acme/pawl-policy/index.js
 export default {
-  strict: true,
+  extends: '@santi020k/pawl-policy',
   rules: { 'no-console': 'error' },
-  locked: ['no-console', '@typescript-eslint/no-explicit-any']
+  locked: ['no-console']
 }
 ```
 

@@ -43,7 +43,8 @@ jobs:
           matrix.node == 22 &&
           github.event_name == 'pull_request' &&
           !contains(github.event.pull_request.labels.*.name, 'skip-changelog') &&
-          !startsWith(github.head_ref, 'changeset-release/')
+          !startsWith(github.head_ref, 'changeset-release/') &&
+          !startsWith(github.head_ref, 'release/')
         run: pnpm changeset status --since=origin/main
 
       # Build, typecheck, test, pawl on its own code, spelling, unused code, generated files.

@@ -1,8 +1,9 @@
 ---
+
 name: commitprompt
 description: >-
-  Generate, format, validate, and explicitly authorize Conventional Commits
-  with the repository's installed Commitprompt CLI.
+Generate, format, validate, and explicitly authorize Conventional Commits
+with the repository's installed Commitprompt CLI.
 ---
 
 # Commitprompt commit workflow

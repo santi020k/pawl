@@ -27,8 +27,8 @@ tasks:
     name: Repository check (ok)
     command: pnpm
     args:
-    - run
-    - ok
+      - run
+      - ok
     required: true
     parser: generic
 hooks:

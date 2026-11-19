@@ -17,15 +17,26 @@ try {
 
   const project = join(work, 'consumer')
   mkdirSync(project)
-  writeFileSync(join(project, 'package.json'), `${JSON.stringify({ name: 'consumer', private: true, type: 'module' })}\n`)
+  writeFileSync(
+    join(project, 'package.json'),
+    `${JSON.stringify({ name: 'consumer', private: true, type: 'module' })}\n`
+  )
   run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', join(work, tarball)], project)
 
   const { version } = JSON.parse(readFileSync(join(root, 'packages/pawl/package.json'), 'utf8')) as { version: string }
   const cliVersion = run(join(project, 'node_modules/.bin/pawl'), ['--version'], project)
   if (cliVersion !== version) throw new Error(`Expected pawl ${version}, the packed CLI printed ${cliVersion}`)
 
-  run('node', ['--input-type=module', '-e', "const pawl = await import('@santi020k/pawl'); if (typeof pawl.definePolicy !== 'function') process.exit(1)"], project)
-  console.log(`The packed @santi020k/pawl ${version} installs and runs.`)
+  run(
+    'node',
+    [
+      '--input-type=module',
+      '-e',
+      "const pawl = await import('@santi020k/pawl'); if (typeof pawl.definePolicy !== 'function') process.exit(1)"
+    ],
+    project
+  )
+  process.stdout.write(`The packed @santi020k/pawl ${version} installs and runs.\n`)
 } finally {
   rmSync(work, { recursive: true, force: true })
 }

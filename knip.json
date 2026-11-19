@@ -1,43 +1,20 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreBinaries": [
-    "quality"
-  ],
+  "ignoreBinaries": ["quality"],
   "ignoreExportsUsedInFile": true,
   "workspaces": {
     ".": {
-      "entry": [
-        "scripts/*.ts"
-      ],
-      "project": [
-        "scripts/**/*.ts"
-      ],
-      "ignoreDependencies": [
-        "@biomejs/biome"
-      ]
+      "entry": ["scripts/*.ts"],
+      "project": ["scripts/**/*.ts"],
+      "ignoreDependencies": ["@biomejs/biome"]
     },
     "packages/pawl": {
-      "entry": [
-        "src/index.ts",
-        "src/cli.ts",
-        "scripts/*.ts",
-        "test/**/*.test.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "scripts/**/*.ts",
-        "test/**/*.ts"
-      ],
-      "ignoreDependencies": [
-        "eslint",
-        "prettier"
-      ]
+      "entry": ["src/index.ts", "src/cli.ts", "scripts/*.ts", "test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["eslint", "prettier"]
     },
     "apps/docs": {
-      "ignoreDependencies": [
-        "@fontsource-variable/geist",
-        "@fontsource-variable/geist-mono"
-      ]
+      "ignoreDependencies": ["@fontsource-variable/geist", "@fontsource-variable/geist-mono"]
     }
   }
 }

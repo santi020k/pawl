@@ -7,7 +7,7 @@ import { IMPORTS_RULE, importRestrictions, SYNTAX_RULE, syntaxRestrictions } fro
 import { PACKS, type Pack } from '../packs.ts'
 import { effectiveRules, loadPolicy, resolveSpecifier } from '../policy.ts'
 import { getRule, type Technology } from '../rules.ts'
-import { ESLINT_CONFIG_FILES, toolset } from '../tools.ts'
+import { toolset } from '../tools.ts'
 import { type Finding, type Policy } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
 import { oxlintCovers } from './oxlint.ts'

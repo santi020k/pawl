@@ -2,19 +2,46 @@
 /**
  * Starlight's head, plus the per-page social card that og.config.mjs writes to public/og/.
  * @santi020k/og keeps every tag Starlight emits and adds og:image, its size and alt text, and twitter:image.
- * This adds the X title, description and URL, and keeps the 404 page out of search results.
+ * This adds the X title, description and URL, the page's JSON-LD, and keeps the 404 page out of search results.
  */
+import { pathnameOutput } from '@santi020k/og'
 import StarlightMetadataHead from '@santi020k/og/astro/starlight'
+import { articleSchema, serializeJsonLd } from '@santi020k/og/schema'
+
+import { author, indexRobots, website } from '../../metadata.ts'
 
 const route = Astro.locals.starlightRoute
 const title = route.entry.data.title
-const description = route.entry.data.description ?? route.siteTitle
+// Starlight's description tag holds the page's own description, or the site's for pages without one, such as the 404.
+const described = route.head.find(item => item.tag === 'meta' && item.attrs?.name === 'description')?.attrs?.content
+const description = typeof described === 'string' ? described : route.siteTitle
 const notFound = route.id === '404' || Astro.url.pathname.replace(/\/$/, '').endsWith('/404')
 const url = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin)
+const image = new URL(`/og/${pathnameOutput(Astro.url.pathname)}`, url)
+
+const jsonLd = notFound ?
+  undefined :
+  serializeJsonLd(
+    articleSchema({
+      type: 'TechArticle',
+      id: `${url.href}#article`,
+      name: title,
+      headline: title,
+      description,
+      url,
+      image,
+      inLanguage: 'en',
+      dateModified: route.lastUpdated,
+      author,
+      publisher: author,
+      isPartOf: website
+    })
+  )
 ---
 
 <StarlightMetadataHead />
-<meta name="robots" content={notFound ? 'noindex, follow' : 'index, follow'} />
+<meta name="robots" content={notFound ? 'noindex, follow' : indexRobots} />
 <meta name="twitter:title" content={title} />
 <meta name="twitter:description" content={description} />
 {!notFound && <meta name="twitter:url" content={url} />}
+{jsonLd && <script type="application/ld+json" is:inline set:html={jsonLd} />}

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "audit": "santi-og audit",
     "build": "santi-og generate && astro build",
     "dev": "astro dev",
     "doctor": "astro-doctor",

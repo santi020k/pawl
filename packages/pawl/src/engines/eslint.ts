@@ -330,9 +330,10 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
 
   // Guards: imports and code patterns to stay away from, for the libraries the project uses.
   const imports = importRestrictions(policy, options.dependencies)
-  const syntax = syntaxRestrictions(policy, options.dependencies)
+  // Biome runs the guards' code patterns as pawl's own rules, so ESLint keeps only the project's.
+  const syntax = syntaxRestrictions(policy, options.dependencies, { guards: !biomeActive })
 
-  // Biome and Oxlint both restrict imports themselves. Code patterns only ESLint can refuse.
+  // Biome and Oxlint both restrict imports themselves.
   if (imports && (biomeActive || options.oxlintActive === true)) {
     delete coreRules[IMPORTS_RULE]
     coveredByBiome.push(IMPORTS_RULE)

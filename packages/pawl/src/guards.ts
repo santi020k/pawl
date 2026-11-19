@@ -34,7 +34,8 @@ export interface RestrictedSyntax {
  * Checks for one library that need no plugin: imports and code patterns to stay away from.
  *
  * A guard is data only, like a pack. It switches on when the project depends on the library.
- * Import restrictions are enforced by whichever linter the project uses. Code patterns need ESLint.
+ * Import restrictions are enforced by whichever linter the project uses. Code patterns run in Biome,
+ * as rules pawl writes itself, or in ESLint.
  */
 export interface Guard {
   name: string
@@ -542,9 +543,10 @@ const patternGuards = (policy: Policy, dependencies: readonly string[]): Array<{
  */
 export const syntaxRestrictions = (
   policy: Policy,
-  dependencies: readonly string[] = []
+  dependencies: readonly string[] = [],
+  { guards: withGuards = true }: { guards?: boolean } = {}
 ): { level: Level; options: unknown[] } | undefined => {
-  const guards = patternGuards(policy, dependencies)
+  const guards = withGuards ? patternGuards(policy, dependencies) : []
   const own = policy.options[SYNTAX_RULE] ?? []
   const options = [
     ...own,

@@ -43,12 +43,13 @@ describe('guards', () => {
     expect(syntaxRestrictions(defaultPolicy(), ['openai'])?.options).toHaveLength(3)
   })
 
-  it('go to ESLint as two core rules, and leave imports to a faster linter that is there', async () => {
+  it('go to ESLint as two core rules, and leave what Biome runs to Biome', async () => {
     const root = project({ 'package.json': { name: 'x' } })
-    const base = async (biomeActive: boolean) => {
+    const own = mergeLayers([{ source: 'repo', input: { options: { 'no-restricted-syntax': ['WithStatement'] } } }])
+    const base = async (biomeActive: boolean, policy = defaultPolicy()) => {
       const plan = await eslintPlan({
         root,
-        policy: defaultPolicy(),
+        policy,
         biomeActive,
         typescript: false,
         dependencies: ['openai', 'hono']
@@ -60,7 +61,8 @@ describe('guards', () => {
     expect((await base(false))['no-restricted-imports']?.[0]).toBe('error')
     expect((await base(false))['no-restricted-syntax']).toHaveLength(5)
     expect((await base(true))['no-restricted-imports']).toBeUndefined()
-    expect((await base(true))['no-restricted-syntax']).toHaveLength(5)
+    expect((await base(true))['no-restricted-syntax']).toBeUndefined()
+    expect((await base(true, own))['no-restricted-syntax']).toEqual(['error', 'WithStatement'])
   })
 
   it("go to Oxlint in ESLint's shape", () => {

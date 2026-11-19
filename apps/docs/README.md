@@ -4,21 +4,43 @@ The site for [pawl.santi020k.com](https://pawl.santi020k.com): a landing page bu
 
 ```sh
 pnpm docs:dev     # from the repo root
-pnpm docs:build
+pnpm docs:build   # writes the social cards, builds, and fails on a broken internal link
+pnpm --filter @santi020k/pawl-docs run typecheck   # astro check
+pnpm --filter @santi020k/pawl-docs run doctor      # Astro Doctor
 ```
+
+`astro check` does not support TypeScript 7 yet, so this package type-checks with TypeScript 6 from the `astro-check` catalog in `pnpm-workspace.yaml`. The library still uses TypeScript 7.
 
 ## Layout
 
-| Path                        | What it is                                                                        |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `src/pages/index.astro`     | The landing page, composed from Lumen components                                  |
-| `src/layouts/Landing.astro` | The landing page shell. It shares Starlight's theme setting                       |
-| `src/content/docs/`         | The doc pages. `reference/rules.md` is generated; do not edit it by hand          |
-| `src/components/`           | `Terminal`, `RatchetChart` and `PawlMark`, used on both the landing page and docs |
-| `src/data/demo.ts`          | Recorded runs of the pawl CLI, shown in the terminals                             |
-| `src/styles/tokens.css`     | The brand tokens, in the HSL format Lumen's semantic tokens use                   |
-| `src/styles/starlight.css`  | Maps the tokens onto Starlight's color scale and fonts                            |
-| `src/assets/`, `public/`    | The mark, the hero art, the favicon and the social card                           |
+| Path                        | What it is                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------- |
+| `src/pages/index.astro`     | The landing page, composed from Lumen components                                          |
+| `src/layouts/Landing.astro` | The landing page shell. It shares Starlight's theme setting                               |
+| `src/content/docs/`         | The doc pages. `reference/rules.md` is generated; do not edit it by hand                  |
+| `src/components/`           | `Terminal`, `RatchetChart` and `PawlMark`, used on both the landing page and docs         |
+| `src/components/landing/`   | The landing header, with its mobile menu (a Lumen `Drawer`), and footer                   |
+| `src/components/starlight/` | Starlight overrides: `Head` adds the per-page social card, `Footer` adds the credit line  |
+| `src/data/demo.ts`          | Recorded runs of the pawl CLI, shown in the terminals                                     |
+| `src/styles/tokens.css`     | The brand tokens, in the HSL format Lumen's semantic tokens use                           |
+| `src/styles/starlight.css`  | Maps the tokens onto Starlight's color scale and fonts                                    |
+| `src/assets/`, `public/`    | The mark, the hero art, the favicon, the social card, `robots.txt` and `site.webmanifest` |
+| `og.config.mjs`             | The doc pages' social cards, written by `@santi020k/og` to `public/og/` (not committed)   |
+
+## Social cards
+
+The landing page uses the hand-made `public/og.jpg`. Every doc page gets its own card: `pnpm run og` (also the first step of `build`) reads each page's title and description and writes `public/og/<page>.webp`. The `Head` override points `og:image` and `twitter:image` at it.
+
+## Deploy
+
+`.github/workflows/deploy-docs.yml` builds the site and deploys `dist` to the Cloudflare Pages project `pawl-docs` with `wrangler pages deploy`. It runs on a push to `main` that touches `apps/docs/`, `packages/pawl/` or the lockfile, and on demand from the Actions tab. It uses the GitHub environment `docs-production`, which needs two secrets:
+
+| Secret                  | What it is                                               |
+| ----------------------- | -------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | An API token with the Cloudflare Pages: Edit permission  |
+| `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the `pawl-docs` project |
+
+One-time setup, done by hand once: create the `docs-production` environment and its secrets in GitHub, create the `pawl-docs` Pages project in Cloudflare (Direct Upload, production branch `main`), and add `pawl.santi020k.com` as its custom domain. Every deploy after that goes through the workflow.
 
 ## The brand
 

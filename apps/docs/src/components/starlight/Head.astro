@@ -1,0 +1,20 @@
+---
+/**
+ * Starlight's head, plus the per-page social card that og.config.mjs writes to public/og/.
+ * @santi020k/og keeps every tag Starlight emits and adds og:image, its size and alt text, and twitter:image.
+ * This adds the X title, description and URL, and keeps the 404 page out of search results.
+ */
+import StarlightMetadataHead from '@santi020k/og/astro/starlight'
+
+const route = Astro.locals.starlightRoute
+const title = route.entry.data.title
+const description = route.entry.data.description ?? route.siteTitle
+const notFound = route.id === '404' || Astro.url.pathname.replace(/\/$/, '').endsWith('/404')
+const url = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin)
+---
+
+<StarlightMetadataHead />
+<meta name="robots" content={notFound ? 'noindex, follow' : 'index, follow'} />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+{!notFound && <meta name="twitter:url" content={url} />}

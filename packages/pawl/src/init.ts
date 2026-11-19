@@ -317,15 +317,27 @@ const toSource = (value: unknown, depth: number): string => {
 export const policyFile = (policy: PolicyInput): string =>
   `import { definePolicy } from '${PACKAGE_NAME}'\n\nexport default definePolicy(${toSource(policy, 0)})\n`
 
+/** The actions the workflow uses, pinned by commit so a moved tag cannot change what runs. */
+const ACTIONS = {
+  checkout: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+  setupNode: 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
+  uploadArtifact: 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2',
+  setupBun: 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0'
+}
+
 /** The step that makes each package manager available on a GitHub runner. */
 const WORKFLOW_SETUP: Record<PackageManager, string> = {
   npm: '',
-  bun: '      - uses: oven-sh/setup-bun@v2\n',
+  bun: `      - uses: ${ACTIONS.setupBun}\n`,
   pnpm: '      - run: npm install --global corepack@latest && corepack enable\n',
   yarn: '      - run: npm install --global corepack@latest && corepack enable\n'
 }
 
-const workflowFile = (manager: PackageManager): string => {
+/**
+ * The GitHub workflow: the check on every pull request, then the doctor's report as an artifact,
+ * which shows the tool versions and any drift even when the check fails.
+ */
+export const workflowFile = (manager: PackageManager): string => {
   const install = manager === 'npm' ? 'npm ci' : `${manager} install --frozen-lockfile`
   const setup = WORKFLOW_SETUP[manager]
 
@@ -336,16 +348,29 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ${ACTIONS.checkout}
+      - uses: ${ACTIONS.setupNode}
         with:
           node-version: 22
 ${setup}      - run: ${install}
       - run: npx pawl check --ci
+      - name: Check the setup and the tool versions
+        if: always()
+        run: npx pawl doctor --format json > pawl-doctor.json
+      - name: Upload the doctor report
+        if: always()
+        uses: ${ACTIONS.uploadArtifact}
+        with:
+          name: pawl-doctor
+          path: pawl-doctor.json
+          if-no-files-found: warn
 `
 }
 
@@ -941,7 +966,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     push({
       path: '.github/workflows/pawl.yml',
       kind: 'create',
-      summary: 'run "pawl check --ci" on every pull request',
+      summary: 'run "pawl check --ci" on every pull request and keep the doctor report',
       apply: () => writeText(join(root, '.github/workflows/pawl.yml'), workflowFile(detection.packageManager ?? 'npm'))
     })
   }

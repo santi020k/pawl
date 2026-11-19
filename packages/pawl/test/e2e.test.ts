@@ -238,7 +238,15 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
 
     applyInit(plan)
     expect(readFileSync(join(root, 'eslint.config.js'), 'utf8')).toContain("import { eslint } from '@santi020k/pawl'")
-    expect(readFileSync(join(root, '.github/workflows/pawl.yml'), 'utf8')).toContain('pnpm install --frozen-lockfile')
+    const workflow = readFileSync(join(root, '.github/workflows/pawl.yml'), 'utf8')
+
+    expect(workflow).toContain('pnpm install --frozen-lockfile')
+    // Every action is pinned to a commit, and the doctor report is kept even when the check fails.
+    expect(workflow.match(/uses: \S+/g)?.every(line => /@[0-9a-f]{40}$/.test(line))).toBe(true)
+    expect(workflow).toContain('run: npx pawl doctor --format json > pawl-doctor.json')
+    expect(workflow).toContain('path: pawl-doctor.json')
+    expect(workflow.match(/if: always\(\)/g)).toHaveLength(2)
+    expect(workflow).toContain('permissions:\n  contents: read')
     expect(json(root, '.claude/settings.json')).toMatchObject({
       hooks: {
         PostToolUse: [

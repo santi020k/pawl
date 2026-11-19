@@ -1,17 +1,12 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { BASELINE_FILE, readBaseline } from './baseline.ts'
+import { BASELINE_FILE } from './baseline.ts'
 import { BLOCKING, check, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check.ts'
 import { describe, detect } from './detect.ts'
 import { getDockerRule } from './docker.ts'
-import { BIOME_VERSION, biomeContextFor, biomeInstalled, checkBiomeConfig } from './engines/biome.ts'
-import { eslintInstalled, eslintPlanFor } from './engines/eslint.ts'
-import { checkOxlintConfig, OXLINT_CONFIG_FILE, oxlintContextFor, oxlintInstalled } from './engines/oxlint.ts'
-import { checkPrettierConfig, prettierInstalled } from './engines/prettier.ts'
-import { activeGuards } from './guards.ts'
+import { doctor, formatDoctor } from './doctor.ts'
+import { biomeContextFor, checkBiomeConfig } from './engines/biome.ts'
 import {
   applyInit,
   describePlan,
@@ -29,7 +24,7 @@ import {
 } from './init.ts'
 import { describeMigration, planMigrate } from './migrate.ts'
 import { format, type OutputFormat } from './output.ts'
-import { effectiveRules, findConfigFile, loadPolicy } from './policy.ts'
+import { effectiveRules, loadPolicy } from './policy.ts'
 import { confirm, isInteractive, select } from './prompt.ts'
 import { defaultLevel, findRule } from './rules.ts'
 import { toolset } from './tools.ts'
@@ -48,13 +43,17 @@ Usage
   pawl migrate          Turn an existing ESLint config into a pawl policy, then set up
   pawl baseline         Accept the current findings as the baseline
   pawl explain <rule>   Show what a rule does and its level here
-  pawl doctor           Check the setup
+  pawl doctor           Check the setup and the tool versions
 
 Options for check and fix
   --changed             Only files changed against HEAD, plus untracked ones
   --format <kind>       pretty (default), agent or json
   --ci                  Also fail when the setup has drifted from the policy
+  --max-warnings <n>    Fail when there are more than n new warnings
   --verbose             Show the engine commands that ran
+
+Options for doctor
+  --format <kind>       pretty (default) or json
 
 Options for init
   --mode <mode>         auto (default), keep or biome
@@ -80,6 +79,7 @@ const OPTIONS = {
   changed: { type: 'boolean' },
   format: { type: 'string' },
   ci: { type: 'boolean' },
+  'max-warnings': { type: 'string' },
   verbose: { type: 'boolean' },
   mode: { type: 'string' },
   yes: { type: 'boolean', short: 'y' },
@@ -116,9 +116,27 @@ const outputFormat = (flags: Flags): OutputFormat => {
   return kind
 }
 
+/** The value of --max-warnings: a whole number, zero or more. */
+const maxWarnings = (flags: Flags): number | undefined => {
+  const value = flags['max-warnings']
+
+  if (value === undefined) return undefined
+
+  if (!/^\d+$/.test(value)) throw new UsageError(`--max-warnings takes a whole number, such as 0. Got "${value}".`)
+
+  return Number(value)
+}
+
 const runCheck = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
   const ci = flags.ci === true || process.env.CI === 'true'
-  const result = await check({ root, fix, changed: flags.changed === true, ...(files.length > 0 ? { files } : {}) })
+  const limit = maxWarnings(flags)
+  const result = await check({
+    root,
+    fix,
+    changed: flags.changed === true,
+    ...(files.length > 0 ? { files } : {}),
+    ...(limit === undefined ? {} : { maxWarnings: limit })
+  })
 
   out(format(result, outputFormat(flags), { color: colorEnabled(), verbose: flags.verbose === true }))
 
@@ -463,106 +481,16 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
 
 const kebab = (name: string): string => name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)
 
-const LINTER_NAMES: Record<EngineName, string> = { biome: 'Biome', oxlint: 'Oxlint', eslint: 'ESLint' }
+const runDoctor = async (root: string, flags: Flags): Promise<number> => {
+  const kind = outputFormat(flags)
 
-const runDoctor = async (root: string): Promise<number> => {
-  const policy = await loadPolicy(root)
-  const detection = detect(root, policy)
-  const tools = toolset(root, policy)
-  const source = findConfigFile(root) ? policy.sources.slice(1).join(' -> ') : 'default standard (no pawl.config file)'
-  const lines = [
-    `pawl ${VERSION}`,
-    `Project:  ${describe(detection)}`,
-    `Policy:   ${source}${policy.strict ? ', strict' : ''}`,
-    `Lint:     ${LINTER_NAMES[tools.linter]}${tools.linter !== 'eslint' && tools.eslint ? ', with ESLint for the packs' : ''}`,
-    `Format:   ${tools.formatter === 'biome' ? 'Biome' : 'Prettier'}`
-  ]
-  const problems: string[] = []
+  if (kind === 'agent') throw new UsageError('Unknown format "agent" for doctor. Use pretty or json.')
 
-  for (const violation of policy.lockViolations) {
-    problems.push(
-      `"${violation.rule}" is locked at "${violation.kept}"; ${violation.source} tried to set "${violation.wanted}".`
-    )
-  }
+  const report = await doctor(root)
 
-  if (tools.biome) {
-    const config = checkBiomeConfig(root, policy, biomeContextFor(root, policy, detection, tools))
+  out(kind === 'json' ? JSON.stringify(report, null, 2) : formatDoctor(report))
 
-    lines.push(
-      `Biome:    ${biomeInstalled(root) ? BIOME_VERSION : 'not installed'}, ${config.file ?? 'no config'} ${config.status === 'ok' ? 'in line with the policy' : `(${config.status})`}`
-    )
-
-    if (!biomeInstalled(root))
-      problems.push(`Biome is not installed. Add @biomejs/biome@${BIOME_VERSION} to devDependencies.`)
-
-    if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())
-  }
-
-  if (tools.linter === 'oxlint') {
-    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
-
-    lines.push(
-      `Oxlint:   ${oxlintInstalled(root) ? 'installed' : 'not installed'}, ${OXLINT_CONFIG_FILE} (${config.status})`
-    )
-
-    if (!oxlintInstalled(root)) problems.push('Oxlint is not installed. Add oxlint to devDependencies.')
-
-    if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())
-  }
-
-  if (tools.formatter === 'prettier') {
-    const config = checkPrettierConfig(root, policy)
-
-    lines.push(
-      `Prettier: ${prettierInstalled(root) ? 'installed' : 'not installed'}, ${config.file ?? 'no config'} (${config.status})`
-    )
-
-    if (!prettierInstalled(root)) problems.push('Prettier is not installed. Add prettier to devDependencies.')
-
-    if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())
-  }
-
-  if (tools.eslint) {
-    const installed = eslintInstalled(root)
-    const plan = await eslintPlanFor(root, policy)
-
-    lines.push(`ESLint:   ${installed ? 'installed' : 'not installed'}`)
-    lines.push(`Packs:    ${plan.activePacks.length > 0 ? plan.activePacks.join(', ') : 'none active'}`)
-
-    if (plan.availablePacks.length > 0) {
-      lines.push(
-        `          available for this project: ${plan.availablePacks.join(', ')} (pawl add ${plan.availablePacks.join(' ')})`
-      )
-    }
-
-    if (!installed) problems.push('ESLint is set up for this repo but not installed. Add eslint to devDependencies.')
-
-    for (const { rule, needs } of plan.notEnforced) problems.push(`Not enforced by ESLint: ${rule} (install ${needs}).`)
-  }
-
-  const baseline = readBaseline(root)
-  const allowed = Object.values(baseline?.findings ?? {}).reduce(
-    (sum, rules) => sum + Object.values(rules).reduce((a, b) => a + b, 0),
-    0
-  )
-  const missing = existsSync(join(root, BASELINE_FILE)) ? 'unreadable' : 'run "pawl baseline"'
-
-  const guards = activeGuards(detection.dependencies, policy.packs)
-
-  if (guards.length > 0) {
-    // Biome runs the code patterns as rules of pawl's own. ESLint runs them as selectors. Oxlint cannot.
-    const needEslint = guards.some(guard => guard.syntax) && !tools.eslint && tools.linter !== 'biome'
-
-    lines.push(
-      `Guards:   ${guards.map(guard => guard.name).join(', ')}${needEslint ? ' (imports only: with Oxlint as the linter, the code patterns need ESLint next to it)' : ''}`
-    )
-  }
-
-  lines.push(`Baseline: ${baseline ? `${allowed} finding${allowed === 1 ? '' : 's'} allowed` : `none (${missing})`}`)
-  lines.push('', ...(problems.length > 0 ? problems.map(problem => `Problem: ${problem}`) : ['No problems found.']))
-  out(lines.join('\n'))
-
-  return problems.length > 0 ? EXIT_SETUP : EXIT_OK
+  return report.problems.length > 0 ? EXIT_SETUP : EXIT_OK
 }
 
 const main = async (): Promise<number> => {
@@ -600,7 +528,7 @@ const main = async (): Promise<number> => {
     case 'explain':
       return runExplain(root, rest[0])
     case 'doctor':
-      return runDoctor(root)
+      return runDoctor(root, flags)
     default:
       throw new UsageError(`Unknown command "${command}". Run "pawl --help".`)
   }

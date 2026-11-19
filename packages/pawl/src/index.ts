@@ -7,6 +7,7 @@ export type { Baseline, BaselineResult, Suppression } from './baseline.ts'
 export { applyBaseline, BASELINE_FILE, createBaseline, readBaseline, scanSuppressions } from './baseline.ts'
 export type { CheckOptions, CheckResult } from './check.ts'
 export { check, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check.ts'
+export { satisfies } from './compat.ts'
 export type { Detection, DetectOptions, FileFormat, PackageManager, WorkspaceTool } from './detect.ts'
 export {
   allTechnologies,
@@ -19,6 +20,8 @@ export {
   technologies,
   usesReact
 } from './detect.ts'
+export type { Compatibility, DoctorReport } from './doctor.ts'
+export { doctor, formatDoctor } from './doctor.ts'
 export type { BiomeContext } from './engines/biome.ts'
 export {
   BIOME_PRESET,

@@ -14,7 +14,7 @@ pnpm ok                   # the full gate: also cspell, knip and the generated-f
 pnpm changeset            # every user-visible change to @santi020k/pawl needs one
 ```
 
-Quality (`quality.yml`) runs `pnpm ok` as the repository check and owns the Git hooks. It has no Biome adapter yet; until it does, keep `pnpm ok` the canonical gate. Commit messages are validated by Commitprompt.
+Quality (`quality.yml`) runs `pnpm ok` as the repository check and owns the Git hooks. Quality 2.1 treats this repo as managed by pawl, so it leaves the engines to pawl; its Biome adapter is enabled only for `quality format` and `quality fix`. Keep `pnpm ok` the canonical gate. Commit messages are validated by Commitprompt.
 
 ## Rules of the codebase
 

@@ -1,15 +1,16 @@
 # yaml-language-server: $schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json
 # quality.yml — one code-quality workflow for this repository
-# Quality has no Biome adapter yet, so `pnpm ok` (which runs pawl on its own
-# code) is the canonical check. Swap it for native Biome support once Quality ships it.
+# This repository is pawl, so Quality treats it as Pawl-managed and leaves Biome,
+# Oxlint, ESLint and Prettier to pawl and its baseline. `pnpm ok`, which runs pawl
+# on its own code, is the canonical check. Biome stays enabled for
+# `quality format` and `quality fix` only, so its checks never run twice.
 version: 1
 output: pretty
 tools:
-  # ESLint and Prettier are test fixtures for pawl's engines, not this repo's linters.
-  eslint:
-    enabled: false
-  prettier:
-    enabled: false
+  biome:
+    enabled: true
+    check: false
+    required: true
   astro-check:
     enabled: true
     check: false

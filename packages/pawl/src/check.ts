@@ -22,6 +22,7 @@ import { checkPrettierConfig, prettierInstalled, runPrettier } from './engines/p
 import { EngineError } from './engines/run.ts'
 import { changedFiles } from './fs-utils.ts'
 import { ignoreMatcher } from './ignores.ts'
+import { checkMarkdown } from './markdown.ts'
 import { loadPolicy } from './policy.ts'
 import { toolset } from './tools.ts'
 import { type EngineName, type Finding, type Policy, type SetupIssue } from './types.ts'
@@ -232,7 +233,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   }
 
   // Pawl's own checks for the files no engine reads.
-  if (!empty) findings.push(...checkDocker({ root, policy, ...scope }))
+  if (!empty) findings.push(...checkDocker({ root, policy, ...scope }), ...checkMarkdown({ root, policy, ...scope }))
 
   const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
   const limit = maxWarnings === undefined ? {} : { maxWarnings }

@@ -190,4 +190,14 @@ describe('Markdown checks', () => {
     ])
     expect(rules(root, defaultPolicy(), ['docs/a.md', 'missing.md'])).toEqual(['docs/a.md:1 markdown-no-empty-links'])
   })
+  it('skips the default ignores and what .gitignore lists, like the engines do', () => {
+    const root = project({
+      'dist/README.md': EMPTY_LINKS,
+      'notes/README.md': EMPTY_LINKS,
+      '.gitignore': 'notes/\n',
+      'README.md': EMPTY_LINKS
+    })
+
+    expect(new Set(rules(root).map(line => line.split(':')[0]))).toEqual(new Set(['README.md']))
+  })
 })

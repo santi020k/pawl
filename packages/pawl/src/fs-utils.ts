@@ -3,9 +3,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { WALK_SKIP } from './ignores.ts'
 
-// Kept for the modules that matched globs here before the ignores had a module of their own.
-export { makeIgnore } from './ignores.ts'
-
 /** Turn "one, many or none" into a list. */
 export const toList = <T>(value: T | readonly T[] | undefined): T[] => {
   if (value === undefined) return []

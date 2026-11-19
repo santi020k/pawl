@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { listFiles, makeIgnore } from './fs-utils.ts'
+import { listFiles } from './fs-utils.ts'
+import { ignoreMatcher } from './ignores.ts'
 import { type Finding, type Level, type Policy } from './types.ts'
 
 /**
@@ -303,7 +304,7 @@ export interface DockerOptions {
 
 /** Check every Dockerfile and Compose file in the project. */
 export const checkDocker = ({ root, policy, files }: DockerOptions): Finding[] => {
-  const ignored = makeIgnore(policy.ignore)
+  const ignored = ignoreMatcher(root, policy)
   const findings: Finding[] = []
 
   for (const file of (files ?? listFiles(root)).filter(name => isDockerFile(name) && !ignored(name))) {

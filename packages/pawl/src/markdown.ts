@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { listFiles, makeIgnore } from './fs-utils.ts'
+import { listFiles } from './fs-utils.ts'
+import { ignoreMatcher } from './ignores.ts'
 import { type Finding, type Level, type Policy } from './types.ts'
 
 /**
@@ -252,7 +253,7 @@ export interface MarkdownOptions {
 
 /** Check every Markdown file in the project. */
 export const checkMarkdown = ({ root, policy, files }: MarkdownOptions): Finding[] => {
-  const ignored = makeIgnore(policy.ignore)
+  const ignored = ignoreMatcher(root, policy)
   const findings: Finding[] = []
 
   for (const file of (files ?? listFiles(root)).filter(name => isMarkdownFile(name) && !ignored(name))) {

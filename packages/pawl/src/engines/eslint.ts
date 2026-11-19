@@ -286,6 +286,10 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     // A rule that is off only needs saying where a preset may have turned it on.
     if (level === 'off' && holders.length === 0 && !(eslintName in coreRules) && !(eslintName in tsRules)) continue
 
+    // Where Biome lints, ESLint is only there for the packs. A catalog rule Biome has no equivalent
+    // for runs when its plugin's pack is on or the policy names it; it does not ask for a plugin by itself.
+    if (biomeActive && def && !def.biome && withPrefix.length === 0 && policy.rules[name] === undefined) continue
+
     if (!prefix) {
       coreRules[eslintName] = value
 

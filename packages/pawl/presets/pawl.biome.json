@@ -66,6 +66,7 @@
         "noBannedTypes": "warn",
         "noExcessiveNestedTestSuites": "error",
         "noUselessCatch": "error",
+        "noUselessCatchBinding": "warn",
         "noUselessConstructor": "warn",
         "noUselessEscapeInRegex": "warn",
         "noUselessRename": "error",
@@ -75,6 +76,7 @@
         "noUselessUndefined": "warn",
         "noUselessUndefinedInitialization": "warn",
         "noVoid": "warn",
+        "useArrayFind": "warn",
         "useArraySome": "warn",
         "useArrowFunction": "warn",
         "useFlatMap": "warn",
@@ -111,11 +113,16 @@
         "noUselessAssignment": "off",
         "noUselessSpread": "off",
         "noUselessTypeAssertion": "off",
+        "noYamlEmptySequenceEntries": "off",
+        "useAwaitThenable": "off",
         "useCatchErrorName": "off",
         "useConsistentFunctionStyle": "off",
+        "useConsistentHeadingLevel": "off",
+        "useFencedCodeLanguage": "off",
         "useIncludes": "off",
         "useNullishCoalescing": "off",
-        "usePromiseRejectErrors": "off"
+        "usePromiseRejectErrors": "off",
+        "useStringStartsEndsWith": "off"
       },
       "performance": {
         "noAwaitInLoops": "off"

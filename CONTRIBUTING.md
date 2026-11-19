@@ -36,6 +36,8 @@ Use a Conventional Commit title, keep changes focused and add tests for behavior
 4. Merge the pull request. `.github/workflows/release.yml` runs on `main`: it validates the repository, publishes the versions npm does not have with provenance through trusted publishing, installs them from the registry, then creates the `v<version>` tag and the GitHub release on the merged commit.
 5. Check the release on npm and GitHub, then delete the release branch.
 
+Work for the next version can start before the current one is out: create its `release/v<version>` branch early and open feature pull requests into it. CI checks those pull requests like the ones into `main`, and each still needs a changeset. Run `pnpm version-packages` on the branch only when the release is ready.
+
 The workflow publishes only what is missing, so a failed run is fixed with "Re-run failed jobs" on that same run, which keeps the release commit. Do not merge anything else into `main` until the release run is green; the workflow refuses to release a later commit that carries new changesets. A published version or tag is never replaced: fix a bad release with a new version. To roll back, deprecate the version with `npm deprecate` and release a fix.
 
 ### First release and setup

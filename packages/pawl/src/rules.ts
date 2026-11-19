@@ -684,6 +684,179 @@ export const RULES: readonly RuleDef[] = [
     { strict: 'warn', nursery: true }
   ),
 
+  // Accessibility. The recommended rules of eslint-plugin-jsx-a11y, so Biome and Oxlint enforce
+  // them without the plugin. anchor-is-valid has no Biome mapping here: Biome's useValidAnchor is
+  // filed under qwik/jsx-a, and Biome's recommended set has it on anyway.
+  rule('react', 'jsx-a11y/alt-text', 'a11y/useAltText', 'error', 'Give images and image-like elements alt text.'),
+  rule('react', 'jsx-a11y/anchor-has-content', 'a11y/useAnchorContent', 'error', 'Give anchors content.'),
+  rule('react', 'jsx-a11y/anchor-is-valid', undefined, 'error', 'Require anchors to have a valid href.'),
+  rule(
+    'react',
+    'jsx-a11y/aria-activedescendant-has-tabindex',
+    'a11y/useAriaActivedescendantWithTabindex',
+    'error',
+    'Make elements with aria-activedescendant tabbable.'
+  ),
+  rule('react', 'jsx-a11y/aria-props', 'a11y/useValidAriaProps', 'error', 'Use only valid aria-* attributes.'),
+  rule('react', 'jsx-a11y/aria-proptypes', 'a11y/useValidAriaValues', 'error', 'Give aria-* attributes valid values.'),
+  rule('react', 'jsx-a11y/aria-role', 'a11y/useValidAriaRole', 'error', 'Use only valid ARIA roles.'),
+  rule(
+    'react',
+    'jsx-a11y/aria-unsupported-elements',
+    'a11y/noAriaUnsupportedElements',
+    'error',
+    'No ARIA on elements that do not support it.'
+  ),
+  rule('react', 'jsx-a11y/autocomplete-valid', 'a11y/useValidAutocomplete', 'error', 'Use valid autocomplete values.'),
+  rule(
+    'react',
+    'jsx-a11y/click-events-have-key-events',
+    'a11y/useKeyWithClickEvents',
+    'error',
+    'Pair click handlers with a keyboard handler.'
+  ),
+  rule('react', 'jsx-a11y/heading-has-content', 'a11y/useHeadingContent', 'error', 'Give headings content.'),
+  rule('react', 'jsx-a11y/html-has-lang', 'a11y/useHtmlLang', 'error', 'Give the html element a lang attribute.'),
+  rule('react', 'jsx-a11y/iframe-has-title', 'a11y/useIframeTitle', 'error', 'Give iframes a title.'),
+  rule('react', 'jsx-a11y/img-redundant-alt', 'a11y/noRedundantAlt', 'error', 'No "image" or "photo" in alt text.'),
+  rule(
+    'react',
+    'jsx-a11y/interactive-supports-focus',
+    'a11y/useFocusableInteractive',
+    'error',
+    'Make elements with interactive handlers focusable.',
+    {
+      options: {
+        eslint: [{ tabbable: ['button', 'checkbox', 'link', 'searchbox', 'spinbutton', 'switch', 'textbox'] }]
+      }
+    }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/label-has-associated-control',
+    'a11y/noLabelWithoutControl',
+    'error',
+    'Tie every label to a control.'
+  ),
+  rule('react', 'jsx-a11y/media-has-caption', 'a11y/useMediaCaption', 'error', 'Give audio and video captions.'),
+  rule(
+    'react',
+    'jsx-a11y/mouse-events-have-key-events',
+    'a11y/useKeyWithMouseEvents',
+    'error',
+    'Pair mouse over and out with focus and blur.'
+  ),
+  rule('react', 'jsx-a11y/no-access-key', 'a11y/noAccessKey', 'error', 'No accessKey attributes.'),
+  rule('react', 'jsx-a11y/no-autofocus', 'a11y/noAutofocus', 'error', 'No autoFocus.'),
+  rule(
+    'react',
+    'jsx-a11y/no-distracting-elements',
+    'a11y/noDistractingElements',
+    'error',
+    'No marquee or blink elements.'
+  ),
+  rule(
+    'react',
+    'jsx-a11y/no-interactive-element-to-noninteractive-role',
+    'a11y/noInteractiveElementToNoninteractiveRole',
+    'error',
+    'No non-interactive roles on interactive elements.',
+    { options: { eslint: [{ tr: ['none', 'presentation'], canvas: ['img'] }] } }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/no-noninteractive-element-interactions',
+    'a11y/noNoninteractiveElementInteractions',
+    'error',
+    'No event handlers on non-interactive elements.',
+    {
+      options: {
+        eslint: [
+          {
+            handlers: [
+              'onClick',
+              'onError',
+              'onLoad',
+              'onMouseDown',
+              'onMouseUp',
+              'onKeyPress',
+              'onKeyDown',
+              'onKeyUp'
+            ],
+            alert: ['onKeyUp', 'onKeyDown', 'onKeyPress'],
+            body: ['onError', 'onLoad'],
+            dialog: ['onKeyUp', 'onKeyDown', 'onKeyPress'],
+            iframe: ['onError', 'onLoad'],
+            img: ['onError', 'onLoad']
+          }
+        ]
+      }
+    }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/no-noninteractive-element-to-interactive-role',
+    'a11y/noNoninteractiveElementToInteractiveRole',
+    'error',
+    'No interactive roles on non-interactive elements.',
+    {
+      options: {
+        eslint: [
+          {
+            ul: ['listbox', 'menu', 'menubar', 'radiogroup', 'tablist', 'tree', 'treegrid'],
+            ol: ['listbox', 'menu', 'menubar', 'radiogroup', 'tablist', 'tree', 'treegrid'],
+            li: ['menuitem', 'menuitemradio', 'menuitemcheckbox', 'option', 'row', 'tab', 'treeitem'],
+            table: ['grid'],
+            td: ['gridcell'],
+            fieldset: ['radiogroup', 'presentation']
+          }
+        ]
+      }
+    }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/no-noninteractive-tabindex',
+    'a11y/noNoninteractiveTabindex',
+    'error',
+    'No tabIndex on non-interactive elements.',
+    { options: { eslint: [{ tags: [], roles: ['tabpanel'], allowExpressionValues: true }] } }
+  ),
+  rule('react', 'jsx-a11y/no-redundant-roles', 'a11y/noRedundantRoles', 'error', 'No roles an element already has.'),
+  rule(
+    'react',
+    'jsx-a11y/no-static-element-interactions',
+    'a11y/noStaticElementInteractions',
+    'error',
+    'No event handlers on static elements such as div.',
+    {
+      options: {
+        eslint: [
+          {
+            allowExpressionValues: true,
+            handlers: ['onClick', 'onMouseDown', 'onMouseUp', 'onKeyPress', 'onKeyDown', 'onKeyUp']
+          }
+        ]
+      }
+    }
+  ),
+  rule(
+    'react',
+    'jsx-a11y/role-has-required-aria-props',
+    'a11y/useAriaPropsForRole',
+    'error',
+    'Give each role the ARIA attributes it requires.'
+  ),
+  rule(
+    'react',
+    'jsx-a11y/role-supports-aria-props',
+    'a11y/useAriaPropsSupportedByRole',
+    'error',
+    'Use only ARIA attributes the role supports.'
+  ),
+  rule('react', 'jsx-a11y/scope', 'a11y/noHeaderScope', 'error', 'Use scope only on th elements.'),
+  rule('react', 'jsx-a11y/tabindex-no-positive', 'a11y/noPositiveTabindex', 'error', 'No positive tabIndex values.'),
+
   // Qwik
   rule(
     'qwik',

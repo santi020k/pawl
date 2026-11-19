@@ -32,6 +32,11 @@ export interface Pack {
   auto?: 'linter' | 'linter-ts'
   /** Some of its rules need type information. */
   typeAware?: boolean
+  /**
+   * The catalog has rules from this plugin so Biome and Oxlint enforce them natively.
+   * ESLint takes those rules only when the pack is on, or when the policy names one.
+   */
+  withPack?: boolean
   /** Levels the standard sets on top of the preset. */
   rules: Record<string, Level>
 }
@@ -191,31 +196,31 @@ export const PACKS: readonly Pack[] = [
   {
     name: 'stencil',
     title: 'Stencil',
-    plugin: '@stencil-community/eslint-plugin',
-    range: '*',
-    prefix: '@stencil-community',
+    plugin: '@stencil/eslint-plugin',
+    range: '>=1.2.0',
+    prefix: 'stencil',
     when: ['@stencil/core'],
     files: ['**/*.{ts,tsx}'],
     typeAware: true,
     rules: {
-      '@stencil-community/async-methods': 'error',
-      '@stencil-community/ban-prefix': 'error',
-      '@stencil-community/decorators-context': 'error',
-      '@stencil-community/decorators-style': 'error',
-      '@stencil-community/element-type': 'error',
-      '@stencil-community/host-data-deprecated': 'error',
-      '@stencil-community/methods-must-be-public': 'error',
-      '@stencil-community/no-unused-watch': 'error',
-      '@stencil-community/own-methods-must-be-private': 'error',
-      '@stencil-community/own-props-must-be-private': 'error',
-      '@stencil-community/prefer-vdom-listener': 'error',
-      '@stencil-community/props-must-be-public': 'error',
-      '@stencil-community/props-must-be-readonly': 'error',
-      '@stencil-community/render-returns-host': 'error',
-      '@stencil-community/required-jsdoc': 'error',
-      '@stencil-community/reserved-member-names': 'error',
-      '@stencil-community/single-export': 'error',
-      '@stencil-community/strict-mutable': 'error'
+      'stencil/async-methods': 'error',
+      'stencil/ban-prefix': 'error',
+      'stencil/decorators-context': 'error',
+      'stencil/decorators-style': 'error',
+      'stencil/element-type': 'error',
+      'stencil/host-data-deprecated': 'error',
+      'stencil/methods-must-be-public': 'error',
+      'stencil/no-unused-watch': 'error',
+      'stencil/own-methods-must-be-private': 'error',
+      'stencil/own-props-must-be-private': 'error',
+      'stencil/prefer-vdom-listener': 'error',
+      'stencil/props-must-be-public': 'error',
+      'stencil/props-must-be-readonly': 'error',
+      'stencil/render-returns-host': 'error',
+      'stencil/required-jsdoc': 'error',
+      'stencil/reserved-member-names': 'error',
+      'stencil/single-export': 'error',
+      'stencil/strict-mutable': 'error'
     }
   },
   {
@@ -410,6 +415,7 @@ export const PACKS: readonly Pack[] = [
     prefix: 'jsx-a11y',
     when: [],
     preset: ['flatConfigs', 'recommended'],
+    withPack: true,
     rules: {}
   },
   {

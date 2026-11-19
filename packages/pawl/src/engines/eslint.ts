@@ -310,6 +310,10 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
       continue
     }
 
+    // The fast linters enforce this plugin's catalog rules natively; ESLint takes them with the pack.
+    if (policy.rules[name] === undefined && PACKS.some(pack => pack.prefix === prefix && pack.withPack === true))
+      continue
+
     if (!plugins.has(prefix)) plugins.set(prefix, await importFromProject(root, pluginPackage(prefix)))
 
     const loaded = plugins.get(prefix) as Loaded

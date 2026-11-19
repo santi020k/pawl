@@ -87,7 +87,7 @@
     "@html-eslint/eslint-plugin": "*",
     "@next/eslint-plugin-next": ">=16.0.0",
     "@santi020k/eslint-plugin-astro-doctor": ">=1.0.0",
-    "@stencil-community/eslint-plugin": "*",
+    "@stencil/eslint-plugin": ">=1.2.0",
     "@tanstack/eslint-plugin-query": "*",
     "@tanstack/eslint-plugin-router": "*",
     "@vitest/eslint-plugin": ">=1.0.0",
@@ -163,7 +163,7 @@
     "@santi020k/eslint-plugin-astro-doctor": {
       "optional": true
     },
-    "@stencil-community/eslint-plugin": {
+    "@stencil/eslint-plugin": {
       "optional": true
     },
     "@tanstack/eslint-plugin-query": {

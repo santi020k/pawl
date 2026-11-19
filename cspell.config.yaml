@@ -2,6 +2,7 @@ version: "0.2"
 # The docs and code use both British and American spellings.
 language: en,en-GB
 words:
+  - activedescendant
   - agentchat
   - astrojs
   - baselined
@@ -29,23 +30,30 @@ words:
   - linejoin
   - llamaindex
   - lockfiles
+  - menuitemcheckbox
+  - menuitemradio
   - miterlimit
   - modelcontextprotocol
+  - noninteractive
   - nonroot
   - noopener
   - noreferrer
   - opencontainers
   - opencode
+  - proptypes
   - Qwik
   - santi
   - santi020k
   - serviceworker
   - setext
   - Slidev
+  - spinbutton
   - stylesheet
+  - tabindex
   - textnodes
   - Titlebar
   - topsecret
+  - treegrid
   - Turborepo
   - vdom
   - vitesse

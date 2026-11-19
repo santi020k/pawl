@@ -45,6 +45,17 @@ describe('Biome presets', () => {
     expect(rules).not.toContain('useHookAtTopLevel')
     expect(JSON.stringify(biomeTechConfig(defaultPolicy(), 'react'))).toContain('useHookAtTopLevel')
   })
+
+  it('carry the jsx-a11y standard in the React preset', () => {
+    const react = biomeTechConfig(defaultPolicy(), 'react') as { linter: { rules: Record<string, object> } }
+
+    expect(react.linter.rules.a11y).toMatchObject({
+      useAltText: 'error',
+      noStaticElementInteractions: 'error',
+      noNoninteractiveElementInteractions: 'error'
+    })
+    expect(JSON.stringify(biomeConfig(defaultPolicy()))).not.toContain('useAltText')
+  })
 })
 
 describe('biomeProjectConfig', () => {

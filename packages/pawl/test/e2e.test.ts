@@ -7,6 +7,7 @@ import { check, exitCode } from '../src/check.ts'
 import { BIOME_PRESET, BIOME_REACT_PRESET } from '../src/engines/biome.ts'
 import { applyInit, formatWritten, planAdd, planInit, recordBaseline } from '../src/init.ts'
 import { formatAgent } from '../src/output.ts'
+import { VERSION } from '../src/version.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 const json = (root: string, file: string): unknown => JSON.parse(readFileSync(join(root, file), 'utf8'))
@@ -60,7 +61,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET] })
     expect(json(root, 'package.json')).toMatchObject({
       scripts: { check: 'pawl check', fix: 'pawl fix' },
-      devDependencies: { '@santi020k/pawl': '^0.0.0' }
+      devDependencies: { '@santi020k/pawl': `^${VERSION}` }
     })
     expect(baselined).toBe(3)
     expect(json(root, BASELINE_FILE)).toEqual({
@@ -199,7 +200,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET], linter: { enabled: false } })
     expect(json(root, 'package.json')).toMatchObject({
       devDependencies: {
-        '@santi020k/pawl': '^0.0.0',
+        '@santi020k/pawl': `^${VERSION}`,
         '@biomejs/biome': '2.6.8',
         eslint: '^10.0.0',
         '@eslint/js': '^10.0.0'

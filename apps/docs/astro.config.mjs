@@ -68,7 +68,7 @@ export default defineConfig({
             { label: 'The policy', slug: 'guide/policy' },
             { label: 'Choosing tools', slug: 'guide/tools' },
             { label: 'Packs', slug: 'guide/packs' },
-            { label: 'Guards and Docker checks', slug: 'guide/guards' }
+            { label: 'Guards and file checks', slug: 'guide/guards' }
           ]
         },
         {

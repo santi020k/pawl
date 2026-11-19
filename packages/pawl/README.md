@@ -151,11 +151,12 @@ Counts are per file and rule, not per line, so moving code around does not break
 
 ## Rules
 
-The standard has 145 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome can enforce without a plugin is here, at the level it had.
+The standard has 169 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome or Oxlint can enforce without a plugin is here, at the level it had.
 
 - Rules for React, Qwik, Vue, Svelte and Turborepo apply only where that technology is used.
 - For each technology a project uses, pawl also turns on the rules Biome itself recommends for it: React, Next.js, React Native, Qwik, Solid, Vue, Svelte, Astro, Tailwind CSS, TanStack Query, Drizzle, Playwright and Turborepo.
-- Rules Biome still marks as unstable are off unless the policy is `strict`.
+- Rules their engine still marks as unstable are off unless the policy is `strict`.
+- 16 rules have no Biome equivalent. Oxlint enforces them, or ESLint where the project has the plugin's pack on. With Biome as the linter they do not run, and `pawl explain` says so.
 - An old name for the same check works too: `@typescript-eslint/no-unused-vars` sets `no-unused-vars`.
 
 `pawl explain <rule>` shows a rule's level in your repo and which engine rule enforces it.
@@ -190,7 +191,7 @@ Or in the policy: `engine: 'eslint'`, `formatter: 'prettier'`. Any mix works: Bi
 
 Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases.
 
-Oxlint enforces 112 of the standard's 145 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
+Oxlint enforces 131 of the standard's 169 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
 
 ## Packs
 
@@ -230,20 +231,25 @@ export default eslint()
 
 A guard is a set of checks for one library that needs no plugin. It switches on when the project depends on the library.
 
-| Guard                                          | On when the project uses                 | What it refuses                                                     |
-| ---------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------- |
-| `ai-keys`                                      | Any AI SDK below                         | An API key written in the code, and `dangerouslyAllowBrowser: true` |
-| `ai-sdk`                                       | `ai`, `@ai-sdk/*`                        | Imports of package internals                                        |
-| `openai`, `anthropic`                          | `openai`, `@anthropic-ai/sdk`            | Imports of package internals                                        |
-| `openai-agents`                                | `@openai/agents`                         | Internals, and agents from the base OpenAI client                   |
-| `google-genai`                                 | `@google/genai`, `@google/generative-ai` | Internals, and the legacy `@google/generative-ai` SDK               |
-| `langchain`, `llamaindex`, `mastra`, `autogen` | Those packages                           | Imports of package internals                                        |
-| `mcp`                                          | `@modelcontextprotocol/sdk`              | Imports of internal modules                                         |
-| `hono`                                         | `hono`                                   | Internals, and a hand-written wildcard CORS header                  |
-| `de-morgan`                                    | Opt-in: `pawl add de-morgan`             | `!(a && b)` and `!(a                                                |     | b)` |
+| Guard                                          | On when the project uses                 | What it refuses                                                                                                               |
+| ---------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `ai-keys`                                      | Any AI SDK below                         | An API key written in the code, and `dangerouslyAllowBrowser: true`                                                           |
+| `ai-sdk`                                       | `ai`, `@ai-sdk/*`                        | Imports of package internals                                                                                                  |
+| `openai`, `anthropic`                          | `openai`, `@anthropic-ai/sdk`            | Imports of package internals                                                                                                  |
+| `openai-agents`                                | `@openai/agents`                         | Internals, and agents from the base OpenAI client                                                                             |
+| `google-genai`                                 | `@google/genai`, `@google/generative-ai` | Internals, and the legacy `@google/generative-ai` SDK                                                                         |
+| `langchain`, `llamaindex`, `mastra`, `autogen` | Those packages                           | Imports of package internals                                                                                                  |
+| `mcp`                                          | `@modelcontextprotocol/sdk`              | Imports of internal modules                                                                                                   |
+| `hono`                                         | `hono`                                   | Internals, and a hand-written wildcard CORS header                                                                            |
+| `zod`                                          | `zod`                                    | `.optional().nullable()`, `z.object().strict()` or `.passthrough()`, `.trim()` after a length check, a method after `.meta()` |
+| `testing-library`                              | Any Testing Library package              | `await` on a synchronous `getBy` or `queryBy` query                                                                           |
+| `testing-library-debug`                        | Any Testing Library package              | `screen.debug()`, `prettyDOM()` and other debugging calls (warn)                                                              |
+| `testing-library-dom`                          | A framework's Testing Library package    | Imports of `@testing-library/dom` in place of the framework's one                                                             |
+| `nuxt`                                         | `nuxt`                                   | `process.client`, `process.server` and the other flags `import.meta` has                                                      |
+| `de-morgan`                                    | Opt-in: `pawl add de-morgan`             | `!(a && b)` and `!(a \|\| b)`                                                                                                 |
 
 - Import restrictions are enforced by the linter you use: Biome, Oxlint or ESLint.
-- Code patterns (keys, `dangerouslyAllowBrowser`, the CORS header, De Morgan) run in Biome as rules pawl writes itself, into `.pawl/rules/`. Commit that folder; `pawl sync` keeps it current. ESLint runs the same patterns as selectors.
+- Code patterns (keys, `dangerouslyAllowBrowser`, the CORS header, the Zod, Testing Library and Nuxt patterns, De Morgan) run in Biome as rules pawl writes itself, into `.pawl/rules/`. Commit that folder; `pawl sync` keeps it current. ESLint runs the same patterns as selectors.
 - With Oxlint as the only linter, the code patterns do not run. `pawl doctor` says so.
 - Your own `no-restricted-imports` and `no-restricted-syntax` options in the policy are merged with the guards.
 - Set a guard's level with `rules: { 'pawl/ai-keys': 'warn' }`, or `'off'`. `'no-restricted-imports': 'off'` turns every import guard off.
@@ -272,6 +278,16 @@ Pawl checks these itself, since no engine reads them. The checks run with `pawl 
 | `pawl/compose-no-version`                           | warn  | The obsolete top-level `version`                    |
 
 `pawl explain docker-no-root` shows a check and how to fix what it finds.
+
+## Markdown files
+
+Pawl also checks Markdown files itself, skipping code blocks, code spans, HTML comments and front matter.
+
+| Check                                 | Level | What it finds                                                  |
+| ------------------------------------- | ----- | -------------------------------------------------------------- |
+| `pawl/markdown-no-empty-links`        | error | A link with no destination: `[text]()` or `[text](#)`          |
+| `pawl/markdown-no-duplicate-headings` | off   | A heading with the same text as an earlier one in the document |
+| `pawl/markdown-no-missing-label-refs` | off   | A reference such as `[text][label]` with no `[label]:` line    |
 
 ## API
 

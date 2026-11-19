@@ -92,7 +92,7 @@ Status on 2026-11-18, checked against eslint-config-basic 3.6, Biome 2.6.8 and E
 | ------------ | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | ESLint       | The engine                                                                       | A linter you can choose, and the host for every optional pack                                   |
 | Biome        | Compatibility only: turns off overlapping ESLint rules                           | The default linter and formatter when you leave the choice to pawl                              |
-| Oxlint       | Compatibility only: turns off overlapping ESLint rules                           | A linter you can choose. It enforces 112 of the 145 rules; ESLint can host the packs next to it |
+| Oxlint       | Compatibility only: turns off overlapping ESLint rules                           | A linter you can choose. It enforces 162 of the 200 rules; ESLint can host the packs next to it |
 | Prettier     | Compatibility only                                                               | A formatter you can choose                                                                      |
 | TypeScript 7 | TypeScript files cannot be linted: typescript-eslint 8.73 does not load under it | Works through Biome, which does not use the compiler                                            |
 
@@ -122,7 +122,7 @@ The old config set 260 rules itself. Rules it inherited from plugin presets are 
 - "Strict only" rules are ones Biome still marks as unstable.
 - Of the 120 not in pawl, 7 were left out on purpose.
 
-The rule-by-rule list is in [docs/rules-from-eslint-config-basic.md](docs/rules-from-eslint-config-basic.md). Pawl also has rules the old config did not set: the catalog holds 145.
+The rule-by-rule list is in [docs/rules-from-eslint-config-basic.md](docs/rules-from-eslint-config-basic.md). Pawl also has rules the old config did not set: the catalog holds 200.
 
 ### Frameworks
 

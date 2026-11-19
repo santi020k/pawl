@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { check } from '../src/check.ts'
 import { BIOME_PRESET } from '../src/engines/biome.ts'
 import { eslintPlan } from '../src/engines/eslint.ts'
-import { checkOxlintConfig, oxlintConfig, oxlintCovers } from '../src/engines/oxlint.ts'
+import { checkOxlintConfig, oxlintConfig, oxlintCovers, runOxlint } from '../src/engines/oxlint.ts'
 import { OXLINT_RULES, OXLINT_VERSION } from '../src/engines/oxlint-rules.ts'
 import { applyInit, planInit } from '../src/init.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy.ts'
@@ -56,6 +56,23 @@ describe('oxlintConfig', () => {
     expect(config.rules['no-debugger']).toBe('off')
     expect(config.rules['react/rules-of-hooks']).toBeUndefined()
     expect(config.ignorePatterns).toContain('generated/**')
+  })
+
+  it('enforces the jsx-a11y standard in React projects and the promise rules everywhere, natively', () => {
+    const react = oxlintConfig(defaultPolicy(), { technologies: ['react'] }) as {
+      plugins: string[]
+      rules: Record<string, unknown>
+    }
+    const plain = oxlintConfig(defaultPolicy(), { technologies: [] }) as typeof react
+
+    expect(react.plugins).toEqual(expect.arrayContaining(['jsx-a11y', 'promise']))
+    expect(react.rules).toMatchObject({
+      'jsx-a11y/alt-text': 'error',
+      'jsx-a11y/no-static-element-interactions': ['error', expect.objectContaining({ allowExpressionValues: true })],
+      'promise/catch-or-return': 'warn'
+    })
+    expect(plain.plugins).not.toContain('jsx-a11y')
+    expect(plain.rules['promise/always-return']).toBe('warn')
   })
 })
 
@@ -114,6 +131,23 @@ describe('Oxlint as the linter, with the real Oxlint', { timeout: 60_000 }, () =
       'eqeqeq',
       'no-empty'
     ])
+  })
+
+  it('reports the accessibility and promise rules from the real Oxlint, without their ESLint plugins', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'src/a.jsx':
+        'export const A = () => <img src="a.png" />\nexport const load = () => { fetch(\'a\').then(r => { r.json() }) }\n'
+    })
+
+    link(root)
+    write(root, { '.oxlintrc.json': oxlintConfig(defaultPolicy(), { technologies: ['react'] }) })
+
+    const result = await runOxlint({ root, files: ['src/a.jsx'] })
+
+    expect(result.findings.map(finding => finding.rule)).toEqual(
+      expect.arrayContaining(['jsx-a11y/alt-text', 'promise/always-return', 'promise/catch-or-return'])
+    )
   })
 
   it('leaves to Oxlint what it enforces when ESLint runs next to it for the packs', async () => {

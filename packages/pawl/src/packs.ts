@@ -32,6 +32,11 @@ export interface Pack {
   auto?: 'linter' | 'linter-ts'
   /** Some of its rules need type information. */
   typeAware?: boolean
+  /**
+   * The catalog has rules from this plugin so Biome and Oxlint enforce them natively.
+   * ESLint takes those rules only when the pack is on, or when the policy names one.
+   */
+  withPack?: boolean
   /** Levels the standard sets on top of the preset. */
   rules: Record<string, Level>
 }
@@ -410,6 +415,7 @@ export const PACKS: readonly Pack[] = [
     prefix: 'jsx-a11y',
     when: [],
     preset: ['flatConfigs', 'recommended'],
+    withPack: true,
     rules: {}
   },
   {

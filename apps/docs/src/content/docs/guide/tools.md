@@ -24,7 +24,7 @@ Or in the [policy](/guide/policy/): `engine: 'eslint'`, `formatter: 'prettier'`.
 
 ## One standard for every engine
 
-The standard has 169 rules. They are named once, with ESLint's names, and pawl compiles them for the engine in use. Every finding still shows the engine's own rule name, so `biome check` and `eslint .` keep working on their own with the same config files.
+The standard has 200 rules. They are named once, with ESLint's names, and pawl compiles them for the engine in use. Every finding still shows the engine's own rule name, so `biome check` and `eslint .` keep working on their own with the same config files.
 
 ```txt
 $ pawl explain eqeqeq
@@ -52,7 +52,7 @@ Biome is pinned to one exact version, because pawl reads a report format Biome m
 
 ### Oxlint
 
-Oxlint enforces 131 of the standard's 169 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
+Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
 
 ### ESLint
 

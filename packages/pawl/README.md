@@ -166,12 +166,12 @@ Counts are per file and rule, not per line, so moving code around does not break
 
 ## Rules
 
-The standard has 169 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome or Oxlint can enforce without a plugin is here, at the level it had.
+The standard has 200 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome or Oxlint can enforce without a plugin is here, at the level it had.
 
 - Rules for React, Qwik, Vue, Svelte and Turborepo apply only where that technology is used.
 - For each technology a project uses, pawl also turns on the rules Biome itself recommends for it: React, Next.js, React Native, Qwik, Solid, Vue, Svelte, Astro, Tailwind CSS, TanStack Query, Drizzle, Playwright and Turborepo.
 - Rules their engine still marks as unstable are off unless the policy is `strict`.
-- 16 rules have no Biome equivalent. Oxlint enforces them, or ESLint where the project has the plugin's pack on. With Biome as the linter they do not run, and `pawl explain` says so.
+- 17 rules have no Biome equivalent. Oxlint enforces them, or ESLint where the project has the plugin's pack on. With Biome as the linter they do not run, and `pawl explain` says so.
 - An old name for the same check works too: `@typescript-eslint/no-unused-vars` sets `no-unused-vars`.
 
 `pawl explain <rule>` shows a rule's level in your repo and which engine rule enforces it.
@@ -208,7 +208,7 @@ Biome is pinned to one exact version, because pawl reads a report format Biome m
 
 Biome also lints and formats CSS and GraphQL, sorts `package.json` fields in the usual order, and parses Tailwind's at-rules in projects that use Tailwind.
 
-Oxlint enforces 131 of the standard's 169 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
+Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
 
 ## Packs
 

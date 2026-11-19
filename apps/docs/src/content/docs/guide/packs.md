@@ -28,6 +28,7 @@ pawl doctor                    # shows which packs are active
 - The rule packs and formats are opt-in: `pawl add` records them under `packs` in the policy.
 - A pack starts from the plugin's own recommended rules, then applies the standard's levels, then your policy's `rules`.
 - Where Biome is the linter, it keeps the rules it already enforces, so nothing is reported twice.
+- The `jsx-a11y` standard is in the catalog, so Biome and Oxlint enforce it without the plugin. Under ESLint its rules come with the pack, and are not reported as missing while the pack is off.
 - A rule the installed plugin does not have is left out and listed by `pawl doctor`, so an older plugin does not break the run.
 
 ## Starting from a plugin's preset

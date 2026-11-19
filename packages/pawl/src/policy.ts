@@ -45,6 +45,7 @@ const emptyPolicy = (): Policy => ({
   style: { ...DEFAULT_STYLE },
   rules: {},
   options: {},
+  biomeOptions: {},
   overrides: [],
   locked: [],
   ignore: [],
@@ -94,6 +95,8 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
 
     for (const [given, value] of Object.entries(input.options ?? {})) policy.options[canonicalName(given)] = [...value]
 
+    Object.assign(policy.biomeOptions, biomeOptionsOf(input.biomeOptions, source))
+
     for (const given of input.locked ?? []) {
       const name = canonicalName(given)
 
@@ -121,7 +124,56 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
     }
   }
 
+  requireLevels(policy)
+
   return policy
+}
+
+const BIOME_ONLY = 'biome:'
+
+/**
+ * Options for Biome by canonical rule name. Biome refuses options for a rule it does not have,
+ * so a name without a Biome rule is refused here, where the message can say which policy named it.
+ */
+const biomeOptionsOf = (
+  input: Record<string, Record<string, unknown>> | undefined,
+  source: string
+): Record<string, Record<string, unknown>> => {
+  const out: Record<string, Record<string, unknown>> = {}
+
+  for (const [given, value] of Object.entries(input ?? {})) {
+    const name = canonicalName(given)
+
+    if (!isRecord(value)) {
+      throw new Error(
+        `${source} gives "${given}" Biome options that are not an object. Use Biome's own shape: { ... }.`
+      )
+    }
+
+    if (!name.startsWith(BIOME_ONLY) && !getRule(name)?.biome) {
+      throw new Error(
+        `${source} gives Biome options to "${given}", which Biome does not enforce. Use \`options\` for ESLint and Oxlint, or name Biome's rule as biome:group/name.`
+      )
+    }
+
+    out[name] = { ...value }
+  }
+
+  return out
+}
+
+/** A rule only Biome has is off until the policy gives it a level, so options alone would do nothing. */
+const requireLevels = (policy: Policy): void => {
+  const named = [policy.biomeOptions, ...policy.overrides.map(override => override.biomeOptions)].flatMap(Object.keys)
+  const leveled = (name: string): boolean =>
+    name in policy.rules || policy.overrides.some(override => name in override.rules && name in override.biomeOptions)
+  const missing = [...new Set(named)].filter(name => name.startsWith(BIOME_ONLY) && !leveled(name))
+
+  if (missing.length > 0) {
+    throw new Error(
+      `The policy gives Biome options to ${missing.join(', ')} but no level. Add ${missing.length === 1 ? 'it' : 'them'} to \`rules\`, for example '${missing[0]}': 'error'.`
+    )
+  }
 }
 
 /**
@@ -156,7 +208,12 @@ const mergeOverride = (
     Object.entries(override.options ?? {}).map(([given, value]) => [canonicalName(given), [...value]])
   )
 
-  return { files: [...override.files], rules, options }
+  return {
+    files: [...override.files],
+    rules,
+    options,
+    biomeOptions: biomeOptionsOf(override.biomeOptions, `${source} (overrides)`)
+  }
 }
 
 /** The policy with no config at all. */

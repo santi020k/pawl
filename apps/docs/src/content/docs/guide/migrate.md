@@ -24,7 +24,7 @@ Then it runs `init`, which installs the tools and records the baseline.
 
 - A rule at the same level as the standard, or as a pack sets it, is not written down.
 - A rule at a different level is kept at your level, under `rules`. Delete the line to take the standard.
-- Options that differ go under `options`. ESLint and Oxlint take them. Biome uses pawl's own.
+- Options that differ go under `options`. ESLint and Oxlint take them. Biome keeps the standard's; set `biomeOptions` by hand where you need the same in Biome.
 - Formatting rules are dropped: the formatter does their job. Their quotes, semicolons, indent and line width become the `style`.
 - Import ordering rules are dropped: import sorting does their job.
 - When your config follows a plugin's own recommended preset, the pack starts from it, as in `unicorn/recommended`.

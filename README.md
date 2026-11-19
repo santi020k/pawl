@@ -267,7 +267,6 @@ A pack can also start from the plugin's own preset: `unicorn/recommended` is the
 ## Not built yet
 
 - Oxlint's type-aware rules. They run through a separate component pawl does not drive.
-- Rule options for Biome. `options` in the policy reach ESLint and Oxlint; Biome runs with pawl's own.
 - Code-pattern guards under Oxlint alone. They run in Biome and in ESLint. Oxlint's own plugin system is in alpha and crashed where pawl was built, so it is not used yet.
 - Rewriting the larger plugins. Pawl's own rules match shapes of code; plugins such as unicorn, regexp or typescript-eslint analyse it, and stay optional packs.
 - Linting an OpenAPI document itself. The `swagger` pack checks the NestJS decorators that produce it.

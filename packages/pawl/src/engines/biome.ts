@@ -104,34 +104,57 @@ const toGroups = (entries: readonly [string, Json][]): JsonObject => {
   return rules
 }
 
+/** The options the policy gives a rule for Biome, by the rule's neutral name. */
+type OptionsFor = (name: string) => Record<string, unknown> | undefined
+
 /** One rule as Biome takes it, or undefined when Biome has no such rule or it is for another technology. */
-const biomeEntry = (name: string, level: Level, include: (tag: RuleTag) => boolean): [string, Json] | undefined => {
-  if (name.startsWith(BIOME_PREFIX)) return [name.slice(BIOME_PREFIX.length), level]
+const biomeEntry = (
+  name: string,
+  level: Level,
+  include: (tag: RuleTag) => boolean,
+  optionsFor: OptionsFor
+): [string, Json] | undefined => {
+  const def = name.startsWith(BIOME_PREFIX) ? undefined : getRule(name)
+  const biomeRule = name.startsWith(BIOME_PREFIX) ? name.slice(BIOME_PREFIX.length) : def?.biome
 
-  const def = getRule(name)
+  if (!biomeRule || (def && !include(def.tag))) return undefined
 
-  if (!def?.biome || !include(def.tag)) return undefined
+  // The policy's options replace the standard's, as they do for ESLint.
+  const options = level === 'off' ? undefined : ((optionsFor(name) ?? def?.options?.biome) as JsonObject | undefined)
 
-  const options = level === 'off' ? undefined : (def.options?.biome as JsonObject | undefined)
-
-  return [def.biome, options ? { level, options } : level]
+  return [biomeRule, options ? { level, options } : level]
 }
 
 /** The Biome entries of a list of rule levels, leaving out what Biome does not have. */
-const biomeEntries = (levels: Iterable<[string, Level]>, include: (tag: RuleTag) => boolean): [string, Json][] =>
+const biomeEntries = (
+  levels: Iterable<[string, Level]>,
+  include: (tag: RuleTag) => boolean,
+  optionsFor: OptionsFor
+): [string, Json][] =>
   [...levels].flatMap(([name, level]) => {
-    const entry = biomeEntry(name, level, include)
+    const entry = biomeEntry(name, level, include, optionsFor)
 
     return entry ? [entry] : []
   })
 
 const lintRules = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObject =>
-  toGroups(biomeEntries(effectiveRules(policy), include))
+  toGroups(biomeEntries(effectiveRules(policy), include, name => policy.biomeOptions[name]))
 
-/** The policy's overrides as Biome's: one per override that sets a rule Biome has. */
+/** The policy's overrides as Biome's: one per override that sets a rule Biome has, or gives one options. */
 const biomeOverrides = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObject[] =>
   policy.overrides.flatMap(override => {
-    const entries = biomeEntries(overrideRules(override), include)
+    const levels = effectiveRules(policy)
+    // A rule the override gives options but no level keeps the level it has, unless that is off.
+    const optionsOnly = Object.keys(override.biomeOptions).flatMap((name): [string, Level][] => {
+      const level = levels.get(name)
+
+      return name in override.rules || level === undefined || level === 'off' ? [] : [[name, level]]
+    })
+    const entries = biomeEntries(
+      [...overrideRules(override), ...optionsOnly],
+      include,
+      name => override.biomeOptions[name] ?? policy.biomeOptions[name]
+    )
 
     return entries.length > 0
       ? [{ includes: override.files.map(toEngineGlob), linter: { rules: toGroups(entries) } }]
@@ -252,7 +275,7 @@ export const BIOME_DOMAINS: Record<Technology, string> = {
  * Biome's recommended rules for it, then the levels the pawl catalog sets.
  */
 export const biomeTechConfig = (policy: Policy, technology: Technology): JsonObject => {
-  const rules = lintRules({ ...policy, rules: {} }, tag => tag === technology)
+  const rules = lintRules({ ...policy, rules: {}, biomeOptions: {} }, tag => tag === technology)
 
   return {
     // Tailwind's own at-rules, such as @apply and @theme, are errors to Biome's CSS parser otherwise.

@@ -116,7 +116,8 @@ Then run `pawl sync`. `pawl.config.js`, `.mjs` and `.json` work too.
 | `maxWarnings`    | Fail the check on more new warnings than this. A later layer can only lower it.                |
 | `style`          | `indent`, `lineWidth`, `quotes`, `semicolons`, `trailingCommas`, `arrowParens`.                |
 | `rules`          | Levels by rule name: `off`, `warn` or `error`.                                                 |
-| `options`        | Options by rule name, in ESLint's shape. ESLint and Oxlint take them; Biome uses pawl's own.   |
+| `options`        | Options by rule name, in ESLint's shape. ESLint and Oxlint take them.                          |
+| `biomeOptions`   | Options by rule name, in Biome's shape. Only Biome takes them.                                 |
 | `overrides`      | Levels and options for some files only: `[{ files: ['*.test.ts'], rules: { ... } }]`.          |
 | `packs`          | Optional packs to switch on. `unicorn/recommended` starts a pack from the plugin's own preset. |
 | `locked`         | Rules that later layers may tighten but not loosen.                                            |

@@ -103,6 +103,13 @@
         "type": "array"
       }
     },
+    "biomeOptions": {
+      "type": "object",
+      "description": "Rule options in Biome's shape, by the same names as `rules`. Only Biome takes them.",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
     "overrides": {
       "type": "array",
       "description": "Rule levels and options for some files only. Later entries win.",
@@ -131,6 +138,13 @@
             "description": "Rule options in ESLint's shape, by the same names as `rules`. ESLint and Oxlint take them.",
             "additionalProperties": {
               "type": "array"
+            }
+          },
+          "biomeOptions": {
+            "type": "object",
+            "description": "Rule options in Biome's shape, by the same names as `rules`. Only Biome takes them.",
+            "additionalProperties": {
+              "type": "object"
             }
           }
         }

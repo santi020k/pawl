@@ -41,6 +41,12 @@ const options: JsonSchema = {
   additionalProperties: { type: 'array' }
 }
 
+const biomeOptions: JsonSchema = {
+  type: 'object',
+  description: "Rule options in Biome's shape, by the same names as `rules`. Only Biome takes them.",
+  additionalProperties: { type: 'object' }
+}
+
 const runtime: JsonSchema = { type: 'string', enum: RUNTIMES }
 
 /**
@@ -84,6 +90,7 @@ const PROPERTIES: Record<keyof PolicyInput, JsonSchema> = {
   },
   rules,
   options,
+  biomeOptions,
   overrides: {
     type: 'array',
     description: 'Rule levels and options for some files only. Later entries win.',
@@ -94,7 +101,8 @@ const PROPERTIES: Record<keyof PolicyInput, JsonSchema> = {
       properties: {
         files: strings('Glob patterns of the files. A pattern without a slash matches at any depth.'),
         rules,
-        options
+        options,
+        biomeOptions
       }
     }
   },

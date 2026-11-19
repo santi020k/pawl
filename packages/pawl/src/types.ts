@@ -59,6 +59,8 @@ export interface OverrideInput {
   rules?: Record<string, Level>
   /** Rule options for those files, in ESLint's shape. ESLint and Oxlint take them. */
   options?: Record<string, readonly unknown[]>
+  /** Rule options for those files, in Biome's shape. Only Biome takes them. */
+  biomeOptions?: Record<string, Record<string, unknown>>
 }
 
 /** What a user or a company writes in `pawl.config.ts` or a policy package. */
@@ -85,9 +87,14 @@ export interface PolicyInput {
   rules?: Record<string, Level>
   /**
    * Options for rules, in ESLint's own shape, by the same names as `rules`.
-   * ESLint and Oxlint take them. Biome has its own option shapes and ignores them.
+   * ESLint and Oxlint take them. Biome has its own option shapes: see `biomeOptions`.
    */
   options?: Record<string, readonly unknown[]>
+  /**
+   * Options for Biome's rules, in Biome's own shape, by the same names as `rules`.
+   * They replace the options the standard gives the rule. Only Biome takes them.
+   */
+  biomeOptions?: Record<string, Record<string, unknown>>
   /** Rule levels and options for some files only, such as tests. Later entries win. */
   overrides?: readonly OverrideInput[]
   /** Rules that later layers may tighten but never loosen. */
@@ -112,6 +119,7 @@ export interface Override {
   files: string[]
   rules: Record<string, Level>
   options: Record<string, unknown[]>
+  biomeOptions: Record<string, Record<string, unknown>>
 }
 
 /** A later layer tried to loosen a locked rule. The stricter level was kept. */
@@ -133,6 +141,8 @@ export interface Policy {
   rules: Record<string, Level>
   /** Options by rule, in ESLint's shape. */
   options: Record<string, unknown[]>
+  /** Options by rule, in Biome's shape. */
+  biomeOptions: Record<string, Record<string, unknown>>
   overrides: Override[]
   locked: string[]
   ignore: string[]

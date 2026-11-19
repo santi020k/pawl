@@ -33,8 +33,13 @@ describe('overrides in the policy', () => {
     ])
 
     expect(policy.overrides).toEqual([
-      { files: ['scripts/**'], rules: { 'no-console': 'off' }, options: {} },
-      { files: ['*.test.ts'], rules: { 'no-unused-vars': 'off' }, options: { 'no-console': [{ allow: ['warn'] }] } }
+      { files: ['scripts/**'], rules: { 'no-console': 'off' }, options: {}, biomeOptions: {} },
+      {
+        files: ['*.test.ts'],
+        rules: { 'no-unused-vars': 'off' },
+        options: { 'no-console': [{ allow: ['warn'] }] },
+        biomeOptions: {}
+      }
     ])
   })
 

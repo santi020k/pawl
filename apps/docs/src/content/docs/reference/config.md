@@ -117,7 +117,7 @@ Levels by rule name: `'off'`, `'warn'` or `'error'`.
 
 ### options
 
-Rule options in ESLint's shape, by the same names as `rules`. ESLint and Oxlint take them. Biome ignores them and uses the options in pawl's catalog.
+Rule options in ESLint's shape, by the same names as `rules`. ESLint and Oxlint take them. Biome has its own option shapes, so it takes `biomeOptions` instead.
 
 ```ts
 export default definePolicy({
@@ -126,9 +126,29 @@ export default definePolicy({
 })
 ```
 
+### biomeOptions
+
+Rule options in Biome's shape, by the same names as `rules`. Only Biome takes them.
+
+```ts
+export default definePolicy({
+  rules: { 'biome:complexity/noExcessiveCognitiveComplexity': 'error' },
+  biomeOptions: {
+    'no-unused-vars': { ignoreRestSiblings: false },
+    'biome:complexity/noExcessiveCognitiveComplexity': { maxAllowedComplexity: 20 }
+  }
+})
+```
+
+- The options replace the ones the standard gives the rule; they are not merged with them. A later layer replaces an earlier one's in the same way.
+- A rule that is off gets no options.
+- A `biome:group/name` rule is off until `rules` gives it a level, so options without a level are refused.
+- A name Biome does not enforce is refused. Use `options` for it.
+- Biome checks the options itself. Options it does not accept stop the check as a setup problem.
+
 ### overrides
 
-Levels and options for some files only. Each entry has `files`, a list of glob patterns, and `rules` and `options` in the same shape as the top level.
+Levels and options for some files only. Each entry has `files`, a list of glob patterns, and `rules`, `options` and `biomeOptions` in the same shape as the top level.
 
 ```ts
 export default definePolicy({
@@ -138,7 +158,8 @@ export default definePolicy({
 
 - Biome gets an entry in its `overrides`, Oxlint one in its `overrides`, and ESLint a config entry after the base and the packs.
 - In TypeScript files, a core rule's typescript-eslint twin follows it, as at the top level.
-- An entry with `options` but no level for a rule gives the options to the rule at the level it has.
+- An entry with `options` or `biomeOptions` but no level for a rule gives the options to the rule at the level it has.
+- In Biome, an entry that changes only a rule's level keeps the options the top level gives it.
 - Rules for a technology the project does not use are left out, as at the top level.
 - A locked rule keeps its stricter level in an override too, and the attempt is reported.
 - Pawl's own Docker checks follow the top-level levels only.

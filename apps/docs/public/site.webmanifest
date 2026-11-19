@@ -1,0 +1,13 @@
+{
+  "name": "pawl",
+  "short_name": "pawl",
+  "description": "Fast guardrails for AI-written code. One standard, for the linter and formatter you choose.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#0B0D0C",
+  "theme_color": "#0B0D0C",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

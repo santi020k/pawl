@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview"
+    "build": "santi-og generate && astro build",
+    "og": "santi-og generate",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "doctor": "astro-doctor"
   },
   "dependencies": {
     "@astrojs/starlight": "catalog:",
@@ -14,5 +17,13 @@
     "@fontsource-variable/geist-mono": "catalog:",
     "@santi020k/lumen-astro": "catalog:",
     "astro": "catalog:"
+  },
+  "devDependencies": {
+    "@astrojs/check": "catalog:",
+    "@santi020k/astro-doctor": "catalog:",
+    "@santi020k/og": "catalog:",
+    "starlight-links-validator": "catalog:",
+    "typescript": "catalog:astro-check",
+    "wrangler": "catalog:"
   }
 }

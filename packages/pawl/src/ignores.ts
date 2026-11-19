@@ -33,6 +33,8 @@ export const DEFAULT_IGNORES = [
   'package-lock.json',
   'bun.lock',
   'bun.lockb',
+  // Changesets parses the front matter of these files, which a Markdown formatter would rewrite.
+  '.changeset',
   // Rules and skills that AI coding tools keep for themselves.
   '.agent',
   '.agents',

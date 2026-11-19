@@ -24,6 +24,7 @@
       "!**/package-lock.json",
       "!**/bun.lock",
       "!**/bun.lockb",
+      "!**/.changeset",
       "!**/.agent",
       "!**/.agents",
       "!**/.aider*",

@@ -60,6 +60,7 @@ describe('the shared ignore list', () => {
       'tsconfig.tsbuildinfo',
       'pnpm-lock.yaml',
       'packages/a/bun.lock',
+      '.changeset/brave-cats.md',
       '.claude/settings.json',
       '.cursor/rules/a.md',
       '.aider.chat.history.md',

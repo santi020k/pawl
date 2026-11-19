@@ -4,8 +4,8 @@ title: Changelog
 description: Where pawl's releases and release notes are published.
 ---
 
-Pawl is early. It is not published to npm yet, the package is still at version `0.0.0`, and the API may change before the first release.
+Every release of `@santi020k/pawl` is recorded in [`packages/pawl/CHANGELOG.md`](https://github.com/santi020k/pawl/blob/main/packages/pawl/CHANGELOG.md), written from the changesets merged since the release before it.
 
-Release notes will be published with each release on [GitHub Releases](https://github.com/santi020k/pawl/releases).
+The same notes are published with each release on [GitHub Releases](https://github.com/santi020k/pawl/releases), and each release is tagged `v<version>`.
 
-Until then, the [repository](https://github.com/santi020k/pawl) is the record of what changed.
+Pawl is before 1.0, so a minor release may still change the API. Read the notes before you upgrade.

@@ -71,7 +71,7 @@ const agentFiles = [
   },
   {
     value: 'agents',
-    label: 'AGENTS.md',
+    label: 'AGENTS.md (Codex and others)',
     language: 'markdown',
     code: `## Code quality
 
@@ -103,9 +103,10 @@ export default definePolicy({
   },
   {
     value: 'company',
-    label: '@acme/pawl-policy',
+    label: 'Company policy package',
     language: 'js',
-    code: `// @acme/pawl-policy/index.js
+    code: `// index.js of @acme/pawl-policy: an npm package your company
+// publishes once (@acme stands for your own scope). Every repo extends it.
 export default {
   strict: true,
   rules: { 'no-console': 'error' },
@@ -164,6 +165,11 @@ const features = [
     title: 'Monorepo aware',
     body: 'pnpm, npm and yarn workspaces, Turborepo and Nx. React rules apply in the React app and nowhere else.',
     href: '/guide/monorepos/'
+  },
+  {
+    title: 'Works with Quality',
+    body: 'Quality runs every code-quality tool in a repo, in any language, with one command. It leaves the JavaScript engines to pawl and its baseline, and runs pawl as one of its tasks.',
+    href: '/guide/quality/'
   },
   {
     title: 'Zero dependencies',
@@ -324,7 +330,8 @@ const engines = [
             <p>
               <code>--format agent</code> prints one compact JSON line per finding, with the fix, and nothing at all when there is
               nothing to do. <code>pawl init --agents</code> adds a Claude Code hook that runs it after every edit, a Cursor hook
-              that fixes what it can, and instructions in <code>AGENTS.md</code> for every agent.
+              that fixes what it can, and instructions in <code>AGENTS.md</code>, which Codex and most other agents read on their
+              own.
             </p>
             <ButtonLink href="/guide/agents/" variant="inline" showArrow>Set up agents</ButtonLink>
           </div>
@@ -376,7 +383,8 @@ const engines = [
             <h2 id="policy-title">One policy for every repo.</h2>
             <p>
               A repo on the default standard needs no config file. To change something, add <code>pawl.config.ts</code>. To set the
-              standard for a whole company, publish a policy package and lock the rules that matter.
+              standard for a whole company, publish a small npm package with the shared policy, such as
+              <code>@acme/pawl-policy</code> under your own scope, and lock the rules that matter.
             </p>
             <ButtonLink href="/guide/policy/" variant="inline" showArrow>Read about policies</ButtonLink>
           </div>

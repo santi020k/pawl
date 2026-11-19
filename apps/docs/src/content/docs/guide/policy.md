@@ -10,7 +10,7 @@ A repo on the default standard needs no config file. To change something, add `p
 import { definePolicy } from '@santi020k/pawl'
 
 export default definePolicy({
-  extends: '@acme/pawl-policy',
+  extends: '@acme/pawl-policy', // your company's shared policy package, see below
   strict: true,
   rules: { 'no-console': 'off' },
   ignore: ['generated/**']
@@ -53,7 +53,7 @@ The default style is 2 spaces, single quotes, no semicolons, no trailing commas 
 
 ## A company standard
 
-Publish a package whose default export is a policy:
+Publish a package whose default export is a policy. In these examples it is called `@acme/pawl-policy`: `@acme` stands for your company's npm scope, and the name is up to you. It is an ordinary package, public or private, that every repo installs as a dev dependency and names in `extends`.
 
 ```js title="@acme/pawl-policy/index.js"
 export default {

@@ -76,6 +76,7 @@ export default defineConfig({
           items: [
             { label: 'Coding agents', slug: 'guide/agents' },
             { label: 'CI and hooks', slug: 'guide/ci' },
+            { label: 'With Quality', slug: 'guide/quality' },
             { label: 'Monorepos', slug: 'guide/monorepos' },
             { label: 'Troubleshooting', slug: 'guide/troubleshooting' }
           ]

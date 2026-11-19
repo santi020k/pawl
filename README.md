@@ -45,8 +45,13 @@ pnpm test         # unit and end-to-end tests, against the real Biome and ESLint
 pnpm typecheck
 pnpm check        # pawl checking its own code
 pnpm fix
-pnpm ok           # everything above, as CI would run it
+pnpm ok           # everything above plus spelling, unused code and generated files, as CI runs it
+pnpm hooks:install  # Git hooks from quality.yml (needs the Quality CLI)
+pnpm commit       # a Conventional Commit, through Commitprompt
+pnpm changeset    # record a user-visible change for the next release
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the release process and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 After changing a rule or the style, regenerate the Biome presets and the rules page of the docs:
 

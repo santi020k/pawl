@@ -1,0 +1,51 @@
+version: "0.2"
+# The docs and code use both British and American spellings.
+language: en,en-GB
+words:
+  - agentchat
+  - astrojs
+  - baselined
+  - biomejs
+  - bunx
+  - classlist
+  - commitprompt
+  - Containerfile
+  - darraghor
+  - distroless
+  - Dockerfiles
+  - fontsource
+  - genai
+  - heredocs
+  - Hono
+  - Instantiator
+  - isnan
+  - knip
+  - langchain
+  - lede
+  - linejoin
+  - llamaindex
+  - miterlimit
+  - modelcontextprotocol
+  - nonroot
+  - noopener
+  - noreferrer
+  - opencontainers
+  - Qwik
+  - santi
+  - santi020k
+  - Slidev
+  - stylesheet
+  - textnodes
+  - Titlebar
+  - topsecret
+  - Turborepo
+  - vdom
+  - vitesse
+  - Vitest
+  - WCAG
+ignorePaths:
+  - node_modules
+  - dist
+  - coverage
+  - pnpm-lock.yaml
+  - .pawl

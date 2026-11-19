@@ -67,7 +67,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preset": "node scripts/build-preset.ts",
-    "docs:rules": "node scripts/build-rules-doc.ts",
+    "docs:rules": "node scripts/build-rules-doc.ts && biome format --write ../../apps/docs/src/content/docs/reference/rules.md",
     "oxlint-rules": "node scripts/build-oxlint-rules.ts"
   },
   "peerDependencies": {

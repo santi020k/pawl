@@ -29,7 +29,7 @@ Quality (`quality.yml`) runs `pnpm ok` as the repository check and owns the Git 
 - Pawl never deletes or overwrites a user's existing tool config. `migrate` is the one exception to overwriting: it moves the old ESLint config aside under a new name first.
 - The policy carries rule options in ESLint's shape (`options`). They go to ESLint and Oxlint only; Biome options live in the catalog.
 - A guard in `src/guards.ts` is data only: imports and code patterns to refuse for one library. Every entry needs a message that says what to do instead. A code pattern has two forms that must match the same code: an ESLint selector and a GritQL pattern, which pawl writes into the project's `.pawl/rules/` for Biome. Test both against the real engines.
-- The Docker checks in `src/docker.ts` are the only rules pawl implements itself, because no engine reads those files. Keep each one a plain line scan with a test for a file that is wrong and one that is fine.
+- The Docker checks in `src/docker.ts` and the Markdown checks in `src/markdown.ts` are the only rules pawl implements itself as line scans, because no engine reads those files. Keep each one a plain line scan that skips what is not prose or instructions, with a test for a file that is wrong and one that is fine. They honour the same ignores as the engines (`src/ignores.ts`).
 - A new pack needs its plugin as an optional peer in `packages/pawl/package.json`, and a run against the real plugin before it ships.
 - Every engine failure must reach the user as a setup problem with exit code 2. Never report success when part of the check did not run.
 - Do not name a file `biome.json` anywhere but a project root: Biome treats each one as a nested configuration.

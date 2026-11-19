@@ -18,6 +18,8 @@ export default defineConfig({
       customCss: ['./src/styles/tokens.css', './src/styles/starlight.css'],
       // Starlight already emits og:site_name and twitter:card. The per-page og:image comes from the Head override.
       head: [
+        // For browsers without SVG favicons. Chrome and Firefox still pick the SVG, since this one names its size.
+        { tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '32x32' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
         { tag: 'link', attrs: { rel: 'manifest', href: '/site.webmanifest' } },
         { tag: 'meta', attrs: { name: 'theme-color', content: '#0B0D0C', media: '(prefers-color-scheme: dark)' } },

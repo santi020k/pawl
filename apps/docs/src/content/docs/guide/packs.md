@@ -49,5 +49,5 @@ An optional pack runs through ESLint next to Biome, or with ESLint as the only l
 ```js title="eslint.config.js"
 import { eslint } from '@santi020k/pawl'
 
-export default eslint()
+export default eslint({ root: import.meta.dirname })
 ```

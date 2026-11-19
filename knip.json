@@ -14,6 +14,7 @@
       "ignoreDependencies": ["eslint", "prettier"]
     },
     "apps/docs": {
+      "entry": ["og.config.mjs"],
       "ignoreDependencies": ["@fontsource-variable/geist", "@fontsource-variable/geist-mono"]
     }
   }

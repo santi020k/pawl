@@ -12,6 +12,7 @@ words:
   - Containerfile
   - darraghor
   - distroless
+  - esbuild
   - Dockerfiles
   - fontsource
   - genai
@@ -43,6 +44,7 @@ words:
   - vitesse
   - Vitest
   - WCAG
+  - workerd
 ignorePaths:
   - node_modules
   - dist

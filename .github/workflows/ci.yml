@@ -50,5 +50,9 @@ jobs:
       - name: Validate repository
         run: pnpm ok
 
+      - name: Diagnose the docs site with Astro Doctor
+        if: matrix.node == 22
+        run: pnpm --filter @santi020k/pawl-docs run doctor
+
       - name: Install the packed package like a consumer
         run: pnpm run check:packed-install

@@ -13,8 +13,6 @@ import { type EngineRun, type RunOptions } from './biome.ts'
 import { oxlintCovers } from './oxlint.ts'
 import { EngineError, runNode } from './run.ts'
 
-export { ESLINT_CONFIG_FILES }
-
 /** An ESLint flat config object. Typed loosely so pawl does not depend on ESLint's types. */
 export type FlatConfig = Record<string, unknown>
 

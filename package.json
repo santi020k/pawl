@@ -15,12 +15,28 @@
     "typecheck": "turbo run typecheck",
     "check": "pnpm --filter @santi020k/pawl run build && node packages/pawl/dist/cli.js check",
     "fix": "pnpm --filter @santi020k/pawl run build && node packages/pawl/dist/cli.js fix",
-    "ok": "turbo run build typecheck test && node packages/pawl/dist/cli.js check",
+    "lint:spell": "cspell . --gitignore --cache --no-progress --show-suggestions",
+    "lint:knip": "knip",
+    "check:generated": "pnpm --filter @santi020k/pawl run preset && pnpm --filter @santi020k/pawl run docs:rules && git diff --exit-code -- packages/pawl/presets apps/docs/src/content/docs/reference/rules.md",
+    "check:packed-install": "node scripts/check-packed-install.ts",
+    "ok": "turbo run build typecheck test && node packages/pawl/dist/cli.js check && pnpm run lint:spell && pnpm run lint:knip && pnpm run check:generated",
     "docs:dev": "pnpm --filter @santi020k/pawl-docs run dev",
-    "docs:build": "pnpm --filter @santi020k/pawl-docs run build"
+    "docs:build": "pnpm --filter @santi020k/pawl-docs run build",
+    "commit": "commitprompt",
+    "hooks:install": "quality hooks install",
+    "pre-commit": "pnpm run check && pnpm run lint:spell",
+    "pre-push": "pnpm run ok",
+    "changeset": "changeset",
+    "version-packages": "changeset version && pnpm install --lockfile-only",
+    "release": "turbo run build test && node packages/pawl/dist/cli.js check && changeset publish"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@changesets/changelog-github": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@santi020k/commitprompt": "catalog:",
+    "cspell": "catalog:",
+    "knip": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:"
   }

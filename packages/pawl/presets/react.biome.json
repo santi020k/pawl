@@ -16,6 +16,9 @@
         "useHookAtTopLevel": "error",
         "useJsxKeyInIterable": "error"
       },
+      "nursery": {
+        "noReactObjectTypeAsDefaultProp": "off"
+      },
       "security": {
         "noBlankTarget": "warn",
         "noDangerouslySetInnerHtml": "warn"

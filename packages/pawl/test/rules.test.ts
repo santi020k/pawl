@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { BIOME_VERSION } from '../src/engines/biome.ts'
+import { OXLINT_RULES } from '../src/engines/oxlint-rules.ts'
 import { canonicalName, defaultLevel, findRule, getRule, getRuleByBiome, RULES } from '../src/rules.ts'
 import { PACKAGE_ROOT } from './helpers.ts'
 
@@ -34,6 +35,12 @@ describe('rule catalog', () => {
     })
 
     expect(missing.map(rule => rule.biome)).toEqual([])
+  })
+
+  it('lists a rule Biome has no equivalent for only when Oxlint enforces it', () => {
+    const unenforced = RULES.filter(rule => !rule.biome && rule.tag !== 'pawl' && OXLINT_RULES[rule.name] === undefined)
+
+    expect(unenforced.map(rule => rule.name)).toEqual([])
   })
 
   it('pins the Biome version it was tested with', () => {

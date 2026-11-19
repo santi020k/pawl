@@ -80,6 +80,40 @@ describe('eslintPlan', () => {
     expect(plan.notEnforced).toEqual([{ rule: 'vue/no-v-html', needs: 'eslint-plugin-vue' }])
   })
 
+  it('next to Biome, asks for no plugin for a rule Biome lacks unless the policy names it', async () => {
+    const quiet = await eslintPlan({
+      root: withPlugins(),
+      policy: defaultPolicy(),
+      biomeActive: true,
+      typescript: false
+    })
+
+    expect(quiet.notEnforced).toEqual([])
+    expect(JSON.stringify(quiet.config)).not.toContain('unicorn/prefer-spread')
+
+    const named = await eslintPlan({
+      root: withPlugins(),
+      policy: mergeLayers([{ source: 'repo', input: { rules: { 'unicorn/prefer-spread': 'error' } } }]),
+      biomeActive: true,
+      typescript: false
+    })
+
+    expect(named.notEnforced).toEqual([{ rule: 'unicorn/prefer-spread', needs: 'eslint-plugin-unicorn' }])
+  })
+
+  it('leaves to Oxlint the rules Oxlint enforces and Biome does not', async () => {
+    const plan = await eslintPlan({
+      root: withPlugins(),
+      policy: defaultPolicy(),
+      biomeActive: false,
+      oxlintActive: true,
+      typescript: false
+    })
+
+    expect(plan.coveredByBiome).toEqual(expect.arrayContaining(['unicorn/prefer-spread', 'promise/always-return']))
+    expect(plan.notEnforced.map(item => item.rule)).not.toContain('unicorn/prefer-spread')
+  })
+
   it('skips TypeScript and React rules for projects without them', async () => {
     const plan = await eslintPlan({
       root: withPlugins(),

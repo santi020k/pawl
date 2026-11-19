@@ -10,6 +10,7 @@ import { getDockerRule } from './docker.ts'
 import { BIOME_VERSION, biomeInstalled, checkBiomeConfig } from './engines/biome.ts'
 import { eslintInstalled, eslintPlanFor } from './engines/eslint.ts'
 import { checkOxlintConfig, OXLINT_CONFIG_FILE, oxlintInstalled } from './engines/oxlint.ts'
+import { OXLINT_RULES } from './engines/oxlint-rules.ts'
 import { checkPrettierConfig, prettierInstalled } from './engines/prettier.ts'
 import { activeGuards } from './guards.ts'
 import {
@@ -27,6 +28,7 @@ import {
   planRuleFiles,
   recordBaseline
 } from './init.ts'
+import { getMarkdownRule } from './markdown.ts'
 import { describeMigration, planMigrate } from './migrate.ts'
 import { format, type OutputFormat } from './output.ts'
 import { effectiveRules, findConfigFile, loadPolicy } from './policy.ts'
@@ -408,19 +410,21 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
 
   const def = findRule(query)
   const docker = getDockerRule(query) ?? getDockerRule(`pawl/${query}`)
+  const markdown = getMarkdownRule(query) ?? getMarkdownRule(`pawl/${query}`)
+  const own = docker ?? markdown
 
-  if (!def && docker) {
-    const level = (await loadPolicy(root)).rules[docker.name] ?? docker.level
+  if (!def && own) {
+    const level = (await loadPolicy(root)).rules[own.name] ?? own.level
 
     out(
       [
-        docker.name,
-        `  ${docker.summary}`,
+        own.name,
+        `  ${own.summary}`,
         '',
-        `  Level here:  ${level}${level === docker.level ? '' : `; the standard has ${docker.level}`}`,
-        '  Checked by:  pawl, in Dockerfiles and Compose files',
+        `  Level here:  ${level}${level === own.level ? '' : `; the standard has ${own.level}`}`,
+        `  Checked by:  pawl, in ${docker ? 'Dockerfiles and Compose files' : 'Markdown files'}`,
         '',
-        `  How to fix:  ${docker.advice}`
+        `  How to fix:  ${own.advice}`
       ].join('\n')
     )
 
@@ -454,6 +458,7 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
     lines.push(
       `  Biome:       ${def.biome ? `${def.biome}  https://biomejs.dev/linter/rules/${kebab(def.biome.split('/')[1] ?? '')}` : 'no equivalent'}`
     )
+    lines.push(`  Oxlint:      ${OXLINT_RULES[def.name] ?? 'no equivalent'}`)
     lines.push(`  ESLint:      ${def.name}`)
   }
 

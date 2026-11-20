@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { GATED_TAGS } from '../src/catalog/rules.ts'
 import {
   BIOME_PRESET,
   BIOME_REACT_PRESET,
@@ -10,9 +11,8 @@ import {
   biomeTechConfig,
   biomeTechPreset,
   checkBiomeConfig
-} from '../src/engines/biome.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
-import { GATED_TAGS } from '../src/rules.ts'
+} from '../src/engines/biome/config.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
 import { PACKAGE_ROOT, project } from './helpers.ts'
 
 const preset = (name: string): unknown => JSON.parse(readFileSync(join(PACKAGE_ROOT, 'presets', name), 'utf8'))

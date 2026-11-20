@@ -2,12 +2,12 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ancestors, toList } from './fs-utils.ts'
-import { literalBrackets } from './ignores.ts'
-import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from './rules.ts'
+import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from '../catalog/rules.ts'
+import { literalBrackets } from '../project/ignores.ts'
+import { ESLINT_CONFIG_FILES } from '../project/toolset.ts'
+import { type Level, type Override, type Policy, type PolicyInput, type StyleOptions } from '../types.ts'
+import { ancestors, toList } from '../utils/fs.ts'
 import { POLICY_KEYS } from './schema.ts'
-import { ESLINT_CONFIG_FILES } from './tools.ts'
-import { type Level, type Override, type Policy, type PolicyInput, type StyleOptions } from './types.ts'
 
 export const DEFAULT_STYLE: StyleOptions = {
   indent: 2,

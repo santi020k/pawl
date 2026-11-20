@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
-import { biomeConfig, biomeTechConfig } from '../src/engines/biome.ts'
-import { applyInit, formatWritten, planInit } from '../src/init.ts'
-import { defaultPolicy } from '../src/policy.ts'
+import { check } from '../src/check/check.ts'
+import { biomeConfig, biomeTechConfig } from '../src/engines/biome/config.ts'
+import { defaultPolicy } from '../src/policy/load.ts'
+import { applyInit, formatWritten, planInit } from '../src/setup/init.ts'
 import { link, project, write } from './helpers.ts'
 
 const ready = async (files: Record<string, string | object>): Promise<string> => {

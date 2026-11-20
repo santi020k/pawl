@@ -19,17 +19,17 @@ Quality (`quality.yml`) runs `pnpm ok` as the repository check and owns the Git 
 ## Rules of the codebase
 
 - Zero dependencies. Every engine, formatter and ESLint plugin is an optional peer. Use Node built-ins.
-- A pack in `src/packs.ts` is data only. Never import a plugin from pawl; load it from the project.
+- A pack in `src/catalog/packs.ts` is data only. Never import a plugin from pawl; load it from the project.
 - Source imports use the `.ts` extension. Only erasable TypeScript syntax: no enums, no parameter properties.
-- The rule catalog in `src/rules.ts` is the product. A test checks every Biome mapping against the pinned Biome schema.
+- The rule catalog in `src/catalog/rules.ts` is the product. A test checks every Biome mapping against the pinned Biome schema.
 - After changing a rule, the style or the Biome version, run `pnpm --filter @santi020k/pawl run preset` and `pnpm --filter @santi020k/pawl run docs:rules`, and commit the results.
 - A rule for one technology (React, Qwik, Vue, Svelte, Turborepo) gets that technology's tag, so it only applies where the technology is used.
 - Pawl reads Biome's JSON reporter, which Biome calls experimental. That is why the Biome version is pinned exactly; recheck `runBiome` on every Biome upgrade.
 - After upgrading Oxlint, run `pnpm --filter @santi020k/pawl run oxlint-rules`. Oxlint rejects a config that names a rule it does not know.
 - Pawl never deletes or overwrites a user's existing tool config. `migrate` is the one exception to overwriting: it moves the old ESLint config aside under a new name first.
 - The policy carries rule options in two shapes. `options` is ESLint's shape and goes to ESLint and Oxlint only. `biomeOptions` is Biome's shape and goes to Biome only, where it replaces the options the catalog gives the rule. Never translate one shape into the other.
-- A guard in `src/guards.ts` is data only: imports and code patterns to refuse for one library. Every entry needs a message that says what to do instead. A code pattern has two forms that must match the same code: an ESLint selector and a GritQL pattern, which pawl writes into the project's `.pawl/rules/` for Biome. Test both against the real engines.
-- The Docker checks in `src/docker.ts` and the Markdown checks in `src/markdown.ts` are the only rules pawl implements itself as line scans, because no engine reads those files. Keep each one a plain line scan that skips what is not prose or instructions, with a test for a file that is wrong and one that is fine. They honour the same ignores as the engines (`src/ignores.ts`).
+- A guard in `src/catalog/guards.ts` is data only: imports and code patterns to refuse for one library. Every entry needs a message that says what to do instead. A code pattern has two forms that must match the same code: an ESLint selector and a GritQL pattern, which pawl writes into the project's `.pawl/rules/` for Biome. Test both against the real engines.
+- The Docker checks in `src/scans/docker.ts` and the Markdown checks in `src/scans/markdown.ts` are the only rules pawl implements itself as line scans, because no engine reads those files. Keep each one a plain line scan that skips what is not prose or instructions, with a test for a file that is wrong and one that is fine. They honour the same ignores as the engines (`src/project/ignores.ts`).
 - A new pack needs its plugin as an optional peer in `packages/pawl/package.json`, and a run against the real plugin before it ships.
 - Every engine failure must reach the user as a setup problem with exit code 2. Never report success when part of the check did not run.
 - Do not name a file `biome.json` anywhere but a project root: Biome treats each one as a nested configuration.

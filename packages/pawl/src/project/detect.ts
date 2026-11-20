@@ -1,11 +1,11 @@
 import { type Dirent, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { isGitRepo, readJson, toPosix } from './fs-utils.ts'
+import { GATED_TAGS, type Technology } from '../catalog/rules.ts'
+import { type Detectable, type Framework, type Policy, type Runtime } from '../types.ts'
+import { isGitRepo, readJson, toPosix } from '../utils/fs.ts'
 import { makeIgnore, WALK_SKIP } from './ignores.ts'
-import { GATED_TAGS, type Technology } from './rules.ts'
-import { type Detectable, type Framework, type Policy, type Runtime } from './types.ts'
 
-export type { Framework } from './types.ts'
+export type { Framework } from '../types.ts'
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun'
 

@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { listFiles } from './fs-utils.ts'
-import { ignoreMatcher } from './ignores.ts'
-import { type Finding, type Level, type Policy } from './types.ts'
+import { ignoreMatcher } from '../project/ignores.ts'
+import { type Finding, type Level, type Policy } from '../types.ts'
+import { listFiles } from '../utils/fs.ts'
 
 /**
  * Pawl's own checks for Markdown files.

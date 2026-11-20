@@ -1,4 +1,4 @@
-import { type Level } from './types.ts'
+import { type Level } from '../types.ts'
 
 /** What a rule is about. The tags in `GATED_TAGS` name a technology the project must use. */
 export type RuleTag = 'core' | 'typescript' | 'imports' | 'tests' | 'formats' | 'pawl' | Technology

@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
-import { biomeConfig, biomeProjectConfig, biomeVcs } from '../src/engines/biome.ts'
-import { eslintPlan } from '../src/engines/eslint.ts'
-import { oxlintConfig } from '../src/engines/oxlint.ts'
+import { check } from '../src/check/check.ts'
+import { biomeConfig, biomeProjectConfig, biomeVcs } from '../src/engines/biome/config.ts'
+import { eslintPlan } from '../src/engines/eslint/plan.ts'
+import { oxlintConfig } from '../src/engines/oxlint/config.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
 import {
   allIgnores,
   configIgnores,
@@ -15,9 +16,8 @@ import {
   makeIgnore,
   toBiomeIgnore,
   toEslintIgnores
-} from '../src/ignores.ts'
-import { applyInit, planInit } from '../src/init.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
+} from '../src/project/ignores.ts'
+import { applyInit, planInit } from '../src/setup/init.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 const policyWith = (input: Parameters<typeof mergeLayers>[0][number]['input']) =>

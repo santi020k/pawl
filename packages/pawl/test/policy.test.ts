@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { eslint } from '../src/engines/eslint.ts'
+import { eslint } from '../src/engines/eslint/plan.ts'
 import {
   DEFAULT_STYLE,
   defaultPolicy,
@@ -10,7 +10,7 @@ import {
   loadPolicy,
   mergeLayers,
   resolvePolicy
-} from '../src/policy.ts'
+} from '../src/policy/load.ts'
 import { project } from './helpers.ts'
 
 describe('mergeLayers', () => {

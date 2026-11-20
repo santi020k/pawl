@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { listFiles, readJson, writeJson } from './fs-utils.ts'
-import { type Finding } from './types.ts'
+import { type Finding } from '../types.ts'
+import { listFiles, readJson, writeJson } from '../utils/fs.ts'
 
 export const BASELINE_FILE = '.pawl/baseline.json'
 

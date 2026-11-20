@@ -1,9 +1,9 @@
 import { Linter } from 'eslint'
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
-import { type Guard, getGuard, importRestrictions } from '../src/guards.ts'
-import { applyInit, planInit } from '../src/init.ts'
-import { defaultPolicy } from '../src/policy.ts'
+import { type Guard, getGuard, importRestrictions } from '../src/catalog/guards.ts'
+import { check } from '../src/check/check.ts'
+import { defaultPolicy } from '../src/policy/load.ts'
+import { applyInit, planInit } from '../src/setup/init.ts'
 import { link, project } from './helpers.ts'
 
 /** One guard's code patterns, with a file they must catch at the given lines and one they must leave alone. */

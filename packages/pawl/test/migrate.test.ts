@@ -2,8 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { applyInit } from '../src/init.ts'
-import { describeMigration, MIGRATION_REPORT, planMigrate } from '../src/migrate.ts'
+import { applyInit } from '../src/setup/init.ts'
+import { describeMigration, MIGRATION_REPORT, planMigrate } from '../src/setup/migrate.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
 
 const manifest = (name: string): object => ({ name, type: 'module', exports: './index.js' })
@@ -165,8 +165,8 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
 
 describe('policy options', () => {
   it('reach the ESLint config for rules ESLint runs', async () => {
-    const { eslintPlan } = await import('../src/engines/eslint.ts')
-    const { mergeLayers } = await import('../src/policy.ts')
+    const { eslintPlan } = await import('../src/engines/eslint/plan.ts')
+    const { mergeLayers } = await import('../src/policy/load.ts')
     const policy = mergeLayers([
       {
         source: 'test',

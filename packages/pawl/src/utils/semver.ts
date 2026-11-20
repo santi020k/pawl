@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { ancestors, readJson } from './fs-utils.ts'
+import { ancestors, readJson } from './fs.ts'
 
 /**
  * The part of semver ranges that peer dependencies and `engines` use: exact versions,

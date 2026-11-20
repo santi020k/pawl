@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { WALK_SKIP } from './ignores.ts'
+import { WALK_SKIP } from '../project/ignores.ts'
 
 /** Turn "one, many or none" into a list. */
 export const toList = <T>(value: T | readonly T[] | undefined): T[] => {

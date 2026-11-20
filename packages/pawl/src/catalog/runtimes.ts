@@ -1,4 +1,4 @@
-import { type Runtime } from './types.ts'
+import { type Runtime } from '../types.ts'
 
 export const RUNTIMES: readonly Runtime[] = ['node', 'browser', 'bun', 'deno', 'worker']
 

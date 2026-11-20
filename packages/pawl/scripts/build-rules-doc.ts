@@ -3,7 +3,7 @@
  * Run with: pnpm run docs:rules
  */
 import { writeFileSync } from 'node:fs'
-import { GATED_TAGS, RULES, type RuleDef, type RuleTag } from '../src/rules.ts'
+import { GATED_TAGS, RULES, type RuleDef, type RuleTag } from '../src/catalog/rules.ts'
 
 const TITLES: Partial<Record<RuleTag, string>> = {
   core: 'JavaScript',

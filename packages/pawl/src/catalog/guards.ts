@@ -1,4 +1,4 @@
-import { type Level, type Policy } from './types.ts'
+import { type Level, type Policy } from '../types.ts'
 
 /** A module that should not be imported, or names that should not be imported from it. */
 export interface RestrictedPath {

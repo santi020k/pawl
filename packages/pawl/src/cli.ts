@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
 import { parseArgs } from 'node:util'
-import { BASELINE_FILE } from './baseline.ts'
-import { BLOCKING, check, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check.ts'
-import { describe, detect } from './detect.ts'
-import { getDockerRule } from './docker.ts'
-import { doctor, formatDoctor } from './doctor.ts'
-import { biomeContextFor, checkBiomeConfig } from './engines/biome.ts'
-import { OXLINT_RULES } from './engines/oxlint-rules.ts'
+import { defaultLevel, findRule } from './catalog/rules.ts'
+import { BASELINE_FILE } from './check/baseline.ts'
+import { BLOCKING, check, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check/check.ts'
+import { format, type OutputFormat } from './check/output.ts'
+import { confirm, isInteractive, select } from './cli/prompt.ts'
+import { biomeContextFor, checkBiomeConfig } from './engines/biome/config.ts'
+import { OXLINT_RULES } from './engines/oxlint/rules.ts'
+import { effectiveRules, loadPolicy } from './policy/load.ts'
+import { describe, detect } from './project/detect.ts'
+import { toolset } from './project/toolset.ts'
+import { doctor, formatDoctor } from './report/doctor.ts'
+import { getDockerRule } from './scans/docker.ts'
+import { getMarkdownRule } from './scans/markdown.ts'
 import {
   applyInit,
   describePlan,
@@ -22,14 +28,8 @@ import {
   planPrettierConfig,
   planRuleFiles,
   recordBaseline
-} from './init.ts'
-import { getMarkdownRule } from './markdown.ts'
-import { describeMigration, planMigrate } from './migrate.ts'
-import { format, type OutputFormat } from './output.ts'
-import { effectiveRules, loadPolicy } from './policy.ts'
-import { confirm, isInteractive, select } from './prompt.ts'
-import { defaultLevel, findRule } from './rules.ts'
-import { toolset } from './tools.ts'
+} from './setup/init.ts'
+import { describeMigration, planMigrate } from './setup/migrate.ts'
 import { type EngineName, type FormatterName } from './types.ts'
 import { VERSION } from './version.ts'
 

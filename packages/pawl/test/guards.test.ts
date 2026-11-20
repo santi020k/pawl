@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { checkDocker, DOCKER_RULES, isDockerFile } from '../src/docker.ts'
-import { eslintPlan } from '../src/engines/eslint.ts'
-import { oxlintConfig } from '../src/engines/oxlint.ts'
-import { activeGuards, GUARDS, importRestrictions, syntaxRestrictions } from '../src/guards.ts'
-import { applyInit, planInit } from '../src/init.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
+import { activeGuards, GUARDS, importRestrictions, syntaxRestrictions } from '../src/catalog/guards.ts'
+import { eslintPlan } from '../src/engines/eslint/plan.ts'
+import { oxlintConfig } from '../src/engines/oxlint/config.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
+import { checkDocker, DOCKER_RULES, isDockerFile } from '../src/scans/docker.ts'
+import { applyInit, planInit } from '../src/setup/init.ts'
 import { project } from './helpers.ts'
 
 describe('guards', () => {

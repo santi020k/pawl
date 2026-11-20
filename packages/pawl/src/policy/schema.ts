@@ -1,6 +1,6 @@
-import { DETECTABLE } from './detect.ts'
-import { RUNTIMES } from './runtime.ts'
-import { type PolicyInput } from './types.ts'
+import { RUNTIMES } from '../catalog/runtimes.ts'
+import { DETECTABLE } from '../project/detect.ts'
+import { type PolicyInput } from '../types.ts'
 
 /** The part of JSON Schema the policy schema uses. */
 export interface JsonSchema {

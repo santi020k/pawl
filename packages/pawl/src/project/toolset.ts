@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { type EngineName, type FormatterName, type Policy } from './types.ts'
+import { type EngineName, type FormatterName, type Policy } from '../types.ts'
 
 export const ESLINT_CONFIG_FILES = [
   'eslint.config.js',

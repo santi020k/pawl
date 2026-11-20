@@ -1,6 +1,6 @@
+import { getRule } from '../catalog/rules.ts'
+import { type Finding } from '../types.ts'
 import { BLOCKING, type CheckResult, tooManyWarnings } from './check.ts'
-import { getRule } from './rules.ts'
-import { type Finding } from './types.ts'
 
 export type OutputFormat = 'pretty' | 'agent' | 'json'
 

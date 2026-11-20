@@ -1,16 +1,9 @@
 import { chmodSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BASELINE_FILE } from './baseline.ts'
-import { BLOCKING, check } from './check.ts'
-import {
-  type Detection,
-  describe,
-  detect,
-  filePacks,
-  needsEslint,
-  type PackageManager,
-  packageTechnologies
-} from './detect.ts'
+import { getGuard } from '../catalog/guards.ts'
+import { getPack, PACKS, suggestedPacks } from '../catalog/packs.ts'
+import { BASELINE_FILE } from '../check/baseline.ts'
+import { BLOCKING, check } from '../check/check.ts'
 import {
   BIOME_PRESET,
   BIOME_VERSION,
@@ -22,23 +15,30 @@ import {
   checkRuleFiles,
   runBiome,
   syncBiomeGlobals
-} from './engines/biome.ts'
+} from '../engines/biome/config.ts'
 import {
   checkOxlintConfig,
   mergeOxlintConfig,
   OXLINT_CONFIG_FILE,
   oxlintConfig,
   oxlintContextFor
-} from './engines/oxlint.ts'
-import { OXLINT_VERSION } from './engines/oxlint-rules.ts'
-import { checkPrettierConfig, prettierConfig } from './engines/prettier.ts'
-import { readJson, readJsonc, toList, writeJson, writeText } from './fs-utils.ts'
-import { getGuard } from './guards.ts'
-import { getPack, PACKS, suggestedPacks } from './packs.ts'
-import { findConfigFile, loadPolicy } from './policy.ts'
-import { ESLINT_CONFIG_FILES } from './tools.ts'
-import { type EngineName, type FormatterName, type Policy, type PolicyInput } from './types.ts'
-import { PACKAGE_NAME, VERSION } from './version.ts'
+} from '../engines/oxlint/config.ts'
+import { OXLINT_VERSION } from '../engines/oxlint/rules.ts'
+import { checkPrettierConfig, prettierConfig } from '../engines/prettier/config.ts'
+import { findConfigFile, loadPolicy } from '../policy/load.ts'
+import {
+  type Detection,
+  describe,
+  detect,
+  filePacks,
+  needsEslint,
+  type PackageManager,
+  packageTechnologies
+} from '../project/detect.ts'
+import { ESLINT_CONFIG_FILES } from '../project/toolset.ts'
+import { type EngineName, type FormatterName, type Policy, type PolicyInput } from '../types.ts'
+import { readJson, readJsonc, toList, writeJson, writeText } from '../utils/fs.ts'
+import { PACKAGE_NAME, VERSION } from '../version.ts'
 
 /**
  * How `pawl init` treats the tools a repo already has.

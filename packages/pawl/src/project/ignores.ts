@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type Policy } from './types.ts'
+import { type Policy } from '../types.ts'
 
 /** Never checked, whatever the policy says: dependencies, git's own folder and pawl's own files. */
 export const ALWAYS_IGNORED = ['node_modules', '.git', '.pawl']

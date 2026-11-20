@@ -2,9 +2,9 @@ import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
-import { type DoctorReport, doctor, formatDoctor } from '../src/doctor.ts'
-import { BIOME_VERSION } from '../src/engines/biome.ts'
-import { applyInit, formatWritten, planInit } from '../src/init.ts'
+import { BIOME_VERSION } from '../src/engines/biome/config.ts'
+import { type DoctorReport, doctor, formatDoctor } from '../src/report/doctor.ts'
+import { applyInit, formatWritten, planInit } from '../src/setup/init.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
 
 const ready = async (files: Record<string, string | object> = {}): Promise<string> => {

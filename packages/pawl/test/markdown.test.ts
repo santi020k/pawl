@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { checkMarkdown, getMarkdownRule, isMarkdownFile, MARKDOWN_RULES } from '../src/markdown.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
+import { checkMarkdown, getMarkdownRule, isMarkdownFile, MARKDOWN_RULES } from '../src/scans/markdown.ts'
 import { type Policy } from '../src/types.ts'
 import { project } from './helpers.ts'
 

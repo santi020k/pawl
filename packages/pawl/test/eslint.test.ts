@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { check, exitCode } from '../src/check.ts'
-import { eslintPlan } from '../src/engines/eslint.ts'
-import { readReport } from '../src/engines/run.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
+import { check, exitCode } from '../src/check/check.ts'
+import { readReport } from '../src/engines/engine.ts'
+import { eslintPlan } from '../src/engines/eslint/plan.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
 import { link, project } from './helpers.ts'
 
 const block = (config: Record<string, unknown>[], name: string): Record<string, unknown> | undefined =>

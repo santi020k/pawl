@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { installedVersion, satisfies } from '../src/compat.ts'
+import { installedVersion, satisfies } from '../src/utils/semver.ts'
 import { project } from './helpers.ts'
 
 describe('satisfies', () => {

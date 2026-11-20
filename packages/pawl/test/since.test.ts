@@ -2,8 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check, exitCode } from '../src/check.ts'
-import { changedFiles, changedSince, listFiles, SinceError } from '../src/fs-utils.ts'
+import { check, exitCode } from '../src/check/check.ts'
+import { changedFiles, changedSince, listFiles, SinceError } from '../src/utils/fs.ts'
 import { project, write } from './helpers.ts'
 
 const git = (root: string, ...args: string[]): void => {

@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { readJson, readJsonc, toPosix } from '../fs-utils.ts'
-import { PRETTIER_CONFIG_FILES } from '../tools.ts'
-import { type Finding, type Policy, type SetupIssue } from '../types.ts'
-import { type EngineRun, type RunOptions } from './biome.ts'
-import { EngineError, runNode } from './run.ts'
+import { PRETTIER_CONFIG_FILES } from '../../project/toolset.ts'
+import { type Finding, type Policy, type SetupIssue } from '../../types.ts'
+import { readJson, readJsonc, toPosix } from '../../utils/fs.ts'
+import { type EngineRun, type RunOptions } from '../biome/config.ts'
+import { EngineError, runNode } from '../engine.ts'
 
 /** The Prettier options that express the standard's style. */
 export const prettierConfig = (policy: Policy): Record<string, string | number | boolean> => {

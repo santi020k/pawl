@@ -1,4 +1,4 @@
-import { type Level } from './types.ts'
+import { type Level } from '../types.ts'
 
 /**
  * An optional set of ESLint rules for one plugin.

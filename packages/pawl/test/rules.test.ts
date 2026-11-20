@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BIOME_VERSION } from '../src/engines/biome.ts'
-import { OXLINT_RULES } from '../src/engines/oxlint-rules.ts'
-import { canonicalName, defaultLevel, findRule, getRule, getRuleByBiome, RULES } from '../src/rules.ts'
+import { canonicalName, defaultLevel, findRule, getRule, getRuleByBiome, RULES } from '../src/catalog/rules.ts'
+import { BIOME_VERSION } from '../src/engines/biome/config.ts'
+import { OXLINT_RULES } from '../src/engines/oxlint/rules.ts'
 import { PACKAGE_ROOT } from './helpers.ts'
 
 const require = createRequire(import.meta.url)

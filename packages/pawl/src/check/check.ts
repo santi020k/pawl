@@ -1,5 +1,25 @@
 import { join } from 'node:path'
 import {
+  biomeContextFor,
+  checkBiomeConfig,
+  checkBiomePackages,
+  checkRuleFiles,
+  type EngineRun,
+  runBiome
+} from '../engines/biome/config.ts'
+import { EngineError } from '../engines/engine.ts'
+import { eslintInstalled, runEslint } from '../engines/eslint/plan.ts'
+import { checkOxlintConfig, oxlintContextFor, oxlintInstalled, runOxlint } from '../engines/oxlint/config.ts'
+import { checkPrettierConfig, prettierInstalled, runPrettier } from '../engines/prettier/config.ts'
+import { loadPolicy } from '../policy/load.ts'
+import { detect, packageTechnologies } from '../project/detect.ts'
+import { ignoreMatcher } from '../project/ignores.ts'
+import { toolset } from '../project/toolset.ts'
+import { checkDocker } from '../scans/docker.ts'
+import { checkMarkdown } from '../scans/markdown.ts'
+import { type EngineName, type Finding, type Policy, type SetupIssue } from '../types.ts'
+import { changedFiles, changedSince, isDirectory, listFiles, projectPath, SinceError } from '../utils/fs.ts'
+import {
   applyBaseline,
   BASELINE_FILE,
   baselineUnreadable,
@@ -9,26 +29,6 @@ import {
   scanSuppressions,
   writeBaseline
 } from './baseline.ts'
-import { detect, packageTechnologies } from './detect.ts'
-import { checkDocker } from './docker.ts'
-import {
-  biomeContextFor,
-  checkBiomeConfig,
-  checkBiomePackages,
-  checkRuleFiles,
-  type EngineRun,
-  runBiome
-} from './engines/biome.ts'
-import { eslintInstalled, runEslint } from './engines/eslint.ts'
-import { checkOxlintConfig, oxlintContextFor, oxlintInstalled, runOxlint } from './engines/oxlint.ts'
-import { checkPrettierConfig, prettierInstalled, runPrettier } from './engines/prettier.ts'
-import { EngineError } from './engines/run.ts'
-import { changedFiles, changedSince, isDirectory, listFiles, projectPath, SinceError } from './fs-utils.ts'
-import { ignoreMatcher } from './ignores.ts'
-import { checkMarkdown } from './markdown.ts'
-import { loadPolicy } from './policy.ts'
-import { toolset } from './tools.ts'
-import { type EngineName, type Finding, type Policy, type SetupIssue } from './types.ts'
 
 export interface CheckOptions {
   root: string

@@ -1,4 +1,5 @@
 import { expect, it, describe as suite } from 'vitest'
+import { mergeLayers } from '../src/policy/load.ts'
 import {
   allTechnologies,
   DETECTABLE,
@@ -9,8 +10,7 @@ import {
   packageTechnologies,
   technologies,
   usesReact
-} from '../src/detect.ts'
-import { mergeLayers } from '../src/policy.ts'
+} from '../src/project/detect.ts'
 import { project } from './helpers.ts'
 
 suite('detect', () => {

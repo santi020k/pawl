@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
-import { projectPath } from '../src/fs-utils.ts'
+import { check } from '../src/check/check.ts'
+import { projectPath } from '../src/utils/fs.ts'
 import { link, project, write } from './helpers.ts'
 
 /** A disable comment for a fixture, written so that pawl's check of this file does not count it. */

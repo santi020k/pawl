@@ -8,9 +8,9 @@ Only the rules the old config set explicitly are covered here. Rules it inherite
 
 | Outcome                                                    |   Rules |
 | ---------------------------------------------------------- | ------: |
-| In the pawl catalog, enforced by Biome with no plugin      |      72 |
+| In the pawl catalog, enforced by Biome with no plugin      |      70 |
 | In the catalog as another name for a rule above            |      17 |
-| In the catalog, on only under `strict` (unstable in Biome) |      24 |
+| In the catalog, on only under `strict` (unstable in Biome) |      26 |
 | In the catalog, enforced by Oxlint (no Biome equivalent)   |      16 |
 | Checked by pawl itself: a guard or a Markdown check        |      12 |
 | Replaced by the formatter or by import sorting             |      41 |
@@ -70,9 +70,7 @@ Levels are the ones the old config used. Where it used a stronger level in its s
 | `@typescript-eslint/no-duplicate-enum-values` | `suspicious/noDuplicateEnumValues`          | warn                    |
 | `@typescript-eslint/no-empty-object-type`     | `complexity/noBannedTypes`                  | warn                    |
 | `@typescript-eslint/no-explicit-any`          | `suspicious/noExplicitAny`                  | warn, error when strict |
-| `@typescript-eslint/no-floating-promises`     | `nursery/noFloatingPromises`                | off, error when strict  |
 | `@typescript-eslint/no-invalid-void-type`     | `suspicious/noConfusingVoidType`            | warn                    |
-| `@typescript-eslint/no-misused-promises`      | `nursery/noMisusedPromises`                 | off, error when strict  |
 | `@typescript-eslint/no-non-null-assertion`    | `style/noNonNullAssertion`                  | warn, error when strict |
 | `@typescript-eslint/no-var-requires`          | `style/noCommonJs`                          | warn                    |
 | `@typescript-eslint/prefer-for-of`            | `style/useForOf`                            | warn                    |

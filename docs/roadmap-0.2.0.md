@@ -23,7 +23,7 @@ Taken from "What is left" and "Not built yet" in the README and from `docs/rules
 
 - [ ] Oxlint's type-aware rules.
 - [ ] Move the strict-only rules into the default standard as Biome marks them stable. Biome 2.6.8 is still the newest release, so nothing can move yet.
-- [ ] Bring the comparison table in the README up to date. It counts 20 strict-only rules and 7 left out on purpose; the rules document counts 24 and 18.
+- [x] Bring the comparison table in the README up to date. It now counts 26 strict-only rules and 18 left out on purpose, as the rules document does.
 - [ ] Give more of the 60 rules with no home a check without a plugin. The largest groups: Stencil (18), Angular, typescript-eslint and ESLint core (6 each), Testing Library and Zod (4 each).
 - [ ] Packs for Vite and Slidev.
 - [ ] Decide on `profile`, `snapshot` and `diff`, and the ESLint MCP scaffold. The README lists them as not planned.

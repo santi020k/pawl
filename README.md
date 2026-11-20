@@ -100,27 +100,27 @@ Status on 2026-11-18, checked against eslint-config-basic 3.6, Biome 2.6.8 and E
 
 The old config set 260 rules itself. Rules it inherited from plugin presets are not counted here.
 
-| Source in eslint-config-basic          | Rules it set | In pawl | In pawl, strict only | Replaced by the formatter |          Not in pawl yet |
-| -------------------------------------- | -----------: | ------: | -------------------: | ------------------------: | -----------------------: |
-| Core (ESLint core, stylistic, imports) |           63 |      22 |                    3 |                        27 |                       11 |
-| TypeScript                             |           32 |      18 |                    6 |                         1 |                        7 |
-| Unicorn                                |           26 |      10 |                    3 |                         0 |                       13 |
-| Astro                                  |           13 |       2 |                    0 |                         8 |                        3 |
-| Qwik                                   |           12 |      10 |                    0 |                         1 |                        1 |
-| Markdown                               |           10 |       0 |                    0 |                         1 |                        9 |
-| Vue                                    |            9 |       2 |                    4 |                         1 |                        2 |
-| Vitest                                 |            9 |       6 |                    0 |                         0 |                        3 |
-| Preact                                 |      Package |      No |                 None |                      None | Optional pack (`preact`) |
-| Stencil                                |           18 |       0 |                    0 |                         0 |                       18 |
-| Zod                                    |            9 |       0 |                    0 |                         0 |                        9 |
-| Testing Library                        |            7 |       0 |                    0 |                         0 |                        7 |
-| Angular                                |            6 |       0 |                    0 |                         0 |                        6 |
-| Everything else                        |           41 |       7 |                    4 |                         0 |                       30 |
-| **Total**                              |      **260** |  **81** |               **20** |                    **39** |                  **120** |
+| Source in eslint-config-basic          | Rules it set | In pawl | In pawl, strict only | In pawl, by Oxlint or pawl itself | Replaced by the formatter | Not in pawl yet |
+| -------------------------------------- | -----------: | ------: | -------------------: | --------------------------------: | ------------------------: | --------------: |
+| Core (ESLint core, stylistic, imports) |           66 |      24 |                    3 |                                 4 |                        29 |               6 |
+| TypeScript                             |           32 |      18 |                    7 |                                 0 |                         1 |               6 |
+| Unicorn                                |           26 |      12 |                    4 |                                 8 |                         0 |               2 |
+| Astro                                  |           11 |       3 |                    0 |                                 0 |                         6 |               2 |
+| Qwik                                   |           12 |      10 |                    0 |                                 0 |                         1 |               1 |
+| Markdown                               |           10 |       0 |                    2 |                                 3 |                         1 |               4 |
+| Vue                                    |            9 |       2 |                    4 |                                 1 |                         1 |               1 |
+| Vitest                                 |            9 |       6 |                    0 |                                 3 |                         0 |               0 |
+| Stencil                                |           18 |       0 |                    0 |                                 0 |                         0 |              18 |
+| Zod                                    |            9 |       0 |                    0 |                                 5 |                         0 |               4 |
+| Testing Library                        |            7 |       0 |                    0 |                                 3 |                         0 |               4 |
+| Angular                                |            6 |       0 |                    0 |                                 0 |                         0 |               6 |
+| Everything else                        |           45 |      12 |                    6 |                                 1 |                         2 |              24 |
+| **Total**                              |      **260** |  **87** |               **26** |                            **28** |                    **41** |          **78** |
 
 - "In pawl" means Biome enforces it with no plugin, under its own name or as an alias.
 - "Strict only" rules are ones Biome still marks as unstable.
-- Of the 120 not in pawl, 7 were left out on purpose.
+- "By Oxlint or pawl itself" means Oxlint enforces it and Biome has no equivalent (16 rules), or a guard or a Markdown check of pawl's own does (12). Oxlint still marks one of the 16, `import/export`, as unstable, so it too is on only under strict.
+- Of the 78 not in pawl yet, 18 were left out on purpose.
 
 The rule-by-rule list is in [docs/rules-from-eslint-config-basic.md](docs/rules-from-eslint-config-basic.md). Pawl also has rules the old config did not set: the catalog holds 200.
 
@@ -177,22 +177,22 @@ An optional pack runs through ESLint next to Biome, or with ESLint as the only l
 
 ### Rule packs
 
-| Pack                     | eslint-config-basic | Pawl                                                                    |
-| ------------------------ | ------------------- | ----------------------------------------------------------------------- |
-| Accessibility            | Yes                 | Biome's recommended accessibility rules, more with the optional pack    |
-| Best practices           | Yes                 | Yes, 3 of 3 (1 strict only)                                             |
-| No focused tests         | Yes                 | Yes                                                                     |
-| Unicorn                  | Yes                 | 13 of 26 through Biome (3 strict only); the rest with the optional pack |
-| Security                 | Yes                 | Biome's recommended security rules, more with the optional pack         |
-| Boundaries               | Yes                 | 1 of 3, strict only                                                     |
-| Node (`eslint-plugin-n`) | Yes                 | Optional pack                                                           |
-| Regexp                   | Yes                 | Optional pack                                                           |
-| Perfectionist            | Yes                 | Import sorting through Biome; the rest with the optional pack           |
-| SonarJS                  | Yes                 | Optional pack                                                           |
-| Compat (browserslist)    | Yes                 | Optional pack                                                           |
-| De Morgan                | Yes                 | Pawl's own rule, no plugin: `pawl add de-morgan`                        |
-| Depend                   | Yes                 | Optional pack. Pawl also flags undeclared dependencies itself           |
-| Astro Doctor             | Yes                 | Optional pack (`astro-doctor`)                                          |
+| Pack                     | eslint-config-basic | Pawl                                                                                         |
+| ------------------------ | ------------------- | -------------------------------------------------------------------------------------------- |
+| Accessibility            | Yes                 | Biome's recommended accessibility rules, more with the optional pack                         |
+| Best practices           | Yes                 | Yes, 3 of 3 (1 strict only)                                                                  |
+| No focused tests         | Yes                 | Yes                                                                                          |
+| Unicorn                  | Yes                 | 16 of 26 through Biome (4 strict only) and 8 through Oxlint; the rest with the optional pack |
+| Security                 | Yes                 | Biome's recommended security rules, more with the optional pack                              |
+| Boundaries               | Yes                 | 1 of 3, strict only                                                                          |
+| Node (`eslint-plugin-n`) | Yes                 | Optional pack                                                                                |
+| Regexp                   | Yes                 | Optional pack                                                                                |
+| Perfectionist            | Yes                 | Import sorting through Biome; the rest with the optional pack                                |
+| SonarJS                  | Yes                 | Optional pack                                                                                |
+| Compat (browserslist)    | Yes                 | Optional pack                                                                                |
+| De Morgan                | Yes                 | Pawl's own rule, no plugin: `pawl add de-morgan`                                             |
+| Depend                   | Yes                 | Optional pack. Pawl also flags undeclared dependencies itself                                |
+| Astro Doctor             | Yes                 | Optional pack (`astro-doctor`)                                                               |
 
 ### Tools
 
@@ -260,7 +260,7 @@ A pack can also start from the plugin's own preset: `unicorn/recommended` is the
 
 ### What is left
 
-1. Move the 20 strict-only rules into the default standard as Biome marks them stable.
+1. Move the 27 strict-only rules into the default standard as Biome and Oxlint mark them stable: 26 in Biome and `import/export` in Oxlint.
 2. Packs for Vite and Slidev. The old config only set file patterns for them.
 3. `profile`, `snapshot` and `diff` are not planned unless you want them back.
 

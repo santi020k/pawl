@@ -4,7 +4,9 @@ title: Monorepos
 description: One run from the root covers every package, and each package gets only the rules for what it uses.
 ---
 
-Pawl detects pnpm, npm and yarn workspaces, Turborepo and Nx. It runs once from the root and covers every package.
+Pawl detects pnpm, npm, yarn and Bun workspaces, Turborepo and Nx. It runs once from the root and covers every package.
+
+The packages come from the `packages` list of `pnpm-workspace.yaml` and from `workspaces` in the root `package.json`. A pattern may name a folder, use `*` for one level (`packages/*`, `plugins/plugin-*`) or `**` for any depth, and take packages out again with a leading `!`. `pawl doctor` shows how many packages it found on the `Project` line.
 
 ## Rules follow the technology
 

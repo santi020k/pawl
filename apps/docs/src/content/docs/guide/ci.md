@@ -111,3 +111,9 @@ It uses the hook manager the repo already has:
 | Neither       | Writes `.git/hooks/pre-commit`, which is local to this clone. Use husky or lefthook to share it. |
 
 If a plain git pre-commit hook already exists, pawl does not touch it and tells you which command to add.
+
+With lint-staged, give it the command and it adds the staged files, which pawl takes by absolute path:
+
+```json title="package.json"
+{ "lint-staged": { "*": "pawl check" } }
+```

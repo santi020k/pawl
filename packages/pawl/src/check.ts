@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import {
   applyBaseline,
   createBaseline,
@@ -20,7 +21,7 @@ import { eslintInstalled, runEslint } from './engines/eslint.ts'
 import { checkOxlintConfig, oxlintContextFor, oxlintInstalled, runOxlint } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled, runPrettier } from './engines/prettier.ts'
 import { EngineError } from './engines/run.ts'
-import { changedFiles, changedSince, SinceError } from './fs-utils.ts'
+import { changedFiles, changedSince, isDirectory, listFiles, projectPath, SinceError } from './fs-utils.ts'
 import { ignoreMatcher } from './ignores.ts'
 import { checkMarkdown } from './markdown.ts'
 import { loadPolicy } from './policy.ts'
@@ -33,7 +34,10 @@ export interface CheckOptions {
   changed?: boolean
   /** Only look at files changed since the branch left this git ref, such as `origin/main`. */
   since?: string
-  /** Only look at these files, relative to the root. */
+  /**
+   * Only look at these files and folders. Each is relative to the root, or absolute and inside it;
+   * a folder stands for every file in it.
+   */
   files?: readonly string[]
   /** Apply safe fixes and formatting before reporting. */
   fix?: boolean
@@ -127,20 +131,48 @@ const runEngine = async (
   }
 }
 
+/** The part of a project a run looks at. */
+interface Scope {
+  /** What the engines are given: files, and folders as the caller named them. */
+  targets: string[]
+  /** Every file in scope, one by one, for pawl's own checks. */
+  files: string[]
+}
+
 /** The files `--since` or `--changed` asks for. Undefined means every file. */
-const scopedFiles = (root: string, options: CheckOptions, setup: SetupIssue[]): string[] | undefined => {
-  if (options.since === undefined) return options.changed ? changedFiles(root) : undefined
+const gitScope = (root: string, options: CheckOptions, setup: SetupIssue[]): Scope | undefined => {
+  const whole = (files: string[]): Scope => ({ targets: files, files })
+
+  if (options.since === undefined) return options.changed ? whole(changedFiles(root)) : undefined
 
   try {
-    return changedSince(root, options.since)
+    return whole(changedSince(root, options.since))
   } catch (error) {
     if (!(error instanceof SinceError)) throw error
 
     // Nothing runs: checking every file, or none, would answer a question nobody asked.
     setup.push({ code: 'since-unresolved', message: error.message, fix: error.fix })
 
-    return []
+    return whole([])
   }
+}
+
+/**
+ * The files and folders a caller named, as project paths. The engines walk a folder themselves;
+ * pawl's own checks need its files listed. Naming the root is the same as naming nothing.
+ */
+const namedScope = (root: string, named: readonly string[]): Scope | undefined => {
+  const targets = [...new Set(named.flatMap(file => projectPath(root, file) ?? []))]
+
+  if (targets.includes('.')) return undefined
+
+  const folders = targets.filter(target => isDirectory(join(root, target)))
+
+  if (folders.length === 0) return { targets, files: targets }
+
+  const inFolders = listFiles(root).filter(file => folders.some(folder => file.startsWith(`${folder}/`)))
+
+  return { targets, files: [...new Set([...targets.filter(target => !folders.includes(target)), ...inFolders])] }
 }
 
 /** Run every active engine, then pawl's own checks, and compare with the baseline. */
@@ -151,9 +183,12 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const commands: string[] = []
   const engines: EngineName[] = []
   const ignored = ignoreMatcher(root, policy)
-  const scoped = options.files ?? scopedFiles(root, options, setup)
-  const files = scoped?.filter(file => !ignored(file))
-  const empty = files !== undefined && files.length === 0
+  const asked = options.files ? namedScope(root, options.files) : gitScope(root, options, setup)
+  const scoped = asked && {
+    targets: asked.targets.filter(file => !ignored(file)),
+    files: asked.files.filter(file => !ignored(file))
+  }
+  const empty = scoped !== undefined && scoped.targets.length === 0
 
   for (const violation of policy.lockViolations) {
     setup.push({
@@ -166,7 +201,8 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const findings: Finding[] = []
   const tools = toolset(root, policy)
   const detection = detect(root, policy)
-  const scope = files ? { files } : {}
+  const scope = scoped ? { files: scoped.targets } : {}
+  const own = scoped ? { files: scoped.files } : {}
   const write = options.fix === true
 
   if (tools.biome) {
@@ -252,14 +288,14 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   }
 
   // Pawl's own checks for the files no engine reads.
-  if (!empty) findings.push(...checkDocker({ root, policy, ...scope }), ...checkMarkdown({ root, policy, ...scope }))
+  if (!empty) findings.push(...checkDocker({ root, policy, ...own }), ...checkMarkdown({ root, policy, ...own }))
 
   const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
   const limit = maxWarnings === undefined ? {} : { maxWarnings }
 
   // The policy's ignore list applies at once, even before the engine config is synced.
   const kept = findings.filter(finding => !ignored(finding.file))
-  const suppressions = empty ? [] : scanSuppressions(root, ignored, files)
+  const suppressions = empty ? [] : scanSuppressions(root, ignored, scoped?.files)
 
   if (options.updateBaseline) {
     writeBaseline(root, createBaseline(kept, suppressions))
@@ -288,7 +324,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     commands,
     hasBaseline: baseline !== undefined,
     // A partial run cannot tell whether findings elsewhere are gone.
-    canShrinkBaseline: files === undefined && canShrink,
+    canShrinkBaseline: scoped === undefined && canShrink,
     nothingToCheck: empty,
     ...limit
   }

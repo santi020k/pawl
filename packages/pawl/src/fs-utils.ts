@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { WALK_SKIP } from './ignores.ts'
 
 /** Turn "one, many or none" into a list. */
@@ -20,6 +20,36 @@ export const ancestors = (start: string): string[] => {
 }
 
 export const toPosix = (path: string): string => (sep === '/' ? path : path.split(sep).join('/'))
+
+const realpath = (path: string): string => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
+/**
+ * A path a caller names, as pawl keeps every path: relative to the root, with forward slashes and
+ * no leading "./". The root itself is ".". Undefined for a path outside the root, which is not
+ * part of the project. A path may be absolute, as hook runners such as lint-staged pass them.
+ */
+export const projectPath = (root: string, file: string): string | undefined => {
+  const inside = (path: string): string | undefined =>
+    path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path) ? undefined : toPosix(path) || '.'
+  const absolute = resolve(root, file)
+
+  // A link in either path, such as /tmp on macOS, must not put a project file outside the project.
+  return inside(relative(root, absolute)) ?? inside(relative(realpath(root), realpath(absolute)))
+}
+
+export const isDirectory = (path: string): boolean => {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
 
 export const readJson = <T>(file: string): T | undefined => {
   try {

@@ -304,12 +304,19 @@ describe('eslintPlan', () => {
 })
 
 describe('an engine report', () => {
-  it('is read from the first bracket, or from the last line that starts with one', () => {
+  it('is read from the first bracket, or from the first line after the noise that starts with one', () => {
     expect(readReport('{"diagnostics":[]}', '{')).toEqual({ diagnostics: [] })
     expect(readReport('warning: slow\n{"diagnostics":[]}\n', '{')).toEqual({ diagnostics: [] })
     expect(readReport('[plugin] ready\n[{"filePath":"a.js","messages":[]}]', '[')).toEqual([
       { filePath: 'a.js', messages: [] }
     ])
+  })
+
+  it("is found after noise with a bracket, when the report puts each finding on a line of its own, as Oxlint's does", () => {
+    const report = '{ "diagnostics": [{"code": "a"},\n{"code": "b"},\n{"code": "c"}],\n  "number_of_files": 1\n}\n'
+
+    expect(readReport<{ diagnostics: unknown[] }>(`{config} loaded\n${report}`, '{')?.diagnostics).toHaveLength(3)
+    expect(readReport<{ diagnostics: unknown[] }>(`a {\n{ not json\n${report}`, '{')?.diagnostics).toHaveLength(3)
   })
 
   it('is undefined when the output holds none', () => {

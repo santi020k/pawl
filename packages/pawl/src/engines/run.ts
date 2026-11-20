@@ -114,20 +114,28 @@ export const runChunked = async <F>(
   return { findings: runs.flat(), command: `${shown} ${targets}` }
 }
 
+/** How many lines readReport tries. Each try reads the rest of the output, so they are counted. */
+const REPORT_TRIES = 32
+
 /**
  * The JSON report in an engine's output, or undefined when there is none to read. A config file or
  * a plugin may print lines of its own first, so when the output does not parse from the first
- * bracket on, the last line that starts with one is tried.
+ * bracket on, the lines that start with one are tried, from the top. The report is the first that
+ * parses to the end: the lines before it never do, and the lines inside it are not reached.
  */
 export const readReport = <T>(stdout: string, open: '{' | '['): T | undefined => {
-  for (const start of new Set([stdout.indexOf(open), stdout.lastIndexOf(`\n${open}`) + 1])) {
-    if (start === -1) continue
+  let start = stdout.indexOf(open)
 
+  for (let tries = 0; start !== -1 && tries < REPORT_TRIES; tries++) {
     try {
       return JSON.parse(stdout.slice(start)) as T
     } catch {
-      // Try the next place.
+      // Try the next line that starts with the bracket.
     }
+
+    const next = stdout.indexOf(`\n${open}`, start)
+
+    start = next === -1 ? -1 : next + 1
   }
 
   return undefined

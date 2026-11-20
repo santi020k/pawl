@@ -9,6 +9,7 @@ import { definePageMetadata } from '@santi020k/og/metadata'
 import { composeJsonLd, serializeJsonLd, softwareApplicationSchema } from '@santi020k/og/schema'
 
 import { author, locale, siteName, website } from '../metadata.ts'
+import { currentVersion } from '../releases.ts'
 
 import '../styles/tokens.css'
 import '../styles/landing.css'
@@ -19,6 +20,7 @@ interface Props {
 }
 
 const { title, description } = Astro.props
+const version = await currentVersion()
 
 // @santi020k/og writes the title, description, canonical, robots, Open Graph and X tags. The card is the hand-made og.jpg.
 const page = definePageMetadata({
@@ -38,7 +40,7 @@ const page = definePageMetadata({
 const site = { siteUrl: Astro.site ?? Astro.url.origin, siteName, locale }
 const canonical = new URL(Astro.url.pathname, site.siteUrl)
 
-// Only facts the page itself shows: the name, the description, the license and the author.
+// Only facts the page itself shows: the name, the description, the version, where to get it, the license and the author.
 const jsonLd = serializeJsonLd(
   composeJsonLd(
     website,
@@ -49,6 +51,8 @@ const jsonLd = serializeJsonLd(
         url: canonical,
         applicationCategory: 'DeveloperApplication',
         operatingSystem: 'Node.js',
+        downloadUrl: 'https://www.npmjs.com/package/@santi020k/pawl',
+        ...(version ? { softwareVersion: version } : {}),
         author
       },
       { image: new URL('/og.jpg', site.siteUrl).href, license: 'https://opensource.org/licenses/MIT' }

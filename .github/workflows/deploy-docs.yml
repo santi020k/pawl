@@ -5,8 +5,11 @@ on:
     branches: [main]
     paths:
       - "apps/docs/**"
-      # The rules page is generated from the library's rule catalog.
+      # The rules page is generated from the library's rule catalog, and the changelog page reads the
+      # packages' changelogs and the pending changesets.
       - "packages/pawl/**"
+      - "packages/pawl-policy/CHANGELOG.md"
+      - ".changeset/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/deploy-docs.yml"

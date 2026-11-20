@@ -18,7 +18,11 @@ pnpm --filter @santi020k/pawl-docs run doctor      # Astro Doctor
 | `src/pages/index.astro`     | The landing page, composed from Lumen components                                          |
 | `src/layouts/Landing.astro` | The landing page shell. It shares Starlight's theme setting                               |
 | `src/content/docs/`         | The doc pages. `reference/rules.md` is generated; do not edit it by hand                  |
-| `src/components/`           | `Terminal`, `RatchetChart` and `PawlMark`, used on both the landing page and docs         |
+| `src/content.config.ts`     | The `docs` collection, and `releases`, the history the changelog page shows               |
+| `src/history.ts`            | Reads that history from the changelogs, the tags and the changesets; tested with Node     |
+| `src/releases.ts`           | The history as the changelog, its table of contents and the landing page use it           |
+| `src/route-data.ts`         | Starlight route middleware: adds the versions to the changelog's table of contents        |
+| `src/components/`           | `Terminal`, `RatchetChart`, `PawlMark`, and `Releases` for the changelog page             |
 | `src/components/landing/`   | The landing header, with its mobile menu (a Lumen `Drawer`), and footer                   |
 | `src/components/starlight/` | Starlight overrides: `Head` adds the per-page social card, `Footer` adds the credit line  |
 | `src/data/demo.ts`          | Recorded runs of the pawl CLI, shown in the terminals                                     |
@@ -26,8 +30,21 @@ pnpm --filter @santi020k/pawl-docs run doctor      # Astro Doctor
 | `src/styles/tokens.css`     | The brand tokens, in the HSL format Lumen's semantic tokens use                           |
 | `src/styles/starlight.css`  | Maps the tokens onto Starlight's color scale and fonts                                    |
 | `src/assets/`, `public/`    | The mark, the hero art, the favicon, the social card, `robots.txt` and `site.webmanifest` |
+| `public/_redirects`         | Cloudflare Pages redirects for pages that moved                                           |
 | `og.config.mjs`             | The doc pages' social cards, written by `@santi020k/og` to `public/og/` (not committed)   |
 | `og.audit.config.mjs`       | The settings for `santi-og audit`, which checks the built site's metadata                 |
+
+## Changelog
+
+`/changelog/` shows every release, newest first, and nothing on it is written by hand. At build time, the `releases` collection reads:
+
+- `packages/*/CHANGELOG.md`, which Changesets writes on a release branch. Both packages share one version, so each release on the page has the notes of both.
+- The `v<version>` tags, for each release's date. A version without a tag is shown as not on npm yet. The release workflow creates the tag after publishing, then starts the docs deploy again, so the page catches up within minutes of a release.
+- The changesets in `.changeset/`, as "Next release" at the top, when there are any.
+
+The landing page's version badge and its `softwareVersion` in the JSON-LD come from the same history. A clone without tags, such as a shallow one, shows no dates and falls back to the newest version in the changelogs.
+
+`pnpm --filter @santi020k/pawl-docs run test` runs the tests of `src/history.ts`.
 
 ## Social cards
 

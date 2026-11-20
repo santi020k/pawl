@@ -17,7 +17,7 @@
       "entry": ["index.js", "test/**/*.test.ts"]
     },
     "apps/docs": {
-      "entry": ["og.config.mjs", "og.audit.config.mjs"],
+      "entry": ["og.config.mjs", "og.audit.config.mjs", "src/route-data.ts"],
       "ignoreDependencies": ["@fontsource-variable/geist", "@fontsource-variable/geist-mono"]
     }
   }

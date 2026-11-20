@@ -7,7 +7,7 @@ import { createPathCards } from '@santi020k/og'
 import { collectContentCards } from '@santi020k/og/content'
 import { definePresetConfig } from '@santi020k/og/presets'
 
-const badges = { guide: 'Guide', reference: 'Reference' }
+const badges = { changelog: 'Changelog', guide: 'Guide', reference: 'Reference' }
 
 const docs = () =>
   collectContentCards({

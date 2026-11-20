@@ -3,12 +3,12 @@ title: Getting started
 description: Set up pawl in a repo, run the first check, and learn the daily commands.
 ---
 
-import { Steps } from '@astrojs/starlight/components'
+import { Steps, TabItem, Tabs } from '@astrojs/starlight/components'
 import Terminal from '../../../components/Terminal.astro'
 import { initRun } from '../../../data/demo.ts'
 
-:::caution[Early]
-The library works and is tested against the real Biome and ESLint, but it is early and the API may still change before 1.0.
+:::note[Before 1.0]
+Pawl is on npm and tested against the real Biome and ESLint. Until 1.0, a minor release may change the API or the standard; the [changelog](/changelog/) says what each release changed.
 :::
 
 Pawl gives a repo one lint and format standard, run by the tools you choose, and a ratchet: the findings the repo already has are recorded once, and from then on only new ones fail.
@@ -23,9 +23,28 @@ Node 22.18 or later.
 
 1. Run `init` at the root of the repo.
 
-   ```sh
-   npx @santi020k/pawl init
-   ```
+   <Tabs syncKey="package-manager">
+     <TabItem label="npm">
+       ```sh
+       npx @santi020k/pawl init
+       ```
+     </TabItem>
+     <TabItem label="pnpm">
+       ```sh
+       pnpm dlx @santi020k/pawl init
+       ```
+     </TabItem>
+     <TabItem label="yarn">
+       ```sh
+       yarn dlx @santi020k/pawl init
+       ```
+     </TabItem>
+     <TabItem label="Bun">
+       ```sh
+       bunx @santi020k/pawl init
+       ```
+     </TabItem>
+   </Tabs>
 
    `init` looks at the repo, shows what it will change, and asks before writing. In a terminal it offers a menu; in CI or under a coding agent it uses `auto`.
 
@@ -33,7 +52,7 @@ Node 22.18 or later.
 
    - `biome.json`, a few lines that extend the standard;
    - `check` and `fix` scripts in `package.json`;
-   - `.vscode/settings.json`, so the editor formats and fixes on save;
+   - `.vscode/settings.json`, so the editor formats and fixes on save, and `.vscode/extensions.json`, which recommends the editor extension;
    - `.pawl/baseline.json`, the findings the repo already has.
 
 3. Commit the result, baseline included. From now on, `pawl check` fails only on new findings.

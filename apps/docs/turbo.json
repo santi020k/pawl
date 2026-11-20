@@ -3,8 +3,19 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "inputs": ["$TURBO_DEFAULT$", "!dist/**", "!.astro/**", "!public/og/**", "!.og-cache.json"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!dist/**",
+        "!.astro/**",
+        "!public/og/**",
+        "!.og-cache.json",
+        "$TURBO_ROOT$/packages/*/CHANGELOG.md",
+        "$TURBO_ROOT$/.changeset/*.md"
+      ],
       "outputs": ["dist/**", "public/og/**"]
+    },
+    "test": {
+      "dependsOn": []
     },
     "typecheck": {
       "inputs": ["$TURBO_DEFAULT$", "!dist/**", "!.astro/**", "!public/og/**", "!.og-cache.json"]

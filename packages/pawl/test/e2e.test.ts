@@ -369,6 +369,42 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       })
     })
 
+    test("explains pawl's own rules and guards, by the names its findings carry", () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module', dependencies: { openai: '^5.0.0' } }
+      })
+
+      link(root)
+
+      expect(run(root, 'explain', 'pawl/ai-keys')).toEqual({
+        code: 0,
+        stderr: '',
+        stdout: [
+          'pawl/ai-keys',
+          '  The AI client keys guard: imports and code that pawl refuses, with no plugin.',
+          '',
+          '  On here:     yes',
+          '  Level here:  error',
+          '  Checked by:  the code patterns by Biome, as rules pawl writes, or by ESLint',
+          '',
+          '  It refuses:',
+          '    - Do not write an API key in the code. Read it from the environment or a secret store.',
+          '    - dangerouslyAllowBrowser sends your API key to every visitor. Call the model from a server.',
+          ''
+        ].join('\n')
+      })
+      expect(run(root, 'explain', 'hono').stdout).toContain(
+        'On here:     no. It switches on when the project depends on hono'
+      )
+      expect(run(root, 'explain', 'de-morgan').stdout).toContain(
+        'On here:     no. Switch it on with "pawl add de-morgan"'
+      )
+      expect(run(root, 'explain', 'pawl/sort-package-json').stdout).toContain('How to fix:  Run "pawl fix".')
+      expect(run(root, 'explain', 'pawl/no-new-disable').code).toBe(0)
+      expect(run(root, 'explain', 'pawl/docker-no-root').code).toBe(0)
+      expect(run(root, 'explain', 'not-a-rule')).toMatchObject({ code: 1, stderr: '' })
+    })
+
     test('reads every option before it changes a file', () => {
       const unformatted = 'export const a = {b:1}\n'
       const root = project({

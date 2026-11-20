@@ -8,6 +8,7 @@ import { getDockerRule } from './docker.ts'
 import { doctor, formatDoctor } from './doctor.ts'
 import { biomeContextFor, checkBiomeConfig } from './engines/biome.ts'
 import { OXLINT_RULES } from './engines/oxlint-rules.ts'
+import { activeGuards, type Guard, getGuard, guardLevel } from './guards.ts'
 import {
   applyInit,
   describePlan,
@@ -30,7 +31,7 @@ import { effectiveRules, loadPolicy } from './policy.ts'
 import { confirm, isInteractive, select } from './prompt.ts'
 import { defaultLevel, findRule } from './rules.ts'
 import { toolset } from './tools.ts'
-import { type EngineName, type FormatterName } from './types.ts'
+import { type EngineName, type FormatterName, type Policy } from './types.ts'
 import { VERSION } from './version.ts'
 
 const HELP = `pawl ${VERSION}
@@ -474,6 +475,33 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
     return EXIT_OK
   }
 
+  // Pawl's own names are also taken without their "pawl/".
+  const short = query.replace(/^pawl\//, '')
+  const guard = def ? undefined : getGuard(short)
+
+  if (guard) {
+    out(explainGuard(guard, await loadPolicy(root), root))
+
+    return EXIT_OK
+  }
+
+  const named = def ? undefined : OWN_RULES[short]
+
+  if (named) {
+    out(
+      [
+        `pawl/${short}`,
+        `  ${named.summary}`,
+        '',
+        `  Checked by:  ${named.checkedBy}`,
+        '',
+        `  How to fix:  ${named.advice}`
+      ].join('\n')
+    )
+
+    return EXIT_OK
+  }
+
   if (!def) {
     out(`"${query}" is not in the pawl catalog. If it is an engine rule, see that engine's documentation.`)
 
@@ -512,6 +540,46 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
   out(lines.join('\n'))
 
   return EXIT_OK
+}
+
+/** Findings pawl names itself that are neither in the catalog nor a check of its own. */
+const OWN_RULES: Record<string, { summary: string; checkedBy: string; advice: string }> = {
+  'sort-package-json': {
+    summary: 'The fields of package.json are not in the usual order.',
+    checkedBy: 'Biome, as a source action',
+    advice: 'Run "pawl fix".'
+  }
+}
+
+/** What a guard refuses, whether it is on in this project, and the level it runs at. */
+const explainGuard = (guard: Guard, policy: Policy, root: string): string => {
+  const { dependencies } = detect(root, policy)
+  const on = activeGuards(dependencies, policy.packs).includes(guard)
+  const level = guardLevel(policy, guard)
+  const refused = [
+    ...new Set([...(guard.paths ?? []), ...(guard.patterns ?? []), ...(guard.syntax ?? [])].map(entry => entry.message))
+  ]
+  const whenOff = guard.optIn
+    ? `no. Switch it on with "pawl add ${guard.name}"`
+    : `no. It switches on when the project depends on ${guard.when.join(', ')}`
+  const runners = [
+    ...(guard.paths || guard.patterns ? ['the imports by the linter in use'] : []),
+    ...(guard.syntax ? ['the code patterns by Biome, as rules pawl writes, or by ESLint'] : [])
+  ]
+
+  return [
+    `pawl/${guard.name}`,
+    `  The ${guard.title} guard: imports and code that pawl refuses, with no plugin.`,
+    '',
+    `  On here:     ${on ? 'yes' : whenOff}`,
+    ...(guard.syntax
+      ? [`  Level here:  ${level}${policy.rules[`pawl/${guard.name}`] === undefined ? '' : ' (set by the policy)'}`]
+      : []),
+    `  Checked by:  ${runners.join('; ')}`,
+    '',
+    '  It refuses:',
+    ...refused.map(message => `    - ${message}`)
+  ].join('\n')
 }
 
 const kebab = (name: string): string => name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)

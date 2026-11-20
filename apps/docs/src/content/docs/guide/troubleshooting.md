@@ -50,7 +50,7 @@ Then it lists each problem, or `No problems found.` A problem is:
 | `baseline`     | Baseline written                                     |                                                             | Part of the check did not run; the baseline is left as it was     |
 | `init`, `add`  | Done, a dry run, or you said no                      |                                                             | The install failed, or `init` could not record the baseline       |
 | `migrate`      | As `init`                                            |                                                             | As `init`                                                         |
-| `explain`      | The rule was found                                   | The rule is not in the catalog                              |                                                                   |
+| `explain`      | The rule was found                                   | Pawl has no rule of that name                               |                                                                   |
 | `doctor`       | No problems                                          |                                                             | At least one problem                                              |
 | Any            |                                                      |                                                             | An unknown command, option or option value, or any other error    |
 
@@ -169,4 +169,4 @@ Pawl gives the linters the globals of the runtimes it detects. Name them in the 
 
 ### pawl explain does not know a rule
 
-`pawl explain` covers the rules in the pawl catalog and pawl's Docker checks. For any other engine rule it exits with 1 and points you to that engine's documentation.
+`pawl explain` covers the rules in the pawl catalog, pawl's Docker and Markdown checks, the guards, and the other names pawl gives a finding, such as `pawl/sort-package-json`. For any other engine rule it exits with 1 and points you to that engine's documentation.

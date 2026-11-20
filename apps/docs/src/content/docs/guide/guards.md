@@ -28,6 +28,8 @@ Import restrictions run in whichever linter you use. Code patterns run in Biome 
 
 `de-morgan` is an opt-in guard: `pawl add de-morgan` flags `!(a && b)` and `!(a || b)` with no plugin.
 
+A guard's findings carry the name `pawl/<guard>`. `pawl explain pawl/ai-keys` shows what that guard refuses, the level it runs at, and whether it is on in this project.
+
 Your own restrictions merge with the guards:
 
 ```ts

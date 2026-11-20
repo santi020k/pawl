@@ -34,7 +34,7 @@ import {
 import { checkPrettierConfig, prettierInstalled, runPrettier } from './engines/prettier.ts'
 import { EngineError } from './engines/run.ts'
 import { changedFiles, changedSince, isDirectory, listFiles, projectPath, SinceError } from './fs-utils.ts'
-import { ignoreMatcher } from './ignores.ts'
+import { configIgnores, ignoreMatcher } from './ignores.ts'
 import { checkMarkdown } from './markdown.ts'
 import { loadPolicy } from './policy.ts'
 import { toolset } from './tools.ts'
@@ -336,7 +336,14 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
         fix: 'Add prettier to devDependencies.'
       })
     } else if (!idle) {
-      findings.push(...(await runEngine('prettier', () => runPrettier({ root, ...scope, write }), setup, commands)))
+      findings.push(
+        ...(await runEngine(
+          'prettier',
+          () => runPrettier({ root, ...scope, write, ignore: configIgnores(policy) }),
+          setup,
+          commands
+        ))
+      )
     }
   }
 

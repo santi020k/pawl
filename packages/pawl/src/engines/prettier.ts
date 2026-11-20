@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { readJson, readJsonc, toPosix } from '../fs-utils.ts'
+import { toEslintIgnores } from '../ignores.ts'
 import { PRETTIER_CONFIG_FILES } from '../tools.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
@@ -152,7 +153,23 @@ export const parsePrettierErrors = (stderr: string, targets: readonly string[]):
 }
 
 /** Run the project's Prettier. Each file it would change is one formatting finding. */
-export const runPrettier = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
+/**
+ * Prettier's form of the patterns pawl skips: negative patterns on its command line, which it
+ * applies to the folders it walks and to the files it is given. Prettier has no config for them,
+ * and reads only .gitignore and .prettierignore by itself. A `!` pattern that takes a file back
+ * cannot be said this way, so Prettier keeps skipping that file.
+ */
+export const prettierExclusions = (ignore: readonly string[]): string[] =>
+  ignore
+    .filter(pattern => !pattern.startsWith('!'))
+    .flatMap(pattern => toEslintIgnores(pattern).map(glob => `!${glob}`))
+
+export const runPrettier = async ({
+  root,
+  files,
+  write = false,
+  ignore = []
+}: RunOptions & { ignore?: readonly string[] }): Promise<EngineRun> => {
   const bin = resolveBin(root)
 
   if (!bin)
@@ -161,7 +178,8 @@ export const runPrettier = async ({ root, files, write = false }: RunOptions): P
     })
 
   const mode = write ? '--write' : '--list-different'
-  const flags = [mode, '--ignore-unknown', '--no-error-on-unmatched-pattern']
+  // With --no-error-on-unmatched-pattern, a file named and skipped is passed over in silence.
+  const flags = [mode, '--ignore-unknown', '--no-error-on-unmatched-pattern', ...prettierExclusions(ignore)]
 
   return runChunked(files, `prettier ${mode}`, async targets => {
     const result = await runNode(bin, [...flags, ...targets], root, 'prettier')

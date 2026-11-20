@@ -3,9 +3,11 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { applyBaseline, createBaseline } from '../src/baseline.ts'
 import { check, exitCode } from '../src/check.ts'
-import { parsePrettierErrors, prettierConfig } from '../src/engines/prettier.ts'
+import { parsePrettierErrors, prettierConfig, prettierExclusions, runPrettier } from '../src/engines/prettier.ts'
+import { configIgnores } from '../src/ignores.ts'
 import { formatAgent } from '../src/output.ts'
-import { defaultPolicy } from '../src/policy.ts'
+import { defaultPolicy, loadPolicy } from '../src/policy.ts'
+import { type Finding } from '../src/types.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
 
 // What Prettier 3 printed on stderr, recorded from the real binary.
@@ -245,5 +247,61 @@ describe('a file the real Prettier cannot parse', { timeout: 60_000 }, () => {
     expect(failed[0]?.message).toContain('prettier')
     expect(result.findings.filter(finding => finding.rule === 'prettier:parse')).toEqual([])
     expect(exitCode(result)).toBe(2)
+  })
+})
+
+describe('the files the real Prettier is given', { timeout: 60_000 }, () => {
+  const fixture = (): string => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'eslint', formatter: 'prettier', ignore: ['generated', 'src/legacy/*.js'] },
+      '.prettierrc.json': `${JSON.stringify(prettierConfig(defaultPolicy()))}\n`,
+      'eslint.config.js': 'export default []\n',
+      'generated/g.js': 'export const   g = {a:1}\n',
+      'src/legacy/old.js': 'export const   o = {a:1}\n',
+      'src/legacy/keep.ts': 'export const   k = {a:1}\n',
+      // A folder the default ignores skip, whose front matter a Markdown formatter would rewrite.
+      '.changeset/c.md': '---\n"x":    patch\n---\n\n*  item\n',
+      'src/s.js': 'export const   s = {a:1}\n'
+    })
+
+    link(root, { eslint: true, prettier: true })
+
+    return root
+  }
+  const unformatted = (result: { findings: readonly Finding[] }): string[] =>
+    result.findings
+      // The config files the fixture writes are not what this is about.
+      .filter(finding => finding.rule === 'pawl/format' && !finding.file.endsWith('.json'))
+      .map(finding => finding.file)
+      .sort()
+
+  it("leave out what the policy and pawl's defaults skip, as the other engines do", async () => {
+    const root = fixture()
+    const ignore = configIgnores(await loadPolicy(root))
+
+    // Prettier itself does not look at them, so `pawl fix` does not rewrite them either.
+    expect(unformatted(await runPrettier({ root, ignore }))).toEqual(['src/legacy/keep.ts', 'src/s.js'])
+    expect(unformatted(await runPrettier({ root }))).toEqual([
+      '.changeset/c.md',
+      'generated/g.js',
+      'src/legacy/keep.ts',
+      'src/legacy/old.js',
+      'src/s.js'
+    ])
+    expect(unformatted(await check({ root }))).toEqual(['src/legacy/keep.ts', 'src/s.js'])
+    expect(prettierExclusions(['generated', 'src/legacy/*.js', '!keep'])).toEqual([
+      '!**/generated',
+      '!**/generated/**',
+      '!src/legacy/*.js',
+      '!src/legacy/*.js/**'
+    ])
+  })
+
+  it('pass over a skipped file that is named, without an error', async () => {
+    const result = await check({ root: fixture(), files: ['generated/g.js', '.changeset/c.md', 'src/s.js'] })
+
+    expect(result.setup).toEqual([])
+    expect(unformatted(result)).toEqual(['src/s.js'])
   })
 })

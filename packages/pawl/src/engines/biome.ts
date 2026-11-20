@@ -2,13 +2,14 @@ import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { type Detection, technologies as repoTechnologies } from '../detect.ts'
-import { readJsonc, toList, toPosix } from '../fs-utils.ts'
+import { ancestors, readJsonc, toList, toPosix } from '../fs-utils.ts'
 import { guardOfMessage, importRestrictions, ruleFiles } from '../guards.ts'
 import { configIgnores, DEFAULT_IGNORES, toBiomeIgnore, toEngineGlob } from '../ignores.ts'
 import { defaultPolicy, effectiveRules, overrideRules } from '../policy.ts'
 import { GATED_TAGS, getRule, getRuleByBiome, isGated, type RuleTag, type Technology } from '../rules.ts'
 import { extraGlobals, RUNTIMES } from '../runtime.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../types.ts'
+import { PACKAGE_NAME } from '../version.ts'
 import { EngineError, readReport, runNode } from './run.ts'
 
 /** The Biome version this release of pawl is tested with. Kept in step with package.json by a test. */
@@ -524,6 +525,17 @@ const resolveBin = (root: string): string => {
     }
   )
 }
+
+/**
+ * True when the project can load pawl by name, as a biome.json that extends `@santi020k/pawl/biome`
+ * needs. It cannot when pawl only ran through npx, or before the first install after a clone.
+ */
+export const presetInstalled = (root: string): boolean =>
+  // Biome looks in the node_modules folders above the config and nowhere else, so the same is done here.
+  ancestors(root).some(dir => existsSync(join(dir, 'node_modules', PACKAGE_NAME, 'package.json')))
+
+/** A biome.json that names the standard by package, not by file as pawl's own repo does. */
+export const extendsPackage = (preset: string | undefined): boolean => preset?.startsWith(PACKAGE_NAME) === true
 
 /** Biome is installed in the project, or beside pawl itself. */
 export const biomeInstalled = (root: string): boolean => {

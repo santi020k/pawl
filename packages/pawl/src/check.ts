@@ -12,11 +12,14 @@ import {
 import { detect, packageTechnologies } from './detect.ts'
 import { checkDocker } from './docker.ts'
 import {
+  BIOME_PRESET,
   biomeContextFor,
   checkBiomeConfig,
   checkBiomePackages,
   checkRuleFiles,
   type EngineRun,
+  extendsPackage,
+  presetInstalled,
   runBiome
 } from './engines/biome.ts'
 import { eslintInstalled, runEslint } from './engines/eslint.ts'
@@ -29,6 +32,7 @@ import { checkMarkdown } from './markdown.ts'
 import { loadPolicy } from './policy.ts'
 import { toolset } from './tools.ts'
 import { type EngineName, type Finding, type Policy, type SetupIssue } from './types.ts'
+import { PACKAGE_NAME } from './version.ts'
 
 export interface CheckOptions {
   root: string
@@ -84,7 +88,8 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'oxlint-config-missing',
   'biome-config-missing',
   'since-unresolved',
-  'baseline-unreadable'
+  'baseline-unreadable',
+  'pawl-missing'
 ]
 
 /** True when the result has more new warnings than its limit allows. */
@@ -252,7 +257,18 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
       })
     }
 
-    if (!idle && config.status !== 'missing') {
+    // Biome loads the standard from the package biome.json names, and fails in its own words without it.
+    const loadable = !extendsPackage(config.preset) || presetInstalled(root)
+
+    if (!loadable) {
+      setup.push({
+        code: 'pawl-missing',
+        message: `${config.file} extends ${BIOME_PRESET}, but ${PACKAGE_NAME} is not installed in this project, so Biome cannot load the standard.`,
+        fix: `Add ${PACKAGE_NAME} to devDependencies and install.`
+      })
+    }
+
+    if (!idle && loadable && config.status !== 'missing') {
       findings.push(...(await runEngine('biome', () => runBiome({ root, ...scope, write }), setup, commands)))
     }
   }

@@ -197,6 +197,7 @@ export interface SetupIssue {
     | 'engine-failed'
     | 'since-unresolved'
     | 'baseline-unreadable'
+    | 'pawl-missing'
   message: string
   fix?: string
 }

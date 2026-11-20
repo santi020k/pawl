@@ -33,7 +33,7 @@ It prints the setup, one line per part:
 
 Then it lists each problem, or `No problems found.` A problem is:
 
-- a tool that is in use but not installed;
+- a tool that is in use but not installed, pawl itself included;
 - a Node older than pawl's `engines.node`, a Biome other than the exact version pawl pins, or an ESLint, Oxlint, Prettier or pack plugin outside the range pawl declares for it;
 - a Biome, Oxlint or Prettier config that is missing, out of date, or, for Biome, does not extend the pawl standard;
 - a layer that tried to loosen a locked rule;
@@ -68,6 +68,15 @@ setup  This project is set up to run ESLint, but ESLint is not installed.
 The policy, or the files in the repo, call for a tool that is not in `node_modules`. Install it with your package manager. The check exits with 2, because part of it did not run. See [Install](/guide/install/) for the packages and versions.
 
 For Biome, install the exact version pawl pins. `pawl doctor` prints it.
+
+### Pawl itself is not installed
+
+```txt
+setup  biome.json extends @santi020k/pawl/biome, but @santi020k/pawl is not installed in this project, so Biome cannot load the standard.
+       Add @santi020k/pawl to devDependencies and install.
+```
+
+The project's `biome.json` loads the standard from the package, so pawl has to be in the project's own `node_modules`. Running it through `npx` alone is not enough, and neither is a fresh clone before its first install. Install the dependencies, or add the package.
 
 ### The check did not complete
 

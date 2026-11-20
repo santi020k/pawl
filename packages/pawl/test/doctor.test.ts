@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
+import { check, exitCode } from '../src/check.ts'
 import { type DoctorReport, doctor, formatDoctor } from '../src/doctor.ts'
 import { BIOME_VERSION } from '../src/engines/biome.ts'
 import { applyInit, formatWritten, planInit } from '../src/init.ts'
@@ -41,6 +42,35 @@ describe('pawl doctor', () => {
       'Suggest:  markdown, yaml for the files in this repo (pawl add markdown yaml)'
     )
     expect(formatDoctor(report)).toContain(`Biome:    ${BIOME_VERSION}, biome.json in line with the policy`)
+  })
+
+  it('reports a project that does not have pawl itself installed, as the check does', async () => {
+    // A biome.json that extends the standard, and no install: pawl ran through npx, or the clone is fresh.
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'biome.json': { extends: ['@santi020k/pawl/biome'] },
+      'src/a.js': 'debugger\n'
+    })
+    const result = await check({ root })
+
+    expect(result.setup).toEqual([
+      {
+        code: 'pawl-missing',
+        message:
+          'biome.json extends @santi020k/pawl/biome, but @santi020k/pawl is not installed in this project, so Biome cannot load the standard.',
+        fix: 'Add @santi020k/pawl to devDependencies and install.'
+      }
+    ])
+    expect(result.commands).toEqual([])
+    expect(exitCode(result)).toBe(2)
+    expect((await doctor(root)).problems).toEqual([
+      'biome.json extends @santi020k/pawl/biome, but @santi020k/pawl is not installed in this project. Add it to devDependencies and install.'
+    ])
+
+    link(root)
+
+    expect((await check({ root })).setup).toEqual([])
+    expect((await doctor(root)).problems).toEqual([])
   })
 
   it('reports a baseline that cannot be read', async () => {

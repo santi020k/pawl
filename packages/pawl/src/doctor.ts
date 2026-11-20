@@ -1,7 +1,15 @@
 import { BASELINE_FILE, baselineUnreadable, readBaseline } from './baseline.ts'
 import { installedVersion, satisfies } from './compat.ts'
 import { describe, detect, filePacks } from './detect.ts'
-import { BIOME_VERSION, biomeContextFor, biomeInstalled, checkBiomeConfig } from './engines/biome.ts'
+import {
+  BIOME_PRESET,
+  BIOME_VERSION,
+  biomeContextFor,
+  biomeInstalled,
+  checkBiomeConfig,
+  extendsPackage,
+  presetInstalled
+} from './engines/biome.ts'
 import { eslintInstalled, eslintPlanFor } from './engines/eslint.ts'
 import { checkOxlintConfig, OXLINT_CONFIG_FILE, oxlintContextFor, oxlintInstalled } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled } from './engines/prettier.ts'
@@ -10,7 +18,7 @@ import { getPack } from './packs.ts'
 import { findConfigFile, loadPolicy } from './policy.ts'
 import { toolset } from './tools.ts'
 import { type EngineName, type FormatterName, type Runtime } from './types.ts'
-import { NODE_RANGE, PACKAGE_ROOT, PEER_RANGES, VERSION } from './version.ts'
+import { NODE_RANGE, PACKAGE_NAME, PACKAGE_ROOT, PEER_RANGES, VERSION } from './version.ts'
 
 /** One tool's installed version against the versions pawl works with. */
 export interface Compatibility {
@@ -116,6 +124,12 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     }
 
     if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())
+
+    if (extendsPackage(config.preset) && !presetInstalled(root)) {
+      problems.push(
+        `${config.file} extends ${BIOME_PRESET}, but ${PACKAGE_NAME} is not installed in this project. Add it to devDependencies and install.`
+      )
+    }
   }
 
   if (tools.linter === 'oxlint') {

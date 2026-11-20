@@ -28,8 +28,16 @@ export const d = z.object({ name: z.string() }).passthrough()
 export const e = z.object({ name: z.string() }).loose()
 export const f = z.string().min(1, 'Required').trim()
 export const g = z.string().meta({ id: 'name' }).optional()
+export const h = z.union([z.literal('a'), z.literal("b")])
+export const i = z.union([
+  z.literal('x'),
+  z.literal('it\\'s'),
+])
+export const j = z.string().describe('Name')
+export const k = z.string().min(1).describe('Name')
+export const l = z.array(z.string()).max(3).optional().describe('List')
 `,
-    lines: [3, 4, 5, 6, 7, 8, 9],
+    lines: [3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 17],
     fine: `import { z } from 'zod'
 
 export const a = z.string().nullish()
@@ -40,6 +48,20 @@ export const e = z.string().optional().meta({ id: 'name' })
 export const f = z.string().meta({ id: 'name' }).meta({ title: 'Name' })
 export const g = z.string().meta({ id: 'name' }).parse('x')
 export const h = z.object({ name: z.string() }).partial()
+export const i = z.enum(['a', 'b'])
+export const j = z.union([z.literal('a'), z.literal(1)])
+export const k = z.union([z.literal('a'), z.string()])
+export const l = z.union([z.literal('a')])
+export const m = z.union([z.literal(1), z.literal(2)])
+export const n = z.union([z.literal('a'), z.literal(\`b\`)])
+export const o = z.union([z.literal('a'), z.literal('b'), ...extra])
+export const p = z.union([z.literal('a'), z.literal('b')], { error: 'No' })
+export const q = z.union(options)
+export const r = z.string().meta({ description: 'Name' })
+export const s = z.string().describe
+test.describe('suite', () => {})
+describe('suite', () => {})
+suite.describe('suite')
 `
   },
   {
@@ -54,8 +76,18 @@ export const run = async () => {
   await within(screen.getByRole('list')).getAllByText('Item')
   await getByLabelText(document.body, 'Name')
 }
+
+export const queries = () => {
+  const { getByText, container } = render(null)
+  const { queryAllByRole: roles } = render(null)
+  const { getByRole } = render(
+    null
+  )
+
+  return [getByText, roles, getByRole, container, render(null).findByText('x')]
+}
 `,
-    lines: [5, 6, 7, 8],
+    lines: [5, 6, 7, 8, 12, 13, 14, 18],
     fine: `import { render, screen } from '@testing-library/react'
 
 export const run = async (repository) => {
@@ -64,6 +96,15 @@ export const run = async (repository) => {
   await screen.findAllByRole('button')
   screen.getByText('Save')
   await repository.getById(1)
+}
+
+export const queries = (element) => {
+  const { container, rerender, unmount } = render(null)
+  const { getByText } = within(element)
+  const { getByRole } = other(null)
+  const { queryClient } = render(null)
+
+  return [container, rerender, unmount, getByText, getByRole, queryClient, screen.getByText('x')]
 }
 `
   },
@@ -87,6 +128,40 @@ export const show = (logger) => {
 
   logger.debug('done')
   return debug
+}
+`
+  },
+  {
+    guard: 'testing-library-find-by',
+    dependency: '@testing-library/react',
+    bad: `import { screen, waitFor } from '@testing-library/react'
+
+export const run = async (view) => {
+  await waitFor(() => screen.getByText('Save'))
+  await waitFor(() => screen.queryAllByRole('button'))
+  await waitFor(() => view.getByLabelText('Name'))
+  await waitFor(() => getByText('Save'))
+  await waitFor(() => expect(screen.getByText('Save')).toBeInTheDocument())
+  await waitFor(() => expect(queryByText('Save')).toBeInTheDocument())
+  await waitFor(async () => screen.getByText('Save'))
+}
+`,
+    lines: [4, 5, 6, 7, 8, 9, 10],
+    fine: `import { screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
+
+export const run = async (repository, mock) => {
+  await screen.findByText('Save')
+  await waitFor(() => expect(mock).toHaveBeenCalled())
+  await waitFor(() => expect(screen.queryByText('Save')).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText('Save')).toHaveTextContent('Save'))
+  await waitFor(() => screen.getByText('Save'), { timeout: 100 })
+  await waitFor(() => {
+    screen.getByText('Save')
+  })
+  await waitFor(() => repository.getById(1))
+  await waitFor(() => screen.getByText)
+  await wait(() => screen.getByText('Save'))
+  await waitForElementToBeRemoved(() => screen.queryByText('Save'))
 }
 `
   },

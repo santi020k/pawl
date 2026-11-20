@@ -24,7 +24,7 @@ Taken from "What is left" and "Not built yet" in the README and from `docs/rules
 - [x] Oxlint's type-aware rules. They run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects on Oxlint, and `pawl doctor` names the rules Oxlint leaves to it.
 - [ ] Move the strict-only rules into the default standard as Biome marks them stable. Biome 2.6.8 is still the newest release, so nothing can move yet.
 - [x] Bring the comparison table in the README up to date. It now counts 26 strict-only rules and 18 left out on purpose, as the rules document does.
-- [ ] Give more of the 60 rules with no home a check without a plugin. The largest groups: Stencil (18), Angular, typescript-eslint and ESLint core (6 each), Testing Library and Zod (4 each).
+- [ ] Give more of the 56 rules with no home a check without a plugin. The largest groups: Stencil (18), Angular, typescript-eslint and ESLint core (6 each), Testing Library and Zod (2 each). Angular needs a parser for decorators, which ESLint without typescript-eslint does not have.
 - [ ] Packs for Vite and Slidev.
 - [ ] Decide on `profile`, `snapshot` and `diff`, and the ESLint MCP scaffold. The README lists them as not planned.
 

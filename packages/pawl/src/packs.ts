@@ -183,9 +183,9 @@ export const PACKS: readonly Pack[] = [
     preset: ['configs', 'recommended', 'rules'],
     rules: {
       'zod/array-style': 'error',
-      'zod/prefer-enum-over-literal-union': 'error',
+      'zod/prefer-enum-over-literal-union': 'off',
       'zod/prefer-loose-object': 'off',
-      'zod/prefer-meta': 'error',
+      'zod/prefer-meta': 'off',
       'zod/prefer-meta-last': 'off',
       'zod/prefer-nullish': 'off',
       'zod/prefer-strict-object': 'off',
@@ -236,8 +236,8 @@ export const PACKS: readonly Pack[] = [
       'testing-library/no-debugging-utils': 'off',
       'testing-library/no-dom-import': 'off',
       'testing-library/no-unnecessary-act': 'warn',
-      'testing-library/prefer-find-by': 'warn',
-      'testing-library/prefer-screen-queries': 'error'
+      'testing-library/prefer-find-by': 'off',
+      'testing-library/prefer-screen-queries': 'off'
     }
   },
   {

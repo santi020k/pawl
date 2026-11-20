@@ -10,6 +10,7 @@
     "doctor": "astro-doctor",
     "og": "santi-og generate",
     "preview": "astro preview",
+    "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "astro check"
   },
   "dependencies": {

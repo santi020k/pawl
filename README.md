@@ -1,10 +1,14 @@
 # pawl
 
+[![npm](https://img.shields.io/npm/v/@santi020k/pawl?label=npm&color=b6f23a&labelColor=0b0d0c)](https://www.npmjs.com/package/@santi020k/pawl)
+[![CI](https://github.com/santi020k/pawl/actions/workflows/ci.yml/badge.svg)](https://github.com/santi020k/pawl/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-b6f23a?labelColor=0b0d0c)](LICENSE)
+
 Fast guardrails for AI-written code. One standard, for the linter and formatter you choose.
 
 A pawl is the part of a ratchet that stops it slipping backward. This tool does the same for a codebase: existing findings are recorded once, and from then on quality can only move forward.
 
-> **Status: early.** The library works and is tested, and the API may still change before 1.0.
+> **Status:** published on npm as [`@santi020k/pawl`](https://www.npmjs.com/package/@santi020k/pawl). Until 1.0, a minor release may change the API or the standard; the [changelog](https://pawl.santi020k.com/changelog/) says what each release changed.
 
 ## What it does
 
@@ -27,7 +31,7 @@ pawl check                 # lint, check formatting, apply the ratchet
 pawl fix                   # apply safe fixes and format
 ```
 
-See [packages/pawl/README.md](packages/pawl/README.md) for the full reference.
+The docs are at [pawl.santi020k.com](https://pawl.santi020k.com), and [packages/pawl/README.md](packages/pawl/README.md) is the full reference.
 
 ## This repository
 

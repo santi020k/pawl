@@ -6,8 +6,8 @@ description: Everything the CLI does is exported from @santi020k/pawl.
 
 Everything the CLI does is exported, so other tools can build on it. The package is ESM and has no dependencies.
 
-:::caution[Early]
-The API may still change before the first release. The source of truth is [`src/index.ts`](https://github.com/santi020k/pawl/blob/main/packages/pawl/src/index.ts).
+:::caution[Before 1.0]
+Until 1.0, a minor release may change the API; the [changelog](/changelog/) says what changed. The source of truth is [`src/index.ts`](https://github.com/santi020k/pawl/blob/main/packages/pawl/src/index.ts).
 :::
 
 ## In config files

@@ -35,6 +35,8 @@ jobs:
       name: npm
       url: https://www.npmjs.com/package/@santi020k/pawl
     permissions:
+      # To start the docs deploy once the release exists.
+      actions: write
       contents: write
       id-token: write
 
@@ -112,3 +114,11 @@ jobs:
           PRERELEASE=""
           case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
           gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file "${RUNNER_TEMP}/release-notes.md" $PRERELEASE
+
+      # The changelog page dates each version by its tag, which exists only now. The deploy that the merge
+      # started ran before it, so build the site again.
+      - name: Redeploy the docs
+        if: steps.find.outputs.released == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-docs.yml --ref main

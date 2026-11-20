@@ -385,12 +385,13 @@ const segmentMatcher = (segment: string): ((name: string) => boolean) => {
 
     if (char === '*') source += '.*'
     else if (char === '?') source += '.'
-    else if (close !== -1) {
+    else if (close === -1) source += char.replace(/[.+^${}()|[\]\\]/, '\\$&')
+    else {
       const body = segment.slice(index + 1, close).replace(/^!/, '^')
 
       source += `[${body.replace(/[\\\]]/g, '\\$&')}]`
       index = close
-    } else source += char.replace(/[.+^${}()|[\]\\]/, '\\$&')
+    }
   }
 
   try {

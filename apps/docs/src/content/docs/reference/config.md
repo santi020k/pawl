@@ -37,7 +37,7 @@ A `.json` file holds the same object, as plain JSON. It may name the schema pawl
 }
 ```
 
-The schema is also exported as `@santi020k/pawl/schema.json`. Pawl ignores `$schema` and refuses any other key it does not know, in this file and in every policy it extends, so a typo such as `ignores` stops the run with exit code 2 instead of passing in silence.
+The schema is also exported as `@santi020k/pawl/schema.json`. Pawl ignores `$schema` and refuses any other key it does not know, in this file and in every policy it extends, so a typo such as `ignores` stops the run with exit code 2 instead of passing in silence. Pawl checks the values against the same schema: a level that is not `off`, `warn` or `error`, a string where a list belongs, or a pack name it does not have stops the run too, with the place and what it takes.
 
 ESLint runs from wherever an editor starts it, so `eslint.config.js` passes its own folder as the root: `eslint({ root: import.meta.dirname })`. Without a root, pawl looks up from the working directory for the nearest folder with a pawl config, then the nearest with an ESLint flat config, then the nearest with a `package.json`.
 

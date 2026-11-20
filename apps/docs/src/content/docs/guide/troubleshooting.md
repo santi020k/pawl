@@ -149,6 +149,14 @@ pawl: pawl.config.json has an option pawl does not know: ignores. The options ar
 
 Pawl refuses unknown keys in every policy layer, so a typo does not pass in silence. Fix the name; [Configuration](/reference/config/) lists every option.
 
+### A policy value pawl cannot use
+
+```txt
+pawl: pawl.config.json has a value pawl cannot use: "rules.no-console" is "warning". It must be "off", "warn" or "error".
+```
+
+Pawl checks the values of every policy layer against its schema, and the names under `packs` against the packs it has. The message names the place and what it takes. With `$schema` in a `pawl.config.json`, an editor shows the same problem while you type.
+
 ### Files git ignores are checked, or files you want are skipped
 
 Pawl skips what the root `.gitignore` lists, and a default list of build output, lockfiles, AI tool folders and generated code. Set `gitignore: false` or `defaultIgnores: false` in the policy to check them, then run `pawl sync`. Oxlint reads the `.gitignore` by itself, whatever the policy says. See [What pawl skips](/guide/policy/#what-pawl-skips).

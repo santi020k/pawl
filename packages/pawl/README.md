@@ -128,7 +128,7 @@ Then run `pawl sync`. `pawl.config.js`, `.mjs` and `.json` work too.
 | `runtime`        | `node`, `browser`, `bun`, `deno` or `worker`, instead of what pawl detects.                    |
 | `detect`         | `false` turns detection off; `{ exclude: ['tailwind'] }` leaves a technology out.              |
 
-Rule names are ESLint's names. Use `biome:group/name` for a rule only Biome has. Any other name pawl does not know is passed to ESLint. An option pawl does not know stops the run, so a typo never passes in silence. `pawl.config.json` can point `$schema` at `./node_modules/@santi020k/pawl/pawl.config.schema.json` for editor completion.
+Rule names are ESLint's names. Use `biome:group/name` for a rule only Biome has. Any other name pawl does not know is passed to ESLint. An option pawl does not know stops the run, and so does a value it cannot use, such as a level that is not `off`, `warn` or `error`, so a typo never passes in silence. `pawl.config.json` can point `$schema` at `./node_modules/@santi020k/pawl/pawl.config.schema.json` for editor completion.
 
 ### What pawl skips
 

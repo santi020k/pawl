@@ -3,9 +3,11 @@ import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ancestors, toList } from './fs-utils.ts'
+import { getGuard } from './guards.ts'
 import { literalBrackets, makeIgnore } from './ignores.ts'
+import { getPack, PACKS } from './packs.ts'
 import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from './rules.ts'
-import { POLICY_KEYS } from './schema.ts'
+import { POLICY_KEYS, policyProblems } from './schema.ts'
 import { ESLINT_CONFIG_FILES } from './tools.ts'
 import { type Level, type Override, type Policy, type PolicyInput, type StyleOptions } from './types.ts'
 
@@ -382,7 +384,29 @@ const validate = (value: unknown, source: string): PolicyInput => {
     )
   }
 
+  const problems = [...policyProblems(value), ...unknownPacks(value.packs)]
+
+  if (problems.length > 0) {
+    throw new Error(
+      problems.length === 1
+        ? `${source} has a value pawl cannot use: ${problems[0]}`
+        : `${source} has values pawl cannot use:\n${problems.map(problem => `  ${problem}`).join('\n')}`
+    )
+  }
+
   return value as PolicyInput
+}
+
+/** A pack name with a typo would switch nothing on and say nothing, so it is refused like an unknown key. */
+const unknownPacks = (packs: unknown): string[] => {
+  const names = Array.isArray(packs) ? packs.filter((name): name is string => typeof name === 'string') : []
+  const unknown = names.filter(name => !getPack(name) && !getGuard(name)?.optIn)
+
+  return unknown.length > 0
+    ? [
+        `"packs" names ${unknown.map(name => `"${name}"`).join(', ')}, which ${unknown.length === 1 ? 'is not a pack' : 'are not packs'}. The packs are: ${PACKS.map(pack => pack.name).join(', ')}.`
+      ]
+    : []
 }
 
 const loadFile = async (file: string): Promise<PolicyInput> => {

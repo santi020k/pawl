@@ -160,11 +160,18 @@ export const runPrettier = async ({ root, files, write = false }: RunOptions): P
   return runChunked(files, `prettier ${mode}`, async targets => {
     const result = await runNode(bin, [...flags, ...targets], root, 'prettier')
 
+    // A warning is about a config Prettier could still use, such as an unknown option, and the run
+    // goes on. An error means a file, or the whole run, was not checked, whatever the exit code:
+    // with a plugin it cannot load Prettier exits with 1, as if some files only needed formatting.
+    const errors = result.stderr
+      .split('\n')
+      .filter(line => !line.startsWith('[warn]'))
+      .join('\n')
     let unparsed: Finding[] = []
 
-    if (result.code > 1) {
+    if (result.code > 1 || errors.includes('[error]')) {
       // A file Prettier cannot parse is a finding on that file, and the run still lists the rest.
-      const parsed = result.code === 2 ? parsePrettierErrors(result.stderr, targets) : undefined
+      const parsed = result.code <= 2 ? parsePrettierErrors(errors, targets) : undefined
 
       if (!parsed?.complete) {
         throw new EngineError(result.stderr.trim() || `Prettier exited with code ${result.code}.`, {

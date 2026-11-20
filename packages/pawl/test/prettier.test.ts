@@ -189,6 +189,30 @@ describe('a file the real Prettier cannot parse', { timeout: 60_000 }, () => {
     expect(result.stdout).toContain('Checked by:  Prettier')
   })
 
+  it('is a setup problem when Prettier cannot load a plugin or a parser, though it exits with 1', async () => {
+    // Exit code 1 is also what Prettier gives for files that only need formatting, with none listed here.
+    for (const config of [{ plugins: ['prettier-plugin-that-is-not-installed'] }, { parser: 'no-such-parser' }]) {
+      const result = await check({ root: fixture(`${JSON.stringify(config)}\n`) })
+      const failed = result.setup.filter(issue => issue.code === 'engine-failed')
+
+      expect(failed, JSON.stringify(config)).toHaveLength(1)
+      expect(exitCode(result)).toBe(2)
+    }
+  })
+
+  it('still runs when the config only has an option Prettier warns about', async () => {
+    const config = { ...prettierConfig(defaultPolicy()), someOptionPrettierDoesNotKnow: true }
+    const result = await check({ root: fixture(`${JSON.stringify(config)}\n`) })
+
+    expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+    expect(
+      result.findings
+        .filter(finding => finding.engine === 'prettier' && finding.file.startsWith('src/'))
+        .map(finding => `${finding.file} ${finding.rule}`)
+        .sort()
+    ).toEqual(['src/broken.ts prettier:parse', 'src/loose.ts pawl/format'])
+  })
+
   it('stays a setup problem when the Prettier config is broken', async () => {
     const result = await check({ root: fixture('{ "semi": }\n') })
     const failed = result.setup.filter(issue => issue.code === 'engine-failed')

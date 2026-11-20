@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from './fs-utils.ts'
 import { ignoreMatcher } from './ignores.ts'
+import { levelForFile } from './policy.ts'
 import { type Finding, type Level, type Policy } from './types.ts'
 
 /**
@@ -266,7 +267,7 @@ export const checkMarkdown = ({ root, policy, files }: MarkdownOptions): Finding
 
       if (!def) return
 
-      const severity = policy.rules[def.name] ?? def.level
+      const severity = levelForFile(policy, def.name, file, def.level)
 
       if (severity === 'off') return
 

@@ -2,10 +2,12 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { check } from '../src/check.ts'
+import { checkDocker } from '../src/docker.ts'
 import { biomeConfig, biomeProjectConfig } from '../src/engines/biome.ts'
 import { eslintPlan } from '../src/engines/eslint.ts'
 import { oxlintConfig } from '../src/engines/oxlint.ts'
 import { applyInit, planInit } from '../src/init.ts'
+import { checkMarkdown } from '../src/markdown.ts'
 import { mergeLayers } from '../src/policy.ts'
 import { type PolicyInput } from '../src/types.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
@@ -141,6 +143,77 @@ describe('overrides in the policy', () => {
       rules: { 'no-console': ['warn', { allow: ['log'] }] }
     })
     expect(plan.notEnforced).toContainEqual({ rule: 'unicorn/no-null', needs: 'eslint-plugin-unicorn' })
+  })
+})
+
+describe("overrides for pawl's own checks", () => {
+  const files = {
+    'README.md': '# Notes\n\n## Setup\n\n## Setup\n',
+    'CHANGELOG.md': '# Changes\n\n## Patch\n\n## Patch\n',
+    'docs/api/README.md': '# API\n\n[empty]()\n',
+    Dockerfile: 'FROM node:22-slim\nUSER node\nMAINTAINER someone\n',
+    'examples/app/Dockerfile': 'FROM node:22-slim\nUSER node\nMAINTAINER someone\n'
+  }
+  const found = (policy: ReturnType<typeof policyWith>): string[] => {
+    const root = project(files)
+
+    return [...checkMarkdown({ root, policy }), ...checkDocker({ root, policy })]
+      .map(finding => `${finding.file} ${finding.rule.slice('pawl/'.length)} ${finding.severity}`)
+      .sort()
+  }
+
+  it('set the level of a Markdown or Docker check for the files they name', () => {
+    const policy = policyWith({
+      rules: { 'pawl/markdown-no-duplicate-headings': 'error' },
+      overrides: [
+        // A changelog repeats its headings by design.
+        { files: ['CHANGELOG.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'off' } },
+        { files: ['docs/**'], rules: { 'pawl/markdown-no-empty-links': 'warn' } },
+        { files: ['examples/**'], rules: { 'pawl/docker-no-maintainer': 'off' } }
+      ]
+    })
+
+    expect(found(policy)).toEqual([
+      'Dockerfile docker-no-maintainer warn',
+      'README.md markdown-no-duplicate-headings error',
+      'docs/api/README.md markdown-no-empty-links warn'
+    ])
+  })
+
+  it('let a later entry win, and can switch a check on for some files only', () => {
+    const policy = policyWith({
+      overrides: [
+        { files: ['*.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'warn' } },
+        { files: ['CHANGELOG.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'off' } },
+        { files: ['Dockerfile'], rules: { 'pawl/docker-no-maintainer': 'error' } }
+      ]
+    })
+
+    expect(found(policy)).toEqual([
+      'Dockerfile docker-no-maintainer error',
+      'README.md markdown-no-duplicate-headings warn',
+      'docs/api/README.md markdown-no-empty-links error',
+      'examples/app/Dockerfile docker-no-maintainer error'
+    ])
+  })
+
+  it('cannot loosen a locked check', () => {
+    const policy = mergeLayers([
+      {
+        source: 'company',
+        input: { rules: { 'pawl/docker-no-maintainer': 'error' }, locked: ['pawl/docker-no-maintainer'] }
+      },
+      {
+        source: 'repo',
+        input: { overrides: [{ files: ['examples/**'], rules: { 'pawl/docker-no-maintainer': 'off' } }] }
+      }
+    ])
+
+    expect(found(policy).filter(line => line.includes('docker'))).toEqual([
+      'Dockerfile docker-no-maintainer error',
+      'examples/app/Dockerfile docker-no-maintainer error'
+    ])
+    expect(policy.lockViolations).toHaveLength(1)
   })
 })
 

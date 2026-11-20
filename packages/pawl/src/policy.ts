@@ -3,7 +3,7 @@ import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ancestors, toList } from './fs-utils.ts'
-import { literalBrackets } from './ignores.ts'
+import { literalBrackets, makeIgnore } from './ignores.ts'
 import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from './rules.ts'
 import { POLICY_KEYS } from './schema.ts'
 import { ESLINT_CONFIG_FILES } from './tools.ts'
@@ -271,6 +271,28 @@ export const overrideRules = (override: Override, context?: RuleContext, policy?
 
   return [...Object.entries(override.rules).filter(([name]) => ruleApplies(name, context)), ...optionsOnly]
 }
+
+const overrideMatchers = new WeakMap<Override, (file: string) => boolean>()
+
+/** True when an override's patterns name a file. */
+const overrideCovers = (override: Override, file: string): boolean => {
+  const matcher = overrideMatchers.get(override) ?? makeIgnore(override.files)
+
+  overrideMatchers.set(override, matcher)
+
+  return matcher(file)
+}
+
+/**
+ * The level of one of pawl's own checks for one file: the policy's level, else the check's own,
+ * then the overrides that name the file, the later ones winning, as the engines read them.
+ */
+export const levelForFile = (policy: Policy, name: string, file: string, fallback: Level): Level =>
+  policy.overrides.reduce(
+    (level, override) =>
+      name in override.rules && overrideCovers(override, file) ? (override.rules[name] as Level) : level,
+    policy.rules[name] ?? fallback
+  )
 
 export const findConfigFile = (root: string): string | undefined =>
   CONFIG_FILES.map(name => join(root, name)).find(file => existsSync(file))

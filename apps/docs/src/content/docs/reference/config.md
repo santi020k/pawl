@@ -162,7 +162,7 @@ export default definePolicy({
 - In Biome, an entry that changes only a rule's level keeps the options the top level gives it.
 - Rules for a technology the project does not use are left out, as at the top level.
 - A locked rule keeps its stricter level in an override too, and the attempt is reported.
-- Pawl's own Docker checks follow the top-level levels only.
+- Pawl's own Docker and Markdown checks follow an override too: `{ files: ['CHANGELOG.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'off' } }`. A [guard](/guide/guards/) and the ratchet's `pawl/no-new-disable` keep one level for the whole repo.
 
 ### locked
 

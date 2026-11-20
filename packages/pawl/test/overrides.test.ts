@@ -7,6 +7,7 @@ import { biomeConfig, biomeProjectConfig, TEMPLATE_FILES } from '../src/engines/
 import { eslintPlan } from '../src/engines/eslint.ts'
 import { oxlintConfig } from '../src/engines/oxlint.ts'
 import { applyInit, planInit } from '../src/init.ts'
+import { levelForFile } from '../src/levels.ts'
 import { checkMarkdown } from '../src/markdown.ts'
 import { mergeLayers } from '../src/policy.ts'
 import { type PolicyInput } from '../src/types.ts'
@@ -217,6 +218,34 @@ describe("overrides for pawl's own checks", () => {
       'examples/app/Dockerfile docker-no-maintainer error'
     ])
     expect(policy.lockViolations).toHaveLength(1)
+  })
+
+  it('cannot switch off a locked check at its own level, for some files or for all', () => {
+    const company = { source: 'company', input: { locked: ['pawl/docker-no-root', 'pawl/markdown-no-empty-links'] } }
+    const policy = mergeLayers([
+      company,
+      {
+        source: 'repo',
+        input: {
+          rules: { 'pawl/markdown-no-empty-links': 'off' },
+          overrides: [{ files: ['Dockerfile'], rules: { 'pawl/docker-no-root': 'off' } }]
+        }
+      }
+    ])
+
+    expect(policy.lockViolations.map(({ rule, wanted, kept }) => `${rule} ${wanted} ${kept}`)).toEqual([
+      'pawl/markdown-no-empty-links off error',
+      'pawl/docker-no-root off warn'
+    ])
+    expect(levelForFile(policy, 'pawl/docker-no-root', 'Dockerfile', 'warn')).toBe('warn')
+    expect(levelForFile(policy, 'pawl/markdown-no-empty-links', 'README.md', 'error')).toBe('error')
+    // A locked guard keeps its level too, and a check that is not locked can still be switched off.
+    expect(
+      mergeLayers([
+        { source: 'company', input: { locked: ['pawl/zod'] } },
+        { source: 'repo', input: { rules: { 'pawl/zod': 'off', 'pawl/docker-no-root': 'off' } } }
+      ]).lockViolations.map(violation => violation.rule)
+    ).toEqual(['pawl/zod'])
   })
 })
 

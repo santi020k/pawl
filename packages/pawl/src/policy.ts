@@ -2,9 +2,11 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { getDockerRule } from './docker.ts'
 import { ancestors, toList } from './fs-utils.ts'
 import { GUARDS, getGuard } from './guards.ts'
-import { literalBrackets, makeIgnore } from './ignores.ts'
+import { literalBrackets } from './ignores.ts'
+import { getMarkdownRule } from './markdown.ts'
 import { getPack, PACKS } from './packs.ts'
 import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from './rules.ts'
 import { POLICY_KEYS, policyProblems } from './schema.ts'
@@ -180,11 +182,21 @@ const requireLevels = (policy: Policy): void => {
 }
 
 /**
+ * The level of one of pawl's own checks that are not in the rule catalog: the Docker and Markdown
+ * checks and the guards. A lock keeps them at it, as it keeps a catalog rule at its default.
+ */
+const ownLevel = (name: string): Level | undefined => {
+  const guard = name.startsWith('pawl/') ? getGuard(name.slice('pawl/'.length)) : undefined
+
+  return getDockerRule(name)?.level ?? getMarkdownRule(name)?.level ?? (guard ? (guard.level ?? 'error') : undefined)
+}
+
+/**
  * The level a locked rule keeps when a layer asks for a looser one, or undefined when the
  * asked-for level is allowed. The rule's own default, or the level a layer set, is the floor.
  */
 const lockedLevel = (policy: Policy, name: string, wanted: Level): Level | undefined => {
-  const current = policy.rules[name] ?? defaultLevel(name, policy.strict)
+  const current = policy.rules[name] ?? ownLevel(name) ?? defaultLevel(name, policy.strict)
 
   return policy.locked.includes(name) && ORDER[wanted] < ORDER[current] ? current : undefined
 }
@@ -273,28 +285,6 @@ export const overrideRules = (override: Override, context?: RuleContext, policy?
 
   return [...Object.entries(override.rules).filter(([name]) => ruleApplies(name, context)), ...optionsOnly]
 }
-
-const overrideMatchers = new WeakMap<Override, (file: string) => boolean>()
-
-/** True when an override's patterns name a file. */
-const overrideCovers = (override: Override, file: string): boolean => {
-  const matcher = overrideMatchers.get(override) ?? makeIgnore(override.files)
-
-  overrideMatchers.set(override, matcher)
-
-  return matcher(file)
-}
-
-/**
- * The level of one of pawl's own checks for one file: the policy's level, else the check's own,
- * then the overrides that name the file, the later ones winning, as the engines read them.
- */
-export const levelForFile = (policy: Policy, name: string, file: string, fallback: Level): Level =>
-  policy.overrides.reduce(
-    (level, override) =>
-      name in override.rules && overrideCovers(override, file) ? (override.rules[name] as Level) : level,
-    policy.rules[name] ?? fallback
-  )
 
 export const findConfigFile = (root: string): string | undefined =>
   CONFIG_FILES.map(name => join(root, name)).find(file => existsSync(file))

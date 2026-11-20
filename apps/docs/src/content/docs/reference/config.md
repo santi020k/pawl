@@ -167,7 +167,7 @@ export default definePolicy({
 
 ### locked
 
-Rules that later layers may tighten but never loosen.
+Rules that later layers may tighten but never loosen. Pawl's own checks can be locked too: a Docker or Markdown check, or a guard as `pawl/<guard>`, keeps at least its own level, so a later layer cannot switch it off, for some files or for all.
 
 ### ignore
 

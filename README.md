@@ -4,7 +4,7 @@ Fast guardrails for AI-written code. One standard, for the linter and formatter 
 
 A pawl is the part of a ratchet that stops it slipping backward. This tool does the same for a codebase: existing findings are recorded once, and from then on quality can only move forward.
 
-> **Status: early.** The library works and is tested, but it is not published to npm yet and the API may still change.
+> **Status: early.** The library works and is tested, and the API may still change before 1.0.
 
 ## What it does
 

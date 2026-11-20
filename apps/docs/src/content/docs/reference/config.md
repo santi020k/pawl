@@ -177,7 +177,7 @@ A pattern takes `**`, `*` and `?`. `[` and `]` are the characters themselves, he
 
 ### gitignore
 
-Skip what the root `.gitignore` lists, including its `!` lines, its character classes such as `*.py[cod]`, and lines that start with a slash, which name a path at the root only. Biome reads the file through its git integration, which pawl turns on in `biome.json` when there is a `.gitignore` or a git repo. Pawl turns the lines into ESLint's ignore patterns. Oxlint reads the file by itself, whatever this option says.
+Skip what the root `.gitignore` lists, including its `!` lines, its character classes such as `*.py[cod]`, and lines that start with a slash, which name a path at the root only. Biome reads the file through its git integration, which pawl turns on in `biome.json` when there is a `.gitignore` or a git repo. Pawl turns the lines into ESLint's ignore patterns. Prettier reads it by itself too, and with `gitignore: false` pawl tells it to read only `.prettierignore`. Oxlint reads the file by itself, whatever this option says.
 
 ### defaultIgnores
 

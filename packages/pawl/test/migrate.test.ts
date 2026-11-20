@@ -211,6 +211,12 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
     )
   })
 
+  it('keeps a line width the policy can hold, when the old one is wider than Biome formats to', async () => {
+    const plan = await planMigrate({ root: fixture({ '.prettierrc': { printWidth: 1000 } }) })
+
+    expect(plan.policy.style?.lineWidth).toBe(320)
+  })
+
   it('says so when the Prettier config is one it cannot read', async () => {
     const plan = await planMigrate({ root: fixture({ 'prettier.config.js': 'export default { semi: false }\n' }) })
 

@@ -397,6 +397,9 @@ const styleFrom = (formatting: RuleMap, prettier: PrettierOptions | undefined): 
     style.arrowParens = set.arrowParens === 'avoid' ? 'as-needed' : 'always'
   }
 
+  // A wider line than Biome formats to means no limit in practice, and the policy refuses one.
+  if (style.lineWidth !== undefined) style.lineWidth = Math.min(style.lineWidth, WIDEST_LINE)
+
   // Only what differs from the standard is worth writing down.
   return Object.fromEntries(
     Object.entries(style).filter(

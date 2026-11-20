@@ -68,7 +68,7 @@ The default style is 2 spaces, single quotes, no semicolons, no trailing commas 
 
 ## Overrides
 
-Set levels and options for some files only. Each entry names its files and takes `rules` and `options` like the top level:
+Set levels and options for some files only. Each entry names its files and takes `rules`, `options` and `biomeOptions` like the top level:
 
 ```ts
 export default definePolicy({

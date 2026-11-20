@@ -33,6 +33,7 @@ eqeqeq
 
   Level here:  error (default standard)
   Biome:       suspicious/noDoubleEquals  https://biomejs.dev/linter/rules/no-double-equals
+  Oxlint:      eqeqeq
   ESLint:      eqeqeq
 ```
 

@@ -10,7 +10,7 @@ A guard is a set of checks for one library. It needs no plugin, and switches on 
 
 | Guard                                          | On when the project uses                 | What it refuses                                                                                                               |
 | ---------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `ai-keys`                                      | Any AI SDK below                         | An API key written in the code, and `dangerouslyAllowBrowser: true`                                                           |
+| `ai-keys`                                      | Any AI SDK below, but AutoGen            | An API key written in the code, and `dangerouslyAllowBrowser: true`                                                           |
 | `ai-sdk`                                       | `ai`, `@ai-sdk/*`                        | Imports of package internals                                                                                                  |
 | `openai`, `anthropic`                          | `openai`, `@anthropic-ai/sdk`            | Imports of package internals                                                                                                  |
 | `openai-agents`                                | `@openai/agents`                         | Internals, and agents from the base OpenAI client                                                                             |

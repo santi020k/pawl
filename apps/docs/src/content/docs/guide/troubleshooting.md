@@ -195,4 +195,4 @@ Pawl gives the linters the globals of the runtimes it detects. Name them in the 
 
 ### pawl explain does not know a rule
 
-`pawl explain` covers the rules in the pawl catalog, pawl's Docker and Markdown checks, the guards, and the other names pawl gives a finding, such as `pawl/sort-package-json`. For any other engine rule it exits with 1 and points you to that engine's documentation.
+`pawl explain` covers the rules in the pawl catalog, pawl's Docker and Markdown checks, the guards, and the other names pawl gives a finding, such as `pawl/sort-package-json` and `eslint:parse`. A name with an engine's prefix, such as `biome:style/noDefaultExport` or `oxlint:unicorn/no-null`, is one of that engine's own rules: `pawl explain` says so and links to its page where it can. For a name it does not know at all it exits with 1.

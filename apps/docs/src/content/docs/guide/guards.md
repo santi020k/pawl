@@ -29,7 +29,7 @@ Import restrictions run in whichever linter you use. Code patterns run in Biome 
 
 `de-morgan` is an opt-in guard: `pawl add de-morgan` flags `!(a && b)` and `!(a || b)` with no plugin.
 
-A guard's findings carry the name `pawl/<guard>`. `pawl explain pawl/ai-keys` shows what that guard refuses, the level it runs at, and whether it is on in this project.
+In Biome, a finding of a guard's code patterns carries the name `pawl/<guard>`. The engines report the rest under their own rules, with the guard's message: an import a guard refuses as `no-restricted-imports` (or `biome:style/noRestrictedImports`), and a code pattern under ESLint as `no-restricted-syntax`. `pawl explain pawl/ai-keys` shows what that guard refuses, the level it runs at, and whether it is on in this project.
 
 Your own restrictions merge with the guards:
 

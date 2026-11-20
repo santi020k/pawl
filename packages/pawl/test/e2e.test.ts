@@ -451,6 +451,17 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'explain', 'pawl/no-new-disable').code).toBe(0)
       expect(run(root, 'explain', 'pawl/docker-no-root').code).toBe(0)
       expect(run(root, 'explain', 'not-a-rule')).toMatchObject({ code: 1, stderr: '' })
+      // The names of an engine's own diagnostics, with no rule of the catalog behind them.
+      expect(run(root, 'explain', 'eslint:parse').stdout).toContain('ESLint cannot parse the file')
+      expect(run(root, 'explain', 'oxlint:parse').stdout).toContain('Oxlint cannot parse the file')
+      expect(run(root, 'explain', 'biome:fs/cantRead')).toMatchObject({ code: 0 })
+      expect(run(root, 'explain', 'biome:style/noDefaultExport').stdout).toContain(
+        'Read more:   https://biomejs.dev/linter/rules/no-default-export/'
+      )
+      expect(run(root, 'explain', 'oxlint:jsx-a11y/alt-text').stdout).toContain(
+        'Read more:   https://oxc.rs/docs/guide/usage/linter/rules/jsx_a11y/alt-text.html'
+      )
+      expect(run(root, 'explain', 'oxlint:no-debugger').stdout).toContain('rules/eslint/no-debugger.html')
     })
 
     test('names the values a choice takes when it gets one it does not know', () => {

@@ -506,6 +506,22 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
     return EXIT_OK
   }
 
+  const engine = def ? undefined : engineName(query)
+
+  if (engine) {
+    out(
+      [
+        query,
+        `  A diagnostic of ${engine.title} that is not a rule of pawl's catalog. Pawl reports it under ${engine.title}'s own name, ${engine.name}, with its level.`,
+        '',
+        `  Checked by:  ${engine.title}`,
+        ...(engine.docs ? ['', `  Read more:   ${engine.docs}`] : [])
+      ].join('\n')
+    )
+
+    return EXIT_OK
+  }
+
   if (!def) {
     out(`"${query}" is not in the pawl catalog. If it is an engine rule, see that engine's documentation.`)
 
@@ -555,11 +571,62 @@ const OWN_RULES: Record<string, { summary: string; checkedBy: string; advice: st
     checkedBy: 'Prettier',
     advice: 'Fix the syntax error at the line and column given. Pawl cannot fix it.'
   },
+  'eslint:parse': {
+    summary: 'ESLint cannot parse the file, so none of its rules ran on it.',
+    checkedBy: 'ESLint',
+    advice:
+      'Fix the syntax error at the line and column given. If the file is valid, ESLint has no parser for its language: run "pawl doctor".'
+  },
+  'oxlint:parse': {
+    summary: 'Oxlint cannot parse the file, so none of its rules ran on it.',
+    checkedBy: 'Oxlint',
+    advice: 'Fix the syntax error at the line and column given. Pawl cannot fix it.'
+  },
+  'biome:parse': {
+    summary: 'Biome cannot parse the file, so it can neither lint nor format it.',
+    checkedBy: 'Biome',
+    advice: 'Fix the syntax error at the line and column given. Pawl cannot fix it.'
+  },
   'sort-package-json': {
     summary: 'The fields of package.json are not in the usual order.',
     checkedBy: 'Biome, as a source action',
     advice: 'Run "pawl fix".'
   }
+}
+
+/**
+ * A name pawl gives a finding of an engine's own, with no rule of the catalog behind it, such as
+ * `biome:style/noDefaultExport`, `biome:fs/cantRead` or `oxlint:unicorn/no-null`.
+ */
+const engineName = (query: string): { title: string; name: string; docs?: string } | undefined => {
+  const [prefix, ...rest] = query.split(':')
+  const name = rest.join(':')
+
+  if (name === '') return undefined
+
+  if (prefix === 'biome') {
+    const rule =
+      /^(?:lint\/)?(?:a11y|complexity|correctness|nursery|performance|security|style|suspicious)\/(\w+)$/.exec(name)
+
+    return {
+      title: 'Biome',
+      name,
+      ...(rule ? { docs: `https://biomejs.dev/linter/rules/${kebab(rule[1] as string)}/` } : {})
+    }
+  }
+
+  if (prefix === 'oxlint') {
+    const rule = /^(?:([\w-]+)\/)?([\w-]+)$/.exec(name)
+    const scope = rule?.[1] === undefined ? 'eslint' : rule[1].replaceAll('-', '_')
+
+    return {
+      title: 'Oxlint',
+      name,
+      ...(rule ? { docs: `https://oxc.rs/docs/guide/usage/linter/rules/${scope}/${rule[2]}.html` } : {})
+    }
+  }
+
+  return prefix === 'eslint' ? { title: 'ESLint', name } : undefined
 }
 
 /** What a guard refuses, whether it is on in this project, and the level it runs at. */

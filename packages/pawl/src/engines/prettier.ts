@@ -82,6 +82,69 @@ const resolveBin = (root: string): string | undefined => {
 
 export const prettierInstalled = (root: string): boolean => resolveBin(root) !== undefined
 
+export interface PrettierParseErrors {
+  /** One finding for each file Prettier could not parse. */
+  findings: Finding[]
+  /** True when every line of stderr belongs to the syntax error of a file that was checked. */
+  complete: boolean
+}
+
+/** A code frame line of Prettier's error: `> 1 | code`, `  2 | code` or `    | ^`. */
+const FRAME_LINE = /^\[error\]\s+(?:>\s*)?(?:\d+\s)?\|/
+
+/** Prettier prints the file as it was given, relative to where it ran. */
+const isChecked = (file: string, targets: readonly string[]): boolean => {
+  const name = toPosix(file).replace(/^\.\//, '')
+
+  if (name.startsWith('/') || /^[A-Za-z]:/.test(name) || name.split('/').includes('..')) return false
+
+  return targets.some(target => {
+    const wanted = toPosix(target).replace(/^\.\//, '').replace(/\/$/, '')
+
+    return wanted === '.' || wanted === '' || name === wanted || name.startsWith(`${wanted}/`)
+  })
+}
+
+/**
+ * Read what Prettier prints on stderr when a file does not parse: a line `[error] <file>: SyntaxError:
+ * <message> (<line>:<column>)` and then a code frame. The run counts as complete only when every
+ * line is part of such a block for a file that was checked. Any other line, a broken config, an
+ * unknown option or a crash, leaves it incomplete, and the caller must treat the run as failed.
+ */
+export const parsePrettierErrors = (stderr: string, targets: readonly string[]): PrettierParseErrors => {
+  const findings: Finding[] = []
+  let complete = true
+  let inBlock = false
+
+  for (const line of stderr.split('\n').map(text => text.replace(/\r$/, ''))) {
+    if (line.trim() === '') continue
+
+    const header = /^\[error\] (.+?): (SyntaxError: .*)$/.exec(line)
+
+    if (header?.[1] !== undefined && header[2] !== undefined && isChecked(header[1], targets)) {
+      const message = header[2].trim()
+      const position = /\((\d+):(\d+)\)$/.exec(message)
+
+      findings.push({
+        file: toPosix(header[1]).replace(/^\.\//, ''),
+        line: Math.max(1, Number(position?.[1] ?? 1)),
+        column: Math.max(1, Number(position?.[2] ?? 1)),
+        engine: 'prettier',
+        engineRule: 'parse',
+        rule: 'prettier:parse',
+        severity: 'error',
+        message,
+        fixable: false
+      })
+      inBlock = true
+    } else if (!(inBlock && FRAME_LINE.test(line))) {
+      complete = false
+    }
+  }
+
+  return { findings, complete: complete && findings.length > 0 }
+}
+
 /** Run the project's Prettier. Each file it would change is one formatting finding. */
 export const runPrettier = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
   const bin = resolveBin(root)
@@ -97,15 +160,24 @@ export const runPrettier = async ({ root, files, write = false }: RunOptions): P
   return runChunked(files, `prettier ${mode}`, async targets => {
     const result = await runNode(bin, [...flags, ...targets], root, 'prettier')
 
+    let unparsed: Finding[] = []
+
     if (result.code > 1) {
-      throw new EngineError(result.stderr.trim() || `Prettier exited with code ${result.code}.`, {
-        command: result.command
-      })
+      // A file Prettier cannot parse is a finding on that file, and the run still lists the rest.
+      const parsed = result.code === 2 ? parsePrettierErrors(result.stderr, targets) : undefined
+
+      if (!parsed?.complete) {
+        throw new EngineError(result.stderr.trim() || `Prettier exited with code ${result.code}.`, {
+          command: result.command
+        })
+      }
+
+      unparsed = parsed.findings
     }
 
-    if (write) return []
+    if (write) return unparsed
 
-    return result.stdout
+    const unformatted = result.stdout
       .split('\n')
       .map(line => line.trim())
       .filter(Boolean)
@@ -122,5 +194,7 @@ export const runPrettier = async ({ root, files, write = false }: RunOptions): P
           fixable: true
         })
       )
+
+    return [...unparsed, ...unformatted]
   })
 }

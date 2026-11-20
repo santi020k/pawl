@@ -490,7 +490,7 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
   if (named) {
     out(
       [
-        `pawl/${short}`,
+        short.includes(':') ? short : `pawl/${short}`,
         `  ${named.summary}`,
         '',
         `  Checked by:  ${named.checkedBy}`,
@@ -544,6 +544,11 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
 
 /** Findings pawl names itself that are neither in the catalog nor a check of its own. */
 const OWN_RULES: Record<string, { summary: string; checkedBy: string; advice: string }> = {
+  'prettier:parse': {
+    summary: 'Prettier cannot parse the file, so it cannot tell whether the file is formatted.',
+    checkedBy: 'Prettier',
+    advice: 'Fix the syntax error at the line and column given. Pawl cannot fix it.'
+  },
   'sort-package-json': {
     summary: 'The fields of package.json are not in the usual order.',
     checkedBy: 'Biome, as a source action',

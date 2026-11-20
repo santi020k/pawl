@@ -86,6 +86,14 @@ The check did not complete. Fix the setup problem above and run it again.
 
 An engine could not run, an engine is missing, the Biome or Oxlint config file is missing, or the baseline cannot be read. Pawl never reports success when part of the check did not run. Fix the `setup` line above it; `--verbose` shows the engine commands that ran.
 
+### Prettier cannot parse a file
+
+```txt
+src/a.ts:1  prettier:parse  SyntaxError: Expression expected. (1:12)
+```
+
+When Prettier is the formatter and a file has a syntax error, the file is a finding with the line and column Prettier names, and the check goes on with the other files. Pawl cannot fix it: correct the syntax. Run `pawl explain prettier:parse` for the rule. A broken Prettier config file, an unknown option or a missing plugin is a different case: it stops the check as a setup problem, with what Prettier said.
+
 ### The baseline cannot be read
 
 ```txt

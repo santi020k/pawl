@@ -276,7 +276,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   if (tools.linter === 'oxlint') {
     engines.push('oxlint')
 
-    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
+    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection, root))
 
     if (config.issue) setup.push(config.issue)
 

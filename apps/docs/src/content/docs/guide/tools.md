@@ -55,7 +55,7 @@ In a `.vue`, `.svelte` or `.astro` file Biome reads the script and not the templ
 
 ### Oxlint
 
-Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
+Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Nine more rules of the standard need type information, such as `@typescript-eslint/no-floating-promises`. Oxlint runs them through the separate `oxlint-tsgolint` package. When the project has it installed, pawl writes those rules and `"options": { "typeAware": true }` into `.oxlintrc.json`, and Oxlint reports them under their ESLint names. Without it, pawl leaves them out, because Oxlint fails when a type-aware rule has no tsgolint to run it, and `pawl doctor` names the package to install. `pawl sync` adds or removes the option as the package comes and goes. tsgolint brings its own TypeScript compiler, so it does not depend on the project's `typescript` version, and it reads the project's `tsconfig.json` when there is one.
 
 Oxlint skips `node_modules` only where a `.gitignore` lists it, so pawl names the folder in `.oxlintrc.json` itself. For Vue, Svelte and Astro projects pawl also declares the names the compiler gives a component, such as `defineProps`, `$state` and `Astro`, so `no-undef` does not report them.
 

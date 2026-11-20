@@ -12,7 +12,7 @@ import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../runtime.ts'
 import { toolset } from '../tools.ts'
 import { type Finding, type Policy, type Runtime } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
-import { oxlintCovers } from './oxlint.ts'
+import { oxlintCovers, tsgolintInstalled } from './oxlint.ts'
 import { EngineError, readReport, runChunked, runNode } from './run.ts'
 
 /** An ESLint flat config object. Typed loosely so pawl does not depend on ESLint's types. */
@@ -60,6 +60,8 @@ export interface EslintPlanOptions {
   biomeActive: boolean
   /** Oxlint is the linter, so ESLint only takes what Oxlint does not enforce. */
   oxlintActive?: boolean
+  /** oxlint-tsgolint can run, so Oxlint enforces the rules that need type information too. */
+  oxlintTypeAware?: boolean
   typescript: boolean
   /** The technologies the project uses. Rules for any other technology are left out. */
   technologies?: readonly Technology[]
@@ -200,7 +202,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
   /** The fast linter already enforces this rule, so ESLint leaves it alone. */
   const covered = (name: string): boolean =>
     (biomeActive && getRule(name)?.biome !== undefined) ||
-    (options.oxlintActive === true && oxlintCovers(getRule(name)?.name ?? name))
+    (options.oxlintActive === true && oxlintCovers(getRule(name)?.name ?? name, options.oxlintTypeAware))
   const coveredByBiome: string[] = []
   const notEnforced: EslintPlan['notEnforced'] = []
   const activePacks: string[] = []
@@ -537,6 +539,7 @@ export const eslintPlanFor = async (root: string, policy?: Policy): Promise<Esli
     policy: resolved,
     biomeActive: toolset(root, resolved).linter === 'biome',
     oxlintActive: toolset(root, resolved).linter === 'oxlint',
+    oxlintTypeAware: tsgolintInstalled(root),
     typescript: detection.typescript,
     // One ESLint config covers the whole repo, so it takes every technology in it.
     technologies: allTechnologies(detection),

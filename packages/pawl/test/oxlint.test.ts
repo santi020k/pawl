@@ -3,9 +3,10 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { check } from '../src/check.ts'
+import { doctor } from '../src/doctor.ts'
 import { BIOME_PRESET } from '../src/engines/biome.ts'
 import { eslintPlan } from '../src/engines/eslint.ts'
-import { checkOxlintConfig, oxlintConfig, oxlintCovers, runOxlint } from '../src/engines/oxlint.ts'
+import { checkOxlintConfig, mergeOxlintConfig, oxlintConfig, oxlintCovers, runOxlint } from '../src/engines/oxlint.ts'
 import { OXLINT_RULES, OXLINT_VERSION } from '../src/engines/oxlint-rules.ts'
 import { applyInit, planInit } from '../src/init.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy.ts'
@@ -218,5 +219,116 @@ describe('Oxlint as the linter, with the real Oxlint', { timeout: 60_000 }, () =
     expect(plan.activePacks).toEqual([])
     // A rule of the standard that Oxlint does not have falls to ESLint.
     expect(Object.keys(base).every(name => !oxlintCovers(name))).toBe(true)
+  })
+})
+
+describe('the rules that need type information', { timeout: 120_000 }, () => {
+  const FLOATING = '@typescript-eslint/no-floating-promises'
+  const fixture = async (tsgolint: boolean): Promise<string> => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'tsconfig.json': {
+        compilerOptions: { strict: true, target: 'es2022', module: 'esnext', moduleResolution: 'bundler' }
+      },
+      'pawl.config.json': { engine: 'oxlint', strict: true },
+      'src/a.ts': 'async function load(): Promise<void> {}\n\nload()\n\nexport const a = 1\n'
+    })
+
+    link(root, { tsgolint })
+    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    return root
+  }
+
+  it('are covered only where tsgolint can run them', () => {
+    expect(oxlintCovers(FLOATING)).toBe(false)
+    expect(oxlintCovers(FLOATING, true)).toBe(true)
+    expect(oxlintCovers('pawl/format', true)).toBe(false)
+  })
+
+  it("run in the real Oxlint, as findings under the standard's names, when tsgolint is installed", async () => {
+    const root = await fixture(true)
+    const config = JSON.parse(readFileSync(join(root, '.oxlintrc.json'), 'utf8')) as {
+      options?: unknown
+      rules: Record<string, unknown>
+    }
+
+    expect(config.options).toEqual({ typeAware: true })
+    expect(config.rules['typescript/no-floating-promises']).toBe('error')
+
+    const result = await check({ root, files: ['src/a.ts'] })
+    const floating = result.findings.filter(finding => finding.rule === FLOATING)
+
+    expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+    expect(floating).toEqual([
+      expect.objectContaining({
+        file: 'src/a.ts',
+        line: 3,
+        engine: 'oxlint',
+        engineRule: 'typescript/no-floating-promises'
+      })
+    ])
+
+    const report = await doctor(root)
+
+    expect(report.problems).toEqual([])
+    expect(report.engines.oxlint?.notEnforced.filter(gap => gap.needs === 'oxlint-tsgolint')).toEqual([])
+  })
+
+  it('are left out of the config, and named by doctor, when tsgolint is not installed', async () => {
+    const root = await fixture(false)
+    const config = JSON.parse(readFileSync(join(root, '.oxlintrc.json'), 'utf8')) as {
+      options?: unknown
+      rules: Record<string, unknown>
+    }
+
+    expect(config.options).toBeUndefined()
+    expect(Object.keys(config.rules).filter(rule => rule === 'typescript/no-floating-promises')).toEqual([])
+
+    const result = await check({ root, files: ['src/a.ts'] })
+
+    expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+    expect(result.findings.filter(finding => finding.rule === FLOATING)).toEqual([])
+    expect((await doctor(root)).problems).toEqual([
+      'Not enforced by Oxlint: @typescript-eslint/await-thenable, @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated and 6 more (install oxlint-tsgolint).'
+    ])
+  })
+
+  it("make the config stale when tsgolint is added or removed, and sync keeps the project's other options", async () => {
+    const root = await fixture(false)
+    const policy = defaultPolicy()
+    const withTsgolint = { typescript: true, technologies: [], typeAware: true }
+    const without = { typescript: true, technologies: [] }
+
+    write(root, { '.oxlintrc.json': oxlintConfig(policy, without) })
+    expect(checkOxlintConfig(root, policy, without).status).toBe('ok')
+    expect(checkOxlintConfig(root, policy, withTsgolint).status).toBe('stale')
+
+    const merged = mergeOxlintConfig({ options: { typeCheck: true } }, oxlintConfig(policy, withTsgolint))
+
+    expect(merged.options).toEqual({ typeCheck: true, typeAware: true })
+    write(root, { '.oxlintrc.json': merged })
+    expect(checkOxlintConfig(root, policy, withTsgolint).status).toBe('ok')
+    expect(checkOxlintConfig(root, policy, without).status).toBe('stale')
+    expect(mergeOxlintConfig(merged, oxlintConfig(policy, without)).options).toEqual({ typeCheck: true })
+    expect(mergeOxlintConfig({ options: { typeAware: true } }, oxlintConfig(policy, without)).options).toBeUndefined()
+  })
+
+  it('are left to Oxlint, not ESLint, only where tsgolint is installed', async () => {
+    const options = {
+      root: project({ 'package.json': { name: 'fixture' } }),
+      policy: defaultPolicy(),
+      biomeActive: false,
+      oxlintActive: true,
+      typescript: true,
+      technologies: []
+    }
+    const without = await eslintPlan(options)
+    const covered = await eslintPlan({ ...options, oxlintTypeAware: true })
+    // The fixture has no typescript-eslint, so a rule ESLint would take shows up as one it cannot run.
+    const wanted = (plan: typeof without): string[] => plan.notEnforced.map(item => item.rule)
+
+    expect(wanted(without)).toContain('@typescript-eslint/prefer-optional-chain')
+    expect(wanted(covered)).not.toContain('@typescript-eslint/prefer-optional-chain')
   })
 })

@@ -7,7 +7,7 @@ import { describe, detect } from './detect.ts'
 import { getDockerRule } from './docker.ts'
 import { doctor, formatDoctor } from './doctor.ts'
 import { biomeContextFor, checkBiomeConfig } from './engines/biome.ts'
-import { OXLINT_RULES } from './engines/oxlint-rules.ts'
+import { OXLINT_RULES, OXLINT_TYPE_AWARE_RULES } from './engines/oxlint-rules.ts'
 import { activeGuards, type Guard, getGuard, guardLevel } from './guards.ts'
 import {
   applyInit,
@@ -533,7 +533,9 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
     lines.push(
       `  Biome:       ${def.biome ? `${def.biome}  https://biomejs.dev/linter/rules/${kebab(def.biome.split('/')[1] ?? '')}` : 'no equivalent'}`
     )
-    lines.push(`  Oxlint:      ${OXLINT_RULES[def.name] ?? 'no equivalent'}`)
+    lines.push(
+      `  Oxlint:      ${OXLINT_RULES[def.name] ?? (OXLINT_TYPE_AWARE_RULES[def.name] ? `${OXLINT_TYPE_AWARE_RULES[def.name]} (needs oxlint-tsgolint)` : 'no equivalent')}`
+    )
     lines.push(`  ESLint:      ${def.name}`)
   }
 

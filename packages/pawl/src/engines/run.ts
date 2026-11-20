@@ -12,7 +12,13 @@ export interface RunResult {
  * Run a Node script and collect its output. Never rejects on a non-zero exit. A process that could
  * not start at all, such as one whose command line is too long, rejects with an EngineError.
  */
-export const runNode = (script: string, args: readonly string[], cwd: string, label: string): Promise<RunResult> =>
+export const runNode = (
+  script: string,
+  args: readonly string[],
+  cwd: string,
+  label: string,
+  env?: Record<string, string>
+): Promise<RunResult> =>
   new Promise((resolvePromise, reject) => {
     const command = [label, ...args].join(' ')
     const notStarted = (cause: unknown): void => {
@@ -24,8 +30,12 @@ export const runNode = (script: string, args: readonly string[], cwd: string, la
     try {
       // Pawl reads what an engine prints and formats its own output, so no engine colours its text.
       // A task runner such as Turborepo sets FORCE_COLOR, and Prettier then colours even its errors.
-      const env = { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' }
-      const child = spawn(process.execPath, [script, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
+      const childEnv = { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', ...env }
+      const child = spawn(process.execPath, [script, ...args], {
+        cwd,
+        env: childEnv,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
       const stdout: Buffer[] = []
       const stderr: Buffer[] = []
 

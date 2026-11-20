@@ -22,10 +22,14 @@ export const write = (root: string, files: Record<string, string | object>): voi
   }
 }
 
-/** Make pawl, and optionally ESLint and Prettier, resolvable from a fixture, as after an install. */
+/** Make pawl, and optionally ESLint, Prettier and oxlint-tsgolint, resolvable from a fixture, as after an install. */
 export const link = (
   root: string,
-  { eslint = false, prettier = false }: { eslint?: boolean; prettier?: boolean } = {}
+  {
+    eslint = false,
+    prettier = false,
+    tsgolint = false
+  }: { eslint?: boolean; prettier?: boolean; tsgolint?: boolean } = {}
 ): void => {
   mkdirSync(join(root, 'node_modules/@santi020k'), { recursive: true })
   symlinkSync(PACKAGE_ROOT, join(root, 'node_modules/@santi020k/pawl'))
@@ -33,4 +37,8 @@ export const link = (
   if (eslint) symlinkSync(join(PACKAGE_ROOT, 'node_modules/eslint'), join(root, 'node_modules/eslint'))
 
   if (prettier) symlinkSync(join(PACKAGE_ROOT, 'node_modules/prettier'), join(root, 'node_modules/prettier'))
+
+  if (tsgolint) {
+    symlinkSync(join(PACKAGE_ROOT, 'node_modules/oxlint-tsgolint'), join(root, 'node_modules/oxlint-tsgolint'))
+  }
 }

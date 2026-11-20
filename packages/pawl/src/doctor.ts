@@ -185,7 +185,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
   }
 
   if (tools.linter === 'oxlint') {
-    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
+    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection, root))
     const installed = oxlintInstalled(root)
 
     engines.oxlint = { installed, config: OXLINT_CONFIG_FILE, status: config.status, notEnforced: [] }
@@ -247,7 +247,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
   }
 
   if (engines.oxlint) {
-    const wanted = oxlintGaps(policy, oxlintContextFor(detection)).filter(
+    const wanted = oxlintGaps(policy, oxlintContextFor(detection, root)).filter(
       ({ rule }) =>
         // A project without TypeScript has no file for a TypeScript rule.
         (detection.typescript || !rule.startsWith('@typescript-eslint/')) &&

@@ -755,7 +755,7 @@ export const planPrettierConfig = (
 
 /** Bring .oxlintrc.json in line with the policy. Used by `init` and `sync`. */
 export const planOxlintConfig = (root: string, policy: Policy, detection: Detection): InitAction | undefined => {
-  const context = oxlintContextFor(detection)
+  const context = oxlintContextFor(detection, root)
   const state = checkOxlintConfig(root, policy, context)
   const path = join(root, OXLINT_CONFIG_FILE)
 

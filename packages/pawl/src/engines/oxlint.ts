@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname, join, parse } from 'node:path'
 import { allTechnologies, type Detection } from '../detect.ts'
 import { readJson, readJsonc, toPosix } from '../fs-utils.ts'
 import { IMPORTS_RULE, importRestrictions } from '../guards.ts'
@@ -16,10 +16,16 @@ import { EngineError, readReport, runChunked, runNode } from './run.ts'
 export const OXLINT_CONFIG_FILE = '.oxlintrc.json'
 
 /** Oxlint's own name back to the neutral one, for reading its report. */
-const NEUTRAL = new Map(Object.entries(OXLINT_RULES).map(([name, rule]) => [rule, name]))
+const NEUTRAL = new Map(
+  [...Object.entries(OXLINT_RULES), ...Object.entries(OXLINT_TYPE_AWARE_RULES)].map(([name, rule]) => [rule, name])
+)
 
-/** True when Oxlint enforces this rule of the standard. */
-export const oxlintCovers = (name: string): boolean => OXLINT_RULES[name] !== undefined
+/**
+ * True when Oxlint enforces this rule of the standard. A rule that needs type information counts
+ * only when `typeAware` says oxlint-tsgolint is there to run it.
+ */
+export const oxlintCovers = (name: string, typeAware = false): boolean =>
+  OXLINT_RULES[name] !== undefined || (typeAware && OXLINT_TYPE_AWARE_RULES[name] !== undefined)
 
 /** What a rule Oxlint has no equivalent for waits on: nothing a person can install. */
 export const NO_OXLINT_EQUIVALENT = 'no Oxlint equivalent'
@@ -40,7 +46,7 @@ export const oxlintGaps = (policy: Policy, context?: OxlintContext): Array<{ rul
         !name.startsWith('pawl/') &&
         !name.startsWith('biome:') &&
         !name.startsWith('oxlint:') &&
-        OXLINT_RULES[name] === undefined
+        !oxlintCovers(name, context?.typeAware)
     )
     .map(([rule]) => ({ rule, needs: OXLINT_TYPE_AWARE_RULES[rule] ? TYPE_AWARE_PACKAGE : NO_OXLINT_EQUIVALENT }))
     .sort((a, b) => a.rule.localeCompare(b.rule))
@@ -48,19 +54,24 @@ export const oxlintGaps = (policy: Policy, context?: OxlintContext): Array<{ rul
 export interface OxlintContext extends RuleContext {
   /** Where the code runs, for the globals Oxlint knows. Node and the browser when not given. */
   runtimes?: readonly Runtime[]
+  /** oxlint-tsgolint can be run, so the rules that need type information are written and switched on. */
+  typeAware?: boolean
 }
 
 /** The Oxlint context for a project. One Oxlint config covers the whole repo, so it takes every technology in it. */
-export const oxlintContextFor = (detection: Detection): OxlintContext => ({
+export const oxlintContextFor = (detection: Detection, root?: string): OxlintContext => ({
   typescript: true,
   technologies: allTechnologies(detection),
   dependencies: detection.dependencies,
-  runtimes: detection.runtimes
+  runtimes: detection.runtimes,
+  typeAware: root !== undefined && tsgolintInstalled(root)
 })
 
 /** Oxlint's name for a rule of the standard, or undefined when Oxlint does not have it. */
-const oxlintRule = (name: string): string | undefined =>
-  name.startsWith('oxlint:') ? name.slice('oxlint:'.length) : OXLINT_RULES[name]
+const oxlintRule = (name: string, typeAware = false): string | undefined =>
+  name.startsWith('oxlint:')
+    ? name.slice('oxlint:'.length)
+    : (OXLINT_RULES[name] ?? (typeAware ? OXLINT_TYPE_AWARE_RULES[name] : undefined))
 
 const sortKeys = (record: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
@@ -110,7 +121,7 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
     const rules: Record<string, unknown> = {}
 
     for (const [name, level] of levels) {
-      const rule = oxlintRule(name)
+      const rule = oxlintRule(name, context?.typeAware)
 
       if (!rule) continue
 
@@ -152,12 +163,17 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
     // rewrite the project's dependencies. Pawl never checks these folders, and says so to Oxlint itself.
     ignorePatterns: [...new Set([...ALWAYS_IGNORED, ...configIgnores(policy)])].map(toEngineGlob),
     rules: sortKeys(rules),
-    ...(overrides.length > 0 ? { overrides } : {})
+    ...(overrides.length > 0 ? { overrides } : {}),
+    // Oxlint runs the rules that need type information only with this option, and fails without oxlint-tsgolint.
+    ...(context?.typeAware ? { options: { typeAware: true } } : {})
   }
 }
 
 /** The keys pawl writes in full into .oxlintrc.json. Any other key is the project's own. */
 export const OXLINT_MANAGED_KEYS = ['plugins', 'ignorePatterns', 'rules', 'overrides']
+
+/** The options pawl sets in the project's own `options`, which holds more of the project's choices, such as typeCheck. */
+export const OXLINT_MANAGED_OPTIONS = ['typeAware']
 
 /** Keys pawl adds entries to, keeping the ones the project added itself, such as a test framework's globals. */
 export const OXLINT_MERGED_KEYS = ['env', 'globals']
@@ -183,6 +199,17 @@ export const mergeOxlintConfig = (
 
     if (Object.keys({ ...own, ...wanted }).length > 0) merged[key] = { ...own, ...wanted }
   }
+
+  // `options` is the project's, except the keys pawl manages, which are set or removed as the policy calls for.
+  const ownOptions = isRecord(current.options) ? current.options : {}
+  const wantedOptions = isRecord(expected.options) ? expected.options : {}
+  const options = {
+    ...Object.fromEntries(Object.entries(ownOptions).filter(([key]) => !OXLINT_MANAGED_OPTIONS.includes(key))),
+    ...wantedOptions
+  }
+
+  if (Object.keys(options).length > 0) merged.options = options
+  else delete merged.options
 
   return { ...expected, ...merged }
 }
@@ -213,7 +240,16 @@ export const checkOxlintConfig = (root: string, policy: Policy, context?: Oxlint
     return Object.entries(wanted).every(([name, value]) => own[name] === value)
   }
 
-  if (current && OXLINT_MANAGED_KEYS.every(same) && OXLINT_MERGED_KEYS.every(covers)) return { status: 'ok' }
+  const optionsSame = (): boolean => {
+    const own = isRecord(current?.options) ? current.options : {}
+    const wanted = isRecord(expected.options) ? expected.options : {}
+
+    return OXLINT_MANAGED_OPTIONS.every(key => own[key] === wanted[key])
+  }
+
+  if (current && OXLINT_MANAGED_KEYS.every(same) && OXLINT_MERGED_KEYS.every(covers) && optionsSame()) {
+    return { status: 'ok' }
+  }
 
   return {
     status: 'stale',
@@ -242,6 +278,45 @@ const resolveBin = (root: string): string | undefined => {
 }
 
 export const oxlintInstalled = (root: string): boolean => resolveBin(root) !== undefined
+
+/**
+ * The command oxlint-tsgolint installs, looked for in the node_modules folders from the project up,
+ * as Oxlint looks. Only the project's own copy counts: adding it is the project's choice.
+ */
+const resolveTsgolint = (root: string): string | undefined => {
+  for (let dir = root; ; dir = dirname(dir)) {
+    const folder = join(dir, 'node_modules', TYPE_AWARE_PACKAGE)
+    const bin = readJson<{ bin?: string | Record<string, string> }>(join(folder, 'package.json'))?.bin
+    const entry = typeof bin === 'string' ? bin : bin?.tsgolint
+
+    if (entry) return join(folder, entry)
+
+    if (dir === parse(dir).root) return undefined
+  }
+}
+
+/** True when oxlint-tsgolint can run for this project, so Oxlint can enforce the rules that need type information. */
+export const tsgolintInstalled = (root: string): boolean =>
+  process.env.OXLINT_TSGOLINT_PATH !== undefined || resolveTsgolint(root) !== undefined
+
+/**
+ * Where to tell Oxlint to find tsgolint, or undefined when it finds it itself. Oxlint looks for
+ * node_modules/.bin/tsgolint from the project up, and only there, so a copy it cannot see, as in
+ * a layout without a .bin folder, has to be named.
+ */
+const tsgolintEnv = (root: string): Record<string, string> | undefined => {
+  const bin = process.env.OXLINT_TSGOLINT_PATH === undefined ? resolveTsgolint(root) : undefined
+
+  if (!bin) return undefined
+
+  for (let dir = root; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, 'node_modules/.bin/tsgolint'))) return undefined
+
+    if (dir === parse(dir).root) break
+  }
+
+  return { OXLINT_TSGOLINT_PATH: bin }
+}
 
 interface OxlintDiagnostic {
   message: string
@@ -286,7 +361,7 @@ export const runOxlint = async ({ root, files, write = false }: RunOptions): Pro
   const flags = ['--format', 'json', ...(write ? ['--fix'] : [])]
 
   return runChunked(files, write ? 'oxlint --fix' : 'oxlint', async targets => {
-    const result = await runNode(bin, [...flags, ...targets], root, 'oxlint')
+    const result = await runNode(bin, [...flags, ...targets], root, 'oxlint', tsgolintEnv(root))
 
     if (!result.stdout.includes('{')) {
       throw new EngineError((result.stderr || result.stdout).trim() || `Oxlint exited with code ${result.code}.`, {

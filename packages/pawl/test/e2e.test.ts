@@ -221,6 +221,14 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(plan.notes).toContain(
       '.eslintrc.json is a legacy ESLint config, which pawl does not run. Run "pawl migrate" in place of "pawl init" to carry its rules into the policy, or remove ESLint and the file when you are ready.'
     )
+
+    // Run by "pawl migrate", which has just carried the rules over, it does not send you back there.
+    const migrated = await planInit({ root, install: false, editor: false, migrated: true })
+
+    expect(migrated.notes).toContain(
+      '.eslintrc.json is a legacy ESLint config. Its rules are in the policy now, so you can remove the file when you are ready.'
+    )
+    expect(migrated.notes.join(' ')).not.toContain('pawl migrate')
   })
 
   it.runIf(existsSync(join(PACKAGE_ROOT, 'dist/index.js')))(

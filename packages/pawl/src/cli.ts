@@ -242,12 +242,14 @@ const chooseMode = async (root: string, flags: Flags): Promise<Chosen> => {
   return { mode: 'auto', asked: true, engine: linter, formatter: format }
 }
 
-const runInit = async (root: string, flags: Flags): Promise<number> => {
+/** `migrated`: `pawl migrate` runs this right after it carried the old config into the policy. */
+const runInit = async (root: string, flags: Flags, migrated = false): Promise<number> => {
   const { mode, asked, ...choice } = await chooseMode(root, flags)
   const install = flags['no-install'] !== true
   const plan = await planInit({
     root,
     mode,
+    migrated,
     editor: flags['no-editor'] !== true,
     workflow: flags.workflow === true,
     agents: flags.agents === true,
@@ -398,7 +400,7 @@ const runMigrate = async (root: string, flags: Flags): Promise<number> => {
   // The packs the old config relied on come along, so their plugins are installed where they are missing.
   const packs = [...new Set([...(flags.packs?.split(',') ?? []), ...plan.packs])].join(',')
 
-  return runInit(root, packs.length > 0 ? { ...flags, packs } : flags)
+  return runInit(root, packs.length > 0 ? { ...flags, packs } : flags, true)
 }
 
 const runAdd = async (root: string, names: string[], flags: Flags): Promise<number> => {

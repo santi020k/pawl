@@ -71,6 +71,8 @@ export interface InitOptions {
    * When off, pawl is written into devDependencies for the next install to pick up.
    */
   install?: boolean
+  /** `pawl migrate` has just carried the old ESLint config into the policy. */
+  migrated?: boolean
 }
 
 export interface InitAction {
@@ -786,10 +788,14 @@ export const planOxlintConfig = (
  * What to say about an .eslintrc file. ESLint 9 and later read flat config only, so the file's
  * rules reach pawl through `pawl migrate` or not at all.
  */
-const legacyNote = (file: string, replaced: boolean): string =>
-  replaced
+const legacyNote = (file: string, replaced: boolean, migrated: boolean): string => {
+  if (migrated)
+    return `${file} is a legacy ESLint config. Its rules are in the policy now, so you can remove the file when you are ready.`
+
+  return replaced
     ? `${file} is a legacy ESLint config, which ESLint no longer reads now that eslint.config.js is there. Its rules were not carried over: "pawl migrate" does that, before "pawl init" has run.`
     : `${file} is a legacy ESLint config, which pawl does not run. Run "pawl migrate" in place of "pawl init" to carry its rules into the policy, or remove ESLint and the file when you are ready.`
+}
 
 /** Work out everything `init` would do, without touching the disk. */
 export const planInit = async (options: InitOptions): Promise<InitPlan> => {
@@ -906,7 +912,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
         apply: () => writeText(join(root, 'eslint.config.js'), ESLINT_CONFIG)
       })
 
-      if (legacyEslint) notes.push(legacyNote(tools.eslint as string, true))
+      if (legacyEslint) notes.push(legacyNote(tools.eslint as string, true, options.migrated === true))
     } else if (tools.eslint && readFileSync(join(root, tools.eslint), 'utf8').includes(PACKAGE_NAME)) {
       // The ESLint config is already built from the policy.
     } else {
@@ -915,7 +921,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
       )
     }
   } else if (legacyEslint) {
-    notes.push(legacyNote(tools.eslint as string, false))
+    notes.push(legacyNote(tools.eslint as string, false, options.migrated === true))
   } else if (tools.eslint) {
     notes.push(`Pawl no longer runs ESLint here. You can remove ESLint and ${tools.eslint} when you are ready.`)
   }
@@ -1127,7 +1133,7 @@ export const planAdd = async (root: string, names: readonly string[], install = 
       apply: () => writeText(join(root, 'eslint.config.js'), ESLINT_CONFIG)
     })
 
-    if (detection.tools.eslint) notes.push(legacyNote(detection.tools.eslint, true))
+    if (detection.tools.eslint) notes.push(legacyNote(detection.tools.eslint, true, false))
   }
 
   const named = names.filter(

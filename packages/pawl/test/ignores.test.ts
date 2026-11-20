@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -52,19 +53,79 @@ describe('.gitignore lines', () => {
     expect(toEslintIgnores('/build')).toEqual(['build', 'build/**'])
   })
 
-  it('read a character class, and a backslash as the next character itself', () => {
-    const ignored = makeIgnore(
-      ['*.py[cod]', '[Bb]in/', 'v[0-9]', '[!a-c]x', 'notes\\[1\\].md', 'lone[.md'].map(
-        line => fromGitignoreLine(line) as string
-      )
-    )
+  it('read a character class, and a backslash as the next character itself, as git does', () => {
+    const lines = [
+      '*.py[cod]',
+      '[Bb]in/',
+      'v[0-9]',
+      '[!a-c]x',
+      'notes\\[1\\].md',
+      // A class that does not close, or names a POSIX class git does not know, matches nothing.
+      'lone[.md',
+      '[[:foo:]]bc',
+      // A range written backwards matches its first character only.
+      '*.[z-a]',
+      'x[9-0]',
+      '[[:alpha:]]bc',
+      'b[[:digit:]]',
+      'c[a-]',
+      '[]a]',
+      'q[a-\\]]',
+      'r[[:x]',
+      's[^q]'
+    ]
+    const files = [
+      'a.pyc',
+      'src/a.pyd',
+      'a.py',
+      'Bin/tool',
+      'pkg/bin/tool',
+      'cin/tool',
+      'v2/a.js',
+      'vy/a.js',
+      'dx',
+      'ax',
+      'notes[1].md',
+      'notes1.md',
+      'lone[.md',
+      'x.z',
+      'x.a',
+      'x9',
+      'x0',
+      'x5',
+      'abc',
+      '1bc',
+      '_bc',
+      'b1',
+      'bx',
+      'c-',
+      'ca',
+      'cb',
+      ']',
+      'a',
+      'q]',
+      'qb',
+      'q-',
+      'r[',
+      'r:',
+      'sx',
+      'sq'
+    ]
+    const repo = project(Object.fromEntries(files.map(file => [file, ''])))
 
-    for (const file of ['a.pyc', 'src/a.pyd', 'Bin/tool', 'pkg/bin/tool', 'v2/a.js', 'dx', 'notes[1].md', 'lone[.md']) {
-      expect(ignored(file), file).toBe(true)
-    }
+    spawnSync('git', ['init', '-q'], { cwd: repo })
 
-    for (const file of ['a.py', 'a.pyx', 'cin/tool', 'vy/a.js', 'ax', 'notes1.md', '/x']) {
-      expect(ignored(file), file).toBe(false)
+    for (const line of lines) {
+      write(repo, { '.gitignore': `${line}\n` })
+
+      const git = spawnSync('git', ['-c', 'core.ignorecase=false', 'check-ignore', '--stdin'], {
+        cwd: repo,
+        input: files.join('\n'),
+        encoding: 'utf8'
+      })
+      const ignored = makeIgnore([fromGitignoreLine(line) as string])
+
+      expect(files.filter(ignored), line).toEqual(git.stdout.split('\n').filter(Boolean))
     }
   })
 

@@ -369,6 +369,61 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       })
     })
 
+    test('reads every option before it changes a file', () => {
+      const unformatted = 'export const a = {b:1}\n'
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': unformatted
+      })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+
+      expect(run(root, 'fix', '--format', 'nope')).toEqual({
+        code: 2,
+        stdout: '',
+        stderr: 'pawl: Unknown format "nope". Use pretty, agent or json.\n'
+      })
+      expect(run(root, 'fix', '--max-warnings', 'none').code).toBe(2)
+      expect(readFileSync(join(root, 'src/a.js'), 'utf8')).toBe(unformatted)
+
+      expect(run(root, 'fix').code).toBe(0)
+      expect(readFileSync(join(root, 'src/a.js'), 'utf8')).toBe('export const a = { b: 1 }\n')
+    })
+
+    test('takes any CI value but an empty one, 0 and false to mean CI', () => {
+      const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      // The policy changes and "pawl sync" does not run: drift, which fails only in CI.
+      write(root, { 'pawl.config.json': { rules: { 'no-console': 'error' } } })
+
+      const inCi = (value: string): number | null =>
+        spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'check'], {
+          cwd: root,
+          env: { ...process.env, CI: value, NO_COLOR: '1' }
+        }).status
+
+      for (const value of ['true', '1', 'True']) expect(inCi(value), value).toBe(2)
+
+      for (const value of ['', '0', 'false']) expect(inCi(value), value).toBe(0)
+    })
+
+    test('checks every file with --changed outside a git repository', () => {
+      const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      write(root, { 'src/a.js': 'debugger\n' })
+
+      const result = run(root, 'check', '--changed', '--format', 'agent')
+
+      // No repository can say what changed. Passing with nothing checked would hide the finding.
+      expect(result.code).toBe(1)
+      expect(JSON.parse(result.stdout)).toMatchObject({ file: 'src/a.js', rule: 'biome:suspicious/noDebugger' })
+    })
+
     test('checks only what a branch changed since a ref, and exits 2 when the ref is unknown', () => {
       const root = project({
         'package.json': { name: 'fixture', private: true, type: 'module' },

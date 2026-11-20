@@ -28,6 +28,25 @@ export const runNode = (script: string, args: readonly string[], cwd: string, la
     })
   })
 
+/**
+ * The JSON report in an engine's output, or undefined when there is none to read. A config file or
+ * a plugin may print lines of its own first, so when the output does not parse from the first
+ * bracket on, the last line that starts with one is tried.
+ */
+export const readReport = <T>(stdout: string, open: '{' | '['): T | undefined => {
+  for (const start of new Set([stdout.indexOf(open), stdout.lastIndexOf(`\n${open}`) + 1])) {
+    if (start === -1) continue
+
+    try {
+      return JSON.parse(stdout.slice(start)) as T
+    } catch {
+      // Try the next place.
+    }
+  }
+
+  return undefined
+}
+
 /** An engine could not run, or its output could not be read. */
 export class EngineError extends Error {
   /** The command that failed, as a person would type it. */

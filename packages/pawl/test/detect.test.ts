@@ -67,6 +67,54 @@ suite('detect', () => {
     expect(describe(detection)).toBe('TypeScript, React, Vue, Turborepo with 2 packages, pnpm')
   })
 
+  it('reads the pnpm workspace list in every form YAML allows', () => {
+    const packages = {
+      'package.json': { name: 'workspace', private: true },
+      'apps/site/package.json': { dependencies: { astro: '^5.0.0' } },
+      'packages/web/package.json': { dependencies: { react: '^19.0.0' } }
+    }
+
+    for (const yaml of [
+      'packages:\n  - \'apps/*\'\n  - "packages/*"\n',
+      // No indent, which is as valid, and what several formatters write.
+      'packages:\n- apps/*\n- packages/*\n',
+      '# The workspace.\npackages:\n  # Apps first.\n  - apps/*\n\n  - packages/* # libraries\ncatalog:\n  react: ^19.0.0\n',
+      "packages: ['apps/*', packages/*]\n",
+      'packages:\r\n  - apps/*\r\n  - packages/*\r\n'
+    ]) {
+      const detection = detect(project({ ...packages, 'pnpm-workspace.yaml': yaml }))
+
+      expect(detection.workspace.packages, yaml).toEqual(['apps/site', 'packages/web'])
+      expect(detection.frameworks, yaml).toEqual(['react', 'astro'])
+    }
+  })
+
+  it('expands a wildcard inside a name, a ** and a pattern that takes packages out', () => {
+    const root = project({
+      'package.json': {
+        name: 'workspace',
+        private: true,
+        workspaces: ['plugins/plugin-*', './packages/**', 'tools/cli', '!packages/legacy', '!**/fixtures/**']
+      },
+      'plugins/plugin-a/package.json': {},
+      'plugins/shared/package.json': {},
+      'packages/core/package.json': {},
+      'packages/ui/button/package.json': {},
+      'packages/ui/node_modules/dep/package.json': {},
+      'packages/legacy/package.json': {},
+      'packages/core/fixtures/app/package.json': {},
+      'tools/cli/package.json': {},
+      'tools/other/package.json': {}
+    })
+
+    expect(detect(root).workspace.packages).toEqual([
+      'packages/core',
+      'packages/ui/button',
+      'plugins/plugin-a',
+      'tools/cli'
+    ])
+  })
+
   it('reads Nx and package.json workspaces', () => {
     const root = project({
       'package.json': { workspaces: { packages: ['libs/*'] } },

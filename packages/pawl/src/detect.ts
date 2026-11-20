@@ -1,7 +1,7 @@
 import { type Dirent, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isGitRepo, readJson, toPosix } from './fs-utils.ts'
-import { WALK_SKIP } from './ignores.ts'
+import { makeIgnore, WALK_SKIP } from './ignores.ts'
 import { GATED_TAGS, type Technology } from './rules.ts'
 import { type Detectable, type Framework, type Policy, type Runtime } from './types.ts'
 
@@ -290,7 +290,12 @@ const detectPackageManager = (root: string, manifest: Manifest | undefined): Pac
   return manifest ? 'npm' : undefined
 }
 
-/** Read the `packages:` list of pnpm-workspace.yaml without a YAML dependency. */
+const unquote = (text: string): string => text.trim().replace(/^(['"])(.*)\1$/, '$2')
+
+/**
+ * Read the `packages:` list of pnpm-workspace.yaml without a YAML dependency. YAML allows the
+ * list with or without an indent, and as a flow list on one line: `packages: [apps/*, packages/*]`.
+ */
 const pnpmWorkspacePatterns = (root: string): string[] => {
   const file = join(root, 'pnpm-workspace.yaml')
 
@@ -299,13 +304,24 @@ const pnpmWorkspacePatterns = (root: string): string[] => {
   const patterns: string[] = []
   let inPackages = false
 
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
-    if (/^packages\s*:/.test(line)) {
-      inPackages = true
-    } else if (inPackages) {
-      const item = /^\s+-\s+['"]?([^'"#]+?)['"]?\s*(?:#.*)?$/.exec(line)
+  for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = raw.replace(/(^|\s)#.*$/, '')
 
-      if (item?.[1]) patterns.push(item[1])
+    if (line.trim() === '') continue
+
+    const key = /^packages\s*:\s*(.*)$/.exec(line)
+
+    if (key) {
+      const flow = /^\[(.*)\]$/.exec((key[1] ?? '').trim())
+
+      if (flow) patterns.push(...(flow[1] ?? '').split(',').map(unquote).filter(Boolean))
+
+      inPackages = !flow
+    } else if (inPackages) {
+      const item = /^\s*-\s+(.+)$/.exec(line)
+
+      // Anything else at the start of a line is the next key.
+      if (item?.[1]) patterns.push(unquote(item[1]))
       else if (/^\S/.test(line)) inPackages = false
     }
   }
@@ -313,43 +329,72 @@ const pnpmWorkspacePatterns = (root: string): string[] => {
   return patterns
 }
 
-const expandPattern = (root: string, pattern: string): string[] => {
-  if (pattern.startsWith('!')) return []
+/** How far below a `**` the search for packages goes. */
+const WORKSPACE_DEPTH = 4
 
-  const parts = pattern.replace(/\/$/, '').split('/')
+const packageFolders = (root: string, dir: string): string[] => {
+  try {
+    return readdirSync(join(root, dir), { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && entry.name !== 'node_modules' && !entry.name.startsWith('.'))
+      .map(entry => entry.name)
+  } catch {
+    return []
+  }
+}
+
+/** A folder and every folder below it, a few levels down. */
+const foldersBelow = (root: string, dir: string, depth = 0): string[] =>
+  depth >= WORKSPACE_DEPTH
+    ? [dir]
+    : [dir, ...packageFolders(root, dir).flatMap(name => foldersBelow(root, join(dir, name), depth + 1))]
+
+/** One path segment of a workspace pattern, such as `plugin-*`, as a test for a folder name. */
+const segmentMatcher = (segment: string): ((name: string) => boolean) => {
+  const source = segment
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replaceAll('*', '.*')
+    .replaceAll('?', '.')
+  const regexp = new RegExp(`^${source}$`)
+
+  return name => regexp.test(name)
+}
+
+/** The package folders a workspace pattern names: `packages/*`, `plugins/plugin-*`, `apps/**` or a plain path. */
+const expandPattern = (root: string, pattern: string): string[] => {
+  const parts = pattern.replace(/^\.\//, '').replace(/\/$/, '').split('/')
   let dirs = ['']
 
   for (const part of parts) {
-    const next: string[] = []
+    if (part === '**') dirs = dirs.flatMap(dir => foldersBelow(root, dir))
+    else if (/[*?]/.test(part)) {
+      const matches = segmentMatcher(part)
 
-    for (const dir of dirs) {
-      if (part === '*' || part === '**') {
-        const base = join(root, dir)
-
-        if (!existsSync(base)) continue
-
-        for (const entry of readdirSync(base, { withFileTypes: true })) {
-          if (entry.isDirectory() && entry.name !== 'node_modules' && !entry.name.startsWith('.'))
-            next.push(join(dir, entry.name))
-        }
-      } else {
-        next.push(join(dir, part))
-      }
-    }
-
-    dirs = next
+      dirs = dirs.flatMap(dir =>
+        packageFolders(root, dir)
+          .filter(matches)
+          .map(name => join(dir, name))
+      )
+    } else dirs = dirs.map(dir => join(dir, part))
   }
 
-  return dirs.filter(dir => existsSync(join(root, dir, 'package.json'))).map(toPosix)
+  // The root is the workspace itself, never one of its packages.
+  return dirs.filter(dir => dir !== '' && existsSync(join(root, dir, 'package.json'))).map(toPosix)
 }
 
 const workspacePackages = (root: string, manifest: Manifest | undefined): string[] => {
   const fromManifest = Array.isArray(manifest?.workspaces)
     ? manifest.workspaces
     : (manifest?.workspaces?.packages ?? [])
-  const patterns = [...pnpmWorkspacePatterns(root), ...fromManifest]
+  const patterns = [...pnpmWorkspacePatterns(root), ...fromManifest].filter(
+    (pattern): pattern is string => typeof pattern === 'string'
+  )
+  // A pattern with a leading "!" takes packages out again. The slash anchors it at the root.
+  const excluded = makeIgnore(
+    patterns.filter(pattern => pattern.startsWith('!')).map(pattern => `/${pattern.slice(1).replace(/^\.?\//, '')}`)
+  )
+  const included = patterns.filter(pattern => !pattern.startsWith('!'))
 
-  return [...new Set(patterns.flatMap(pattern => expandPattern(root, pattern)))].sort()
+  return [...new Set(included.flatMap(pattern => expandPattern(root, pattern)))].filter(dir => !excluded(dir)).sort()
 }
 
 const dependencyNames = (manifest: Manifest | undefined): string[] =>

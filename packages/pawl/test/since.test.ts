@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { check, exitCode } from '../src/check.ts'
-import { changedSince, SinceError } from '../src/fs-utils.ts'
+import { changedFiles, changedSince, listFiles, SinceError } from '../src/fs-utils.ts'
 import { project, write } from './helpers.ts'
 
 const git = (root: string, ...args: string[]): void => {
@@ -77,6 +77,48 @@ describe('changedSince', () => {
     expect(() => changedSince(project({ 'src/a.js': 'export const a = 1\n' }), 'main')).toThrow(
       'needs a git repository'
     )
+  })
+})
+
+describe('file names git would quote', () => {
+  // Left alone, git prints "src/na\303\257ve.js" for the second of these, quotes and all.
+  const NAMES = ['docs/café menu.md', 'src/naïve.js', 'src/日本語.js']
+
+  it('are listed as they are on disk, tracked or not', () => {
+    const root = project({ 'src/a.js': 'export const a = 1\n', [NAMES[0] as string]: '# Menu\n' })
+
+    git(root, 'init', '-q', '-b', 'main')
+    commit(root, 'init')
+    write(root, { [NAMES[1] as string]: 'export const b = 1\n', [NAMES[2] as string]: 'export const c = 1\n' })
+
+    expect(listFiles(root).sort()).toEqual([...NAMES, 'src/a.js'].sort())
+  })
+
+  it('are found by --changed and --since', () => {
+    const root = project({ 'src/a.js': 'export const a = 1\n', [NAMES[0] as string]: '# Menu\n' })
+
+    git(root, 'init', '-q', '-b', 'main')
+    commit(root, 'init')
+    git(root, 'checkout', '-qb', 'feature')
+    write(root, { [NAMES[1] as string]: 'export const b = 1\n' })
+    commit(root, 'add a file')
+    write(root, { [NAMES[0] as string]: '# The menu\n', [NAMES[2] as string]: 'export const c = 1\n' })
+
+    expect(changedFiles(root)?.sort()).toEqual([NAMES[0], NAMES[2]].sort())
+    expect(changedSince(root, 'main').sort()).toEqual([...NAMES].sort())
+  })
+})
+
+describe('changedFiles', () => {
+  it('is every file before the first commit, and undefined outside a git repository', () => {
+    const root = project({ 'src/a.js': 'export const a = 1\n' })
+
+    // Nothing can say what changed here, so the caller looks at every file.
+    expect(changedFiles(root)).toBeUndefined()
+
+    git(root, 'init', '-q', '-b', 'main')
+
+    expect(changedFiles(root)).toEqual(['src/a.js'])
   })
 })
 

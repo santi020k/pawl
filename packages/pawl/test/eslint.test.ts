@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { check, exitCode } from '../src/check.ts'
 import { eslintPlan } from '../src/engines/eslint.ts'
+import { readReport } from '../src/engines/run.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy.ts'
-import { project } from './helpers.ts'
+import { link, project } from './helpers.ts'
 
 const block = (config: Record<string, unknown>[], name: string): Record<string, unknown> | undefined =>
   config.find(entry => entry.name === name)
@@ -298,5 +300,59 @@ describe('eslintPlan', () => {
         'vitest/valid-title': 'error'
       })
     })
+  })
+})
+
+describe('an engine report', () => {
+  it('is read from the first bracket, or from the last line that starts with one', () => {
+    expect(readReport('{"diagnostics":[]}', '{')).toEqual({ diagnostics: [] })
+    expect(readReport('warning: slow\n{"diagnostics":[]}\n', '{')).toEqual({ diagnostics: [] })
+    expect(readReport('[plugin] ready\n[{"filePath":"a.js","messages":[]}]', '[')).toEqual([
+      { filePath: 'a.js', messages: [] }
+    ])
+  })
+
+  it('is undefined when the output holds none', () => {
+    expect(readReport('', '{')).toBeUndefined()
+    expect(readReport('Segmentation fault', '[')).toBeUndefined()
+    expect(readReport('{ "diagnostics": [', '{')).toBeUndefined()
+  })
+})
+
+describe('the report of the real ESLint', { timeout: 60_000 }, () => {
+  const fixture = (config: string): string => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'eslint', formatter: 'prettier' },
+      '.prettierrc.json': '{}\n',
+      'eslint.config.js': config,
+      'src/a.js': 'debugger\n'
+    })
+
+    link(root, { eslint: true, prettier: true })
+
+    return root
+  }
+
+  it('is read when a config file prints lines of its own before it', async () => {
+    const result = await check({
+      root: fixture("console.log('[my-plugin] ready {')\n\nexport default [{ rules: { 'no-debugger': 'error' } }]\n")
+    })
+
+    expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+    expect(
+      result.findings.filter(finding => finding.engine === 'eslint').map(finding => `${finding.file} ${finding.rule}`)
+    ).toEqual(['src/a.js no-debugger'])
+  })
+
+  it('is a setup problem, with what ESLint said, when the config file fails', async () => {
+    const result = await check({ root: fixture("throw new Error('the config is broken')\n") })
+
+    const failed = result.setup.filter(issue => issue.code === 'engine-failed')
+
+    expect(failed).toHaveLength(1)
+    expect(failed[0]?.message).toContain('eslint could not run:')
+    expect(failed[0]?.message).toContain('the config is broken')
+    expect(exitCode(result)).toBe(2)
   })
 })

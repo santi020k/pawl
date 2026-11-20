@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { WALK_SKIP } from './ignores.ts'
 
 /** Turn "one, many or none" into a list. */
@@ -20,6 +20,36 @@ export const ancestors = (start: string): string[] => {
 }
 
 export const toPosix = (path: string): string => (sep === '/' ? path : path.split(sep).join('/'))
+
+const realpath = (path: string): string => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
+/**
+ * A path a caller names, as pawl keeps every path: relative to the root, with forward slashes and
+ * no leading "./". The root itself is ".". Undefined for a path outside the root, which is not
+ * part of the project. A path may be absolute, as hook runners such as lint-staged pass them.
+ */
+export const projectPath = (root: string, file: string): string | undefined => {
+  const inside = (path: string): string | undefined =>
+    path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path) ? undefined : toPosix(path) || '.'
+  const absolute = resolve(root, file)
+
+  // A link in either path, such as /tmp on macOS, must not put a project file outside the project.
+  return inside(relative(root, absolute)) ?? inside(relative(realpath(root), realpath(absolute)))
+}
+
+export const isDirectory = (path: string): boolean => {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
 
 export const readJson = <T>(file: string): T | undefined => {
   try {
@@ -42,10 +72,40 @@ export const readJsonc = <T>(file: string): { value: T | undefined; hasComments:
   const stripped = stripJsonComments(text)
 
   try {
-    return { value: JSON.parse(stripped.replace(/,(\s*[}\]])/g, '$1')) as T, hasComments: stripped !== text }
+    return { value: JSON.parse(stripTrailingCommas(stripped)) as T, hasComments: stripped !== text }
   } catch {
     return { value: undefined, hasComments: stripped !== text }
   }
+}
+
+const CLOSING = /\s*[}\]]/y
+
+/** Drop the comma before a closing bracket, which JSON does not allow. A comma inside a string stays. */
+const stripTrailingCommas = (text: string): string => {
+  let out = ''
+  let inString = false
+
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index] as string
+
+    if (inString) {
+      out += char
+
+      if (char === '\\') out += text[++index] ?? ''
+      else if (char === '"') inString = false
+    } else if (char === '"') {
+      inString = true
+      out += char
+    } else if (char === ',') {
+      CLOSING.lastIndex = index + 1
+
+      if (!CLOSING.test(text)) out += char
+    } else {
+      out += char
+    }
+  }
+
+  return out
 }
 
 const stripJsonComments = (text: string): string => {
@@ -99,33 +159,43 @@ export const isGitRepo = (root: string): boolean => {
   }
 }
 
-const git = (root: string, args: string[]): string[] =>
+const gitOutput = (root: string, args: string[]): string =>
   execFileSync('git', args, {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
     maxBuffer: 64 * 1024 * 1024
   })
-    .split('\n')
+
+const git = (root: string, args: string[]): string[] => gitOutput(root, args).split('\n').filter(Boolean)
+
+/**
+ * A git command that lists files. Read with `-z`, so each name comes as it is on disk: without it
+ * git quotes and escapes any name with a character outside ASCII, and that file would never be found.
+ */
+const gitFiles = (root: string, [command, ...args]: [string, ...string[]]): string[] =>
+  gitOutput(root, [command, '-z', ...args])
+    .split('\0')
     .filter(Boolean)
 
 /**
  * Files changed against HEAD, plus untracked ones. In a repository with no commit yet,
- * that is every file. Empty outside a git repository.
+ * that is every file. Undefined outside a git repository, where nothing can say what changed:
+ * the caller then looks at every file, because an empty list would pass a check without running it.
  */
-export const changedFiles = (root: string): string[] => {
+export const changedFiles = (root: string): string[] | undefined => {
   let files: string[]
 
   try {
     files = [
-      ...git(root, ['diff', '--name-only', '--diff-filter=d', 'HEAD', '--relative']),
-      ...git(root, ['ls-files', '--others', '--exclude-standard'])
+      ...gitFiles(root, ['diff', '--name-only', '--diff-filter=d', 'HEAD', '--relative']),
+      ...gitFiles(root, ['ls-files', '--others', '--exclude-standard'])
     ]
   } catch {
     try {
-      files = git(root, ['ls-files', '--cached', '--others', '--exclude-standard'])
+      files = gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard'])
     } catch {
-      return []
+      return undefined
     }
   }
 
@@ -183,8 +253,8 @@ export const changedSince = (root: string, ref: string): string[] => {
 
   try {
     files = [
-      ...git(root, ['diff', '--name-only', '--diff-filter=d', '--relative', base]),
-      ...git(root, ['ls-files', '--others', '--exclude-standard'])
+      ...gitFiles(root, ['diff', '--name-only', '--diff-filter=d', '--relative', base]),
+      ...gitFiles(root, ['ls-files', '--others', '--exclude-standard'])
     ]
   } catch {
     files = undefined
@@ -202,7 +272,7 @@ export const changedSince = (root: string, ref: string): string[] => {
 /** Every project file: what git tracks or would track, else a directory walk. */
 export const listFiles = (root: string): string[] => {
   try {
-    return git(root, ['ls-files', '--cached', '--others', '--exclude-standard']).filter(file =>
+    return gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard']).filter(file =>
       existsSync(join(root, file))
     )
   } catch {

@@ -9,7 +9,7 @@ import { defaultPolicy, effectiveRules, overrideRules } from '../policy.ts'
 import { GATED_TAGS, getRule, getRuleByBiome, isGated, type RuleTag, type Technology } from '../rules.ts'
 import { extraGlobals, RUNTIMES } from '../runtime.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../types.ts'
-import { EngineError, runNode } from './run.ts'
+import { EngineError, readReport, runNode } from './run.ts'
 
 /** The Biome version this release of pawl is tested with. Kept in step with package.json by a test. */
 export const BIOME_VERSION = '2.6.8'
@@ -622,20 +622,17 @@ export const runBiome = async ({ root, files, write = false }: RunOptions): Prom
   args.push(...(files && files.length > 0 ? files : ['.']))
 
   const result = await runNode(resolveBin(root), args, root, 'biome')
-  const start = result.stdout.indexOf('{')
 
-  if (start === -1) {
+  if (!result.stdout.includes('{')) {
     throw new EngineError(result.stderr.trim() || `Biome exited with code ${result.code} and no report.`, {
       command: result.command
     })
   }
 
-  let report: BiomeReport
+  const report = readReport<BiomeReport>(result.stdout, '{')
 
-  try {
-    report = JSON.parse(result.stdout.slice(start)) as BiomeReport
-  } catch (cause) {
-    throw new EngineError(`Could not read Biome's report.\n${result.stderr.trim()}`, { command: result.command, cause })
+  if (!Array.isArray(report?.diagnostics)) {
+    throw new EngineError(`Could not read Biome's report.\n${result.stderr.trim()}`.trim(), { command: result.command })
   }
 
   const findings = report.diagnostics.map(toFinding).filter((finding): finding is Finding => finding !== undefined)

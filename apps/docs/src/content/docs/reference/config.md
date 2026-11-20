@@ -172,9 +172,11 @@ Rules that later layers may tighten but never loosen.
 
 Extra glob patterns to skip, on top of the defaults and the `.gitignore`. They apply at once, even before `pawl sync` has run. A pattern without a slash matches at any depth, as in `.gitignore`: `vendor` skips every folder named `vendor`, and `src/vendor` only that one.
 
+A pattern takes `**`, `*` and `?`. `[` and `]` are the characters themselves, here and in the `files` of an override, so the route folders of Next.js, SvelteKit and Astro are named as they are on disk: `src/app/[slug]`. Pawl escapes them for each engine.
+
 ### gitignore
 
-Skip what the root `.gitignore` lists, including its `!` lines. Biome reads the file through its git integration, which pawl turns on in `biome.json` when there is a `.gitignore` or a git repo. Pawl turns the lines into ESLint's ignore patterns. Oxlint reads the file by itself, whatever this option says.
+Skip what the root `.gitignore` lists, including its `!` lines, its character classes such as `*.py[cod]`, and lines that start with a slash, which name a path at the root only. Biome reads the file through its git integration, which pawl turns on in `biome.json` when there is a `.gitignore` or a git repo. Pawl turns the lines into ESLint's ignore patterns. Oxlint reads the file by itself, whatever this option says.
 
 ### defaultIgnores
 

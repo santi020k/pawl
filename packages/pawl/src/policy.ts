@@ -3,6 +3,7 @@ import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ancestors, toList } from './fs-utils.ts'
+import { literalBrackets } from './ignores.ts'
 import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from './rules.ts'
 import { POLICY_KEYS } from './schema.ts'
 import { ESLINT_CONFIG_FILES } from './tools.ts'
@@ -103,7 +104,7 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
       if (!policy.locked.includes(name)) policy.locked.push(name)
     }
 
-    for (const pattern of input.ignore ?? []) {
+    for (const pattern of (input.ignore ?? []).map(literalBrackets)) {
       if (!policy.ignore.includes(pattern)) policy.ignore.push(pattern)
     }
 
@@ -209,7 +210,7 @@ const mergeOverride = (
   )
 
   return {
-    files: [...override.files],
+    files: override.files.map(literalBrackets),
     rules,
     options,
     biomeOptions: biomeOptionsOf(override.biomeOptions, `${source} (overrides)`)

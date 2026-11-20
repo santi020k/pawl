@@ -35,7 +35,7 @@ A pawl is the part of a ratchet that stops it slipping backward. Pawl does the s
 
 - Findings within those counts are allowed.
 - Anything beyond them fails the check.
-- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
+- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`. Pawl looks for them in scripts and components, and in the stylesheets, JSON, GraphQL, YAML and TOML files a linter reads.
 
 That last rule matters most when an agent writes the code: switching a check off is not a way past it.
 
@@ -52,6 +52,17 @@ The code has fewer findings than the baseline allows. Run "pawl baseline" to loc
 Run `pawl baseline` to record the lower counts, and commit the file. From then on the repo cannot slip back past the improvement.
 
 `pawl baseline` records whatever the code has at that moment. A team can also use it to accept findings on purpose, and that shows up in review as a change to `.pawl/baseline.json`.
+
+It writes the file only when the whole check ran. When an engine is missing or fails, the baseline is left as it was: a baseline recorded from half the findings would fail the other half later as new.
+
+## When two branches change it
+
+The file is plain JSON with sorted keys, so most merges are clean. When git cannot merge it, resolve the conflict by hand or run `pawl baseline` on the merged code. Until then `pawl check` stops with exit code 2, because without the baseline every old finding would count as new:
+
+```txt
+setup  .pawl/baseline.json cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.
+       Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.
+```
 
 ## Why per file and rule
 

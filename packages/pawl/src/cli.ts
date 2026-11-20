@@ -49,6 +49,7 @@ Usage
 
 Options for check and fix
   --changed             Only files changed against HEAD, plus untracked ones
+                        (every file outside a git repository)
   --since <ref>         Only files changed since the branch left <ref>, such as origin/main
   --format <kind>       pretty (default), agent or json
   --ci                  Also fail when the setup has drifted from the policy
@@ -146,8 +147,17 @@ const sinceRef = (flags: Flags, files: readonly string[]): string | undefined =>
   return ref
 }
 
+/**
+ * True when the `CI` environment variable says this is a CI run. Most services set it to `true`,
+ * some to `1` or `True`; only an empty value, `0` and `false` mean no.
+ */
+const inCi = (value: string | undefined): boolean =>
+  value !== undefined && !['', '0', 'false'].includes(value.trim().toLowerCase())
+
 const runCheck = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
-  const ci = flags.ci === true || process.env.CI === 'true'
+  const ci = flags.ci === true || inCi(process.env.CI)
+  // Every option is read before anything runs: "fix" must not change files and then refuse a flag.
+  const kind = outputFormat(flags)
   const limit = maxWarnings(flags)
   const since = sinceRef(flags, files)
   const result = await check({
@@ -159,7 +169,7 @@ const runCheck = async (root: string, files: string[], flags: Flags, fix: boolea
     ...(limit === undefined ? {} : { maxWarnings: limit })
   })
 
-  out(format(result, outputFormat(flags), { color: colorEnabled(), verbose: flags.verbose === true }))
+  out(format(result, kind, { color: colorEnabled(), verbose: flags.verbose === true }))
 
   return exitCode(result, ci)
 }
@@ -428,6 +438,7 @@ const runBaseline = async (root: string): Promise<number> => {
 
   if (result.setup.some(issue => BLOCKING.includes(issue.code))) {
     out(format(result, 'pretty', { color: colorEnabled() }))
+    out(`${BASELINE_FILE} was not changed.`)
 
     return EXIT_SETUP
   }

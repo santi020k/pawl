@@ -37,6 +37,7 @@ Then it lists each problem, or `No problems found.` A problem is:
 - a Node older than pawl's `engines.node`, a Biome other than the exact version pawl pins, or an ESLint, Oxlint, Prettier or pack plugin outside the range pawl declares for it;
 - a Biome, Oxlint or Prettier config that is missing, out of date, or, for Biome, does not extend the pawl standard;
 - a layer that tried to loosen a locked rule;
+- a `.pawl/baseline.json` that cannot be read;
 - a rule or pack ESLint cannot enforce, with the plugin it needs, or the reason an installed plugin failed to load.
 
 `pawl doctor` exits with 0 when there are no problems and 2 when there are. `pawl doctor --format json` prints the same report as one JSON document, for CI; `init --workflow` uploads it as an artifact.
@@ -46,14 +47,14 @@ Then it lists each problem, or `No problems found.` A problem is:
 | Command        | 0                                                    | 1                                                           | 2                                                                 |
 | -------------- | ---------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
 | `check`, `fix` | No new errors. Warnings alone pass, up to the limit. | At least one new error, or more new warnings than the limit | Part of the check did not run, or, with `--ci`, any setup problem |
-| `baseline`     | Baseline written                                     |                                                             | Part of the check did not run                                     |
+| `baseline`     | Baseline written                                     |                                                             | Part of the check did not run; the baseline is left as it was     |
 | `init`, `add`  | Done, a dry run, or you said no                      |                                                             | The install failed, or `init` could not record the baseline       |
 | `migrate`      | As `init`                                            |                                                             | As `init`                                                         |
 | `explain`      | The rule was found                                   | The rule is not in the catalog                              |                                                                   |
 | `doctor`       | No problems                                          |                                                             | At least one problem                                              |
 | Any            |                                                      |                                                             | An unknown command, option or option value, or any other error    |
 
-`--ci` is on automatically when the `CI` environment variable is `true`.
+`--ci` is on automatically when the `CI` environment variable is set, as CI services set it; an empty value, `0` and `false` mean it is not.
 
 ## Common problems
 
@@ -74,7 +75,16 @@ For Biome, install the exact version pawl pins. `pawl doctor` prints it.
 The check did not complete. Fix the setup problem above and run it again.
 ```
 
-An engine could not run, an engine is missing, or the Biome or Oxlint config file is missing. Pawl never reports success when part of the check did not run. Fix the `setup` line above it; `--verbose` shows the engine commands that ran.
+An engine could not run, an engine is missing, the Biome or Oxlint config file is missing, or the baseline cannot be read. Pawl never reports success when part of the check did not run. Fix the `setup` line above it; `--verbose` shows the engine commands that ran.
+
+### The baseline cannot be read
+
+```txt
+setup  .pawl/baseline.json cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.
+       Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.
+```
+
+Most often two branches changed the file and git left conflict markers in it. Resolve the conflict, or run `pawl baseline` on the merged code and review what it records. Nothing is checked until the file can be read: without it, every finding the baseline allows would fail as new.
 
 ### It passes locally but fails in CI
 
@@ -92,7 +102,7 @@ Biome is running with its own settings. Add `@santi020k/pawl/biome` to `extends`
 
 ### A disable comment fails the check
 
-A file that gains `biome-ignore`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` fails with `pawl/no-new-disable`. Fix the code instead. Existing comments are part of the [baseline](/guide/ratchet/), so only new ones fail.
+A file that gains `biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` fails with `pawl/no-new-disable`. Fix the code instead. Existing comments are part of the [baseline](/guide/ratchet/), so only new ones fail.
 
 ### Old findings fail the check
 
@@ -142,6 +152,8 @@ Pawl refuses unknown keys in every policy layer, so a typo does not pass in sile
 ### Files git ignores are checked, or files you want are skipped
 
 Pawl skips what the root `.gitignore` lists, and a default list of build output, lockfiles, AI tool folders and generated code. Set `gitignore: false` or `defaultIgnores: false` in the policy to check them, then run `pawl sync`. Oxlint reads the `.gitignore` by itself, whatever the policy says. See [What pawl skips](/guide/policy/#what-pawl-skips).
+
+In a policy, `[` and `]` in a pattern are the characters themselves, so `ignore: ['src/app/[slug]']` skips that route folder and nothing else.
 
 ### A global such as `Bun` or `HTMLRewriter` is undeclared
 

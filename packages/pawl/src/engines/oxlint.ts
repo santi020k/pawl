@@ -11,7 +11,7 @@ import { extraGlobals, oxlintEnv } from '../runtime.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
 import { OXLINT_RULES } from './oxlint-rules.ts'
-import { EngineError, runNode } from './run.ts'
+import { EngineError, readReport, runNode } from './run.ts'
 
 export const OXLINT_CONFIG_FILE = '.oxlintrc.json'
 
@@ -224,22 +224,18 @@ export const runOxlint = async ({ root, files, write = false }: RunOptions): Pro
 
   const args = ['--format', 'json', ...(write ? ['--fix'] : []), ...(files && files.length > 0 ? files : ['.'])]
   const result = await runNode(bin, args, root, 'oxlint')
-  const start = result.stdout.indexOf('{')
 
-  if (start === -1) {
+  if (!result.stdout.includes('{')) {
     throw new EngineError((result.stderr || result.stdout).trim() || `Oxlint exited with code ${result.code}.`, {
       command: result.command
     })
   }
 
-  let report: { diagnostics?: OxlintDiagnostic[] }
+  const report = readReport<{ diagnostics?: OxlintDiagnostic[] }>(result.stdout, '{')
 
-  try {
-    report = JSON.parse(result.stdout.slice(start)) as typeof report
-  } catch (cause) {
-    throw new EngineError(`Could not read Oxlint's report.\n${result.stderr.trim()}`, {
-      command: result.command,
-      cause
+  if (!report || typeof report !== 'object') {
+    throw new EngineError(`Could not read Oxlint's report.\n${result.stderr.trim()}`.trim(), {
+      command: result.command
     })
   }
 

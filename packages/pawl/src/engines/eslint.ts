@@ -13,7 +13,7 @@ import { toolset } from '../tools.ts'
 import { type Finding, type Policy, type Runtime } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
 import { oxlintCovers } from './oxlint.ts'
-import { EngineError, runNode } from './run.ts'
+import { EngineError, readReport, runNode } from './run.ts'
 
 /** An ESLint flat config object. Typed loosely so pawl does not depend on ESLint's types. */
 export type FlatConfig = Record<string, unknown>
@@ -598,15 +598,14 @@ export const runEslint = async ({ root, files, write = false }: RunOptions): Pro
   args.push(...(files && files.length > 0 ? files : ['.']))
 
   const result = await runNode(bin, args, root, 'eslint')
-  const start = result.stdout.indexOf('[')
+  const results = result.code > 1 ? undefined : readReport<EslintResult[]>(result.stdout, '[')
 
-  if (result.code > 1 || start === -1) {
+  if (!Array.isArray(results)) {
     throw new EngineError(result.stderr.trim() || result.stdout.trim() || `ESLint exited with code ${result.code}.`, {
       command: result.command
     })
   }
 
-  const results = JSON.parse(result.stdout.slice(start)) as EslintResult[]
   const findings: Finding[] = []
 
   for (const { filePath, messages } of results) {

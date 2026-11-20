@@ -6,7 +6,7 @@ import { readJson, readJsonc, toPosix } from '../fs-utils.ts'
 import { IMPORTS_RULE, importRestrictions } from '../guards.ts'
 import { ALWAYS_IGNORED, configIgnores, toEngineGlob } from '../ignores.ts'
 import { effectiveRules, overrideRules, type RuleContext } from '../policy.ts'
-import { getRule } from '../rules.ts'
+import { getRule, type Technology } from '../rules.ts'
 import { extraGlobals, oxlintEnv } from '../runtime.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
@@ -42,6 +42,40 @@ const sortKeys = (record: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
 
 /**
+ * Names a framework's compiler hands a component file, which no import declares. Oxlint reads the
+ * script alone, so without these it reports each of them as undefined.
+ */
+const COMPONENT_GLOBALS: Partial<Record<Technology, { files: string[]; globals: string[] }>> = {
+  vue: {
+    files: ['**/*.vue'],
+    globals: [
+      'defineEmits',
+      'defineExpose',
+      'defineModel',
+      'defineOptions',
+      'defineProps',
+      'defineSlots',
+      'withDefaults'
+    ]
+  },
+  svelte: {
+    files: ['**/*.svelte', '**/*.svelte.js', '**/*.svelte.ts'],
+    globals: ['$bindable', '$derived', '$effect', '$host', '$inspect', '$props', '$state']
+  },
+  astro: { files: ['**/*.astro'], globals: ['Astro', 'Fragment'] }
+}
+
+/** The overrides the standard itself brings, ahead of the policy's own: the globals of the component files in use. */
+const standardOverrides = (technologies: readonly Technology[] = []): Record<string, unknown>[] =>
+  technologies.flatMap(technology => {
+    const component = COMPONENT_GLOBALS[technology]
+
+    return component
+      ? [{ files: component.files, globals: Object.fromEntries(component.globals.map(name => [name, 'readonly'])) }]
+      : []
+  })
+
+/**
  * The Oxlint configuration for a policy. Oxlint refuses a rule it does not know, so only the
  * rules in `OXLINT_RULES` are written; the rest are left to ESLint or reported by `pawl doctor`.
  * Oxlint reads the .gitignore itself, so it is not repeated here.
@@ -71,7 +105,7 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
 
   if (restricted) rules[IMPORTS_RULE] = [restricted.level, restricted.eslint]
 
-  const overrides = policy.overrides.flatMap(override => {
+  const own = policy.overrides.flatMap(override => {
     const overridden = toRules(
       overrideRules(override, context, policy),
       name => override.options[name] ?? baseOptions(name)
@@ -81,6 +115,7 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
       ? [{ files: override.files.map(toEngineGlob), rules: sortKeys(overridden) }]
       : []
   })
+  const overrides = [...standardOverrides(context?.technologies), ...own]
   const runtimes = context?.runtimes ?? ['node', 'browser']
   const globals = extraGlobals(runtimes)
 

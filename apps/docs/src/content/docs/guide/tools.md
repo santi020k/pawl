@@ -50,11 +50,13 @@ A project's `biome.json` extends `@santi020k/pawl/biome` and holds only what its
 
 Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases.
 
+In a `.vue`, `.svelte` or `.astro` file Biome reads the script and not the template. Four rules judge a name by how the script alone uses it, so the standard switches them off for those files, as Biome's own guide does: `no-unused-vars`, `unused-imports/no-unused-imports`, `prefer-const` and `@typescript-eslint/consistent-type-imports`. Left on, they report an import the template uses as unused, and the fix for a type-only import turns a value the template needs into `import type`. A policy that has switched on Biome's full support for these files can have them back with an entry in [`overrides`](/reference/config/#overrides).
+
 ### Oxlint
 
 Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
 
-Oxlint skips `node_modules` only where a `.gitignore` lists it, so pawl names the folder in `.oxlintrc.json` itself.
+Oxlint skips `node_modules` only where a `.gitignore` lists it, so pawl names the folder in `.oxlintrc.json` itself. For Vue, Svelte and Astro projects pawl also declares the names the compiler gives a component, such as `defineProps`, `$state` and `Astro`, so `no-undef` does not report them.
 
 ### ESLint
 

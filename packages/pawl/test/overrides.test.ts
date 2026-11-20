@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { check } from '../src/check.ts'
 import { checkDocker } from '../src/docker.ts'
-import { biomeConfig, biomeProjectConfig } from '../src/engines/biome.ts'
+import { biomeConfig, biomeProjectConfig, TEMPLATE_FILES } from '../src/engines/biome.ts'
 import { eslintPlan } from '../src/engines/eslint.ts'
 import { oxlintConfig } from '../src/engines/oxlint.ts'
 import { applyInit, planInit } from '../src/init.ts'
@@ -63,10 +63,13 @@ describe('overrides in the policy', () => {
     })
 
     // The second override is for React, which this project does not use, so Biome gets none for it.
-    expect(biomeConfig(policy).overrides).toEqual([
+    const own = [
       { includes: ['**/*.test.js', '**/*.test.ts'], linter: { rules: { suspicious: { noDebugger: 'off' } } } }
-    ])
-    expect(biomeProjectConfig(policy).overrides).toEqual(biomeConfig(policy).overrides)
+    ]
+
+    expect(biomeProjectConfig(policy).overrides).toEqual(own)
+    // In the whole config they follow the standard's own override for component files, so they can undo it.
+    expect(biomeConfig(policy).overrides).toEqual([{ includes: TEMPLATE_FILES, linter: expect.anything() }, ...own])
   })
 
   it('become Oxlint overrides, with the plugins they need and their options', () => {

@@ -160,6 +160,31 @@ describe('Oxlint as the linter, with the real Oxlint', { timeout: 60_000 }, () =
     expect(readFileSync(join(root, 'packages/ui/node_modules/dep/index.js'), 'utf8')).toBe(dependency)
   })
 
+  it('knows the names a framework gives its component files', async () => {
+    const root = project({
+      'package.json': {
+        name: 'fixture',
+        private: true,
+        type: 'module',
+        dependencies: { vue: '^3.5.0', astro: '^5.0.0', svelte: '^5.0.0' }
+      },
+      'pawl.config.json': { engine: 'oxlint', rules: { 'no-undef': 'error' } },
+      'src/Card.vue': '<script setup>\ndefineProps({ title: String })\nnotDefined()\n</script>\n',
+      'src/pages/index.astro': '---\nconst { title } = Astro.props\n---\n<h1>{title}</h1>\n',
+      'src/counter.svelte.js': 'export const count = $state(0)\n'
+    })
+
+    link(root)
+    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    const undefinedNames = (await runOxlint({ root })).findings
+      .filter(finding => finding.rule === 'no-undef')
+      .map(finding => `${finding.file} ${finding.message}`)
+
+    // The compiler's own names pass. A name nothing defines is still reported.
+    expect(undefinedNames).toEqual(["src/Card.vue 'notDefined' is not defined."])
+  })
+
   it('reports the accessibility and promise rules from the real Oxlint, without their ESLint plugins', async () => {
     const root = project({
       'package.json': { name: 'fixture', private: true, type: 'module' },

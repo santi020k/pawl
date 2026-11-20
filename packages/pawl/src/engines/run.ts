@@ -22,7 +22,10 @@ export const runNode = (script: string, args: readonly string[], cwd: string, la
     }
 
     try {
-      const child = spawn(process.execPath, [script, ...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+      // Pawl reads what an engine prints and formats its own output, so no engine colours its text.
+      // A task runner such as Turborepo sets FORCE_COLOR, and Prettier then colours even its errors.
+      const env = { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' }
+      const child = spawn(process.execPath, [script, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
       const stdout: Buffer[] = []
       const stderr: Buffer[] = []
 

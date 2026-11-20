@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { applyBaseline, createBaseline } from '../src/baseline.ts'
 import { check, exitCode } from '../src/check.ts'
 import { parsePrettierErrors, prettierConfig } from '../src/engines/prettier.ts'
@@ -71,6 +71,17 @@ describe('parsePrettierErrors', () => {
         fixable: false
       }
     ])
+  })
+
+  it('reads a block that came out in colour', () => {
+    const red = (text: string): string => `\u001b[31m${text}\u001b[39m`
+    const stderr = [
+      `[${red('error')}] src/a.ts: SyntaxError: Expression expected. (1:12)`,
+      `[${red('error')}] \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 1 |\u001b[39m const a = (`,
+      ''
+    ].join('\n')
+
+    expect(parsePrettierErrors(stderr, ['.'])).toMatchObject({ complete: true, findings: [{ file: 'src/a.ts' }] })
   })
 
   it('reads several broken files, JSON and CSS too', () => {
@@ -159,6 +170,19 @@ describe('a file the real Prettier cannot parse', { timeout: 60_000 }, () => {
       fixable: false
     })
     expect(exitCode(result)).toBe(1)
+  })
+
+  it('is read the same when the environment asks for colour, as Turborepo does', async () => {
+    vi.stubEnv('FORCE_COLOR', '1')
+
+    try {
+      const result = await check({ root: fixture() })
+
+      expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+      expect(result.findings.filter(finding => finding.rule === 'prettier:parse')).toHaveLength(1)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('is recorded by the baseline, and reported to an agent with no fix to run', async () => {

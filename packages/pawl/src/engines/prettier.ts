@@ -89,6 +89,9 @@ export interface PrettierParseErrors {
   complete: boolean
 }
 
+/** A terminal colour code, which starts with the escape character. */
+const COLOUR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+
 /** A code frame line of Prettier's error: `> 1 | code`, `  2 | code` or `    | ^`. */
 const FRAME_LINE = /^\[error\]\s+(?:>\s*)?(?:\d+\s)?\|/
 
@@ -116,7 +119,10 @@ export const parsePrettierErrors = (stderr: string, targets: readonly string[]):
   let complete = true
   let inBlock = false
 
-  for (const line of stderr.split('\n').map(text => text.replace(/\r$/, ''))) {
+  // Colour codes, in case a plugin forces them on: pawl asks Prettier for none.
+  const plain = stderr.replace(COLOUR, '')
+
+  for (const line of plain.split('\n').map(text => text.replace(/\r$/, ''))) {
     if (line.trim() === '') continue
 
     const header = /^\[error\] (.+?): (SyntaxError: .*)$/.exec(line)

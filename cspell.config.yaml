@@ -15,8 +15,8 @@ words:
   - Containerfile
   - darraghor
   - distroless
-  - esbuild
   - Dockerfiles
+  - esbuild
   - fflate
   - fontsource
   - genai
@@ -57,6 +57,7 @@ words:
   - topsecret
   - treegrid
   - Turborepo
+  - unstub
   - vdom
   - vitesse
   - Vitest

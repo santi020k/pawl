@@ -339,7 +339,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
       findings.push(
         ...(await runEngine(
           'prettier',
-          () => runPrettier({ root, ...scope, write, ignore: configIgnores(policy) }),
+          () => runPrettier({ root, ...scope, write, ignore: configIgnores(policy), gitignore: policy.gitignore }),
           setup,
           commands
         ))

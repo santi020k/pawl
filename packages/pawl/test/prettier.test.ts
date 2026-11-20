@@ -8,7 +8,7 @@ import { configIgnores } from '../src/ignores.ts'
 import { formatAgent } from '../src/output.ts'
 import { defaultPolicy, loadPolicy } from '../src/policy.ts'
 import { type Finding } from '../src/types.ts'
-import { link, PACKAGE_ROOT, project } from './helpers.ts'
+import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 // What Prettier 3 printed on stderr, recorded from the real binary.
 const ONE_TS = [
@@ -295,6 +295,17 @@ describe('the files the real Prettier is given', { timeout: 60_000 }, () => {
       '!**/generated/**',
       '!src/legacy/*.js',
       '!src/legacy/*.js/**'
+    ])
+  })
+
+  it('include what the .gitignore lists when the policy does not follow it', async () => {
+    const root = fixture()
+
+    write(root, { '.gitignore': 'src/s.js\n' })
+    expect(unformatted(await runPrettier({ root, ignore: ['generated', 'src/legacy'] }))).toEqual(['.changeset/c.md'])
+    expect(unformatted(await runPrettier({ root, ignore: ['generated', 'src/legacy'], gitignore: false }))).toEqual([
+      '.changeset/c.md',
+      'src/s.js'
     ])
   })
 

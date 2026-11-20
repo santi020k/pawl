@@ -168,8 +168,9 @@ export const runPrettier = async ({
   root,
   files,
   write = false,
-  ignore = []
-}: RunOptions & { ignore?: readonly string[] }): Promise<EngineRun> => {
+  ignore = [],
+  gitignore = true
+}: RunOptions & { ignore?: readonly string[]; gitignore?: boolean }): Promise<EngineRun> => {
   const bin = resolveBin(root)
 
   if (!bin)
@@ -179,7 +180,15 @@ export const runPrettier = async ({
 
   const mode = write ? '--write' : '--list-different'
   // With --no-error-on-unmatched-pattern, a file named and skipped is passed over in silence.
-  const flags = [mode, '--ignore-unknown', '--no-error-on-unmatched-pattern', ...prettierExclusions(ignore)]
+  const flags = [
+    mode,
+    '--ignore-unknown',
+    '--no-error-on-unmatched-pattern',
+    // Prettier reads .gitignore and .prettierignore by default. A policy that does not follow the
+    // .gitignore names the other file alone.
+    ...(gitignore ? [] : ['--ignore-path', '.prettierignore']),
+    ...prettierExclusions(ignore)
+  ]
 
   return runChunked(files, `prettier ${mode}`, async targets => {
     const result = await runNode(bin, [...flags, ...targets], root, 'prettier')

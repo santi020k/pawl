@@ -65,13 +65,13 @@ Options for init
   --engine <name>       The linter: biome, oxlint or eslint
   --formatter <name>    The formatter: biome or prettier
   --packs <a,b>         Optional packs to switch on
-  --yes                 Accept the plan without asking
-  --dry-run             Show the plan and change nothing
+  --yes                 Accept the plan without asking (also for migrate)
+  --dry-run             Show the plan and change nothing (also for add and migrate)
   --workflow            Add a GitHub Actions workflow
   --agents              Add hooks for Claude Code and Cursor, and instructions in AGENTS.md
   --hooks               Add a pre-commit hook that checks changed files
   --no-editor           Skip editor settings
-  --no-install          Do not run the package manager
+  --no-install          Do not run the package manager (also for add)
 
 Options for migrate (it also takes the options for init)
   --keep-config         Write the policy and leave the ESLint config file alone
@@ -184,10 +184,14 @@ interface Chosen {
   formatter?: FormatterName
 }
 
+/** "a", "a or b", "a, b or c". */
+const orList = (items: readonly string[]): string =>
+  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`
+
 const oneOf = <T extends string>(value: string | undefined, allowed: readonly T[], flag: string): T | undefined => {
   if (value === undefined) return undefined
 
-  if (!allowed.includes(value as T)) throw new UsageError(`Unknown ${flag} "${value}". Use ${allowed.join(' or ')}.`)
+  if (!allowed.includes(value as T)) throw new UsageError(`Unknown ${flag} "${value}". Use ${orList(allowed)}.`)
 
   return value as T
 }

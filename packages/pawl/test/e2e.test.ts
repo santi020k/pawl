@@ -453,6 +453,19 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'explain', 'not-a-rule')).toMatchObject({ code: 1, stderr: '' })
     })
 
+    test('names the values a choice takes when it gets one it does not know', () => {
+      const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+
+      expect(run(root, 'init', '--mode', 'weird', '--no-install')).toEqual({
+        code: 2,
+        stdout: '',
+        stderr: 'pawl: Unknown mode "weird". Use auto, keep or biome.\n'
+      })
+      expect(run(root, 'init', '--formatter', 'dprint', '--no-install').stderr).toBe(
+        'pawl: Unknown formatter "dprint". Use biome or prettier.\n'
+      )
+    })
+
     test('reads every option before it changes a file', () => {
       const unformatted = 'export const a = {b:1}\n'
       const root = project({

@@ -153,6 +153,8 @@ Pawl refuses unknown keys in every policy layer, so a typo does not pass in sile
 
 Pawl skips what the root `.gitignore` lists, and a default list of build output, lockfiles, AI tool folders and generated code. Set `gitignore: false` or `defaultIgnores: false` in the policy to check them, then run `pawl sync`. Oxlint reads the `.gitignore` by itself, whatever the policy says. See [What pawl skips](/guide/policy/#what-pawl-skips).
 
+In a policy, `[` and `]` in a pattern are the characters themselves, so `ignore: ['src/app/[slug]']` skips that route folder and nothing else.
+
 ### A global such as `Bun` or `HTMLRewriter` is undeclared
 
 Pawl gives the linters the globals of the runtimes it detects. Name them in the policy when it guesses wrong, for example `runtime: ['node', 'bun']`, then run `pawl sync`. `pawl doctor` shows the runtimes on the `Runtime` line.

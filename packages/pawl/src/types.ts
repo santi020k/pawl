@@ -116,6 +116,7 @@ export interface PolicyInput {
 
 /** An override, merged. */
 export interface Override {
+  /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   files: string[]
   rules: Record<string, Level>
   options: Record<string, unknown[]>
@@ -145,6 +146,7 @@ export interface Policy {
   biomeOptions: Record<string, Record<string, unknown>>
   overrides: Override[]
   locked: string[]
+  /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   ignore: string[]
   gitignore: boolean
   defaultIgnores: boolean

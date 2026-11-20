@@ -11,6 +11,7 @@ import {
   DEFAULT_IGNORES,
   fromGitignoreLine,
   ignoreMatcher,
+  literalBrackets,
   makeIgnore,
   toBiomeIgnore,
   toEslintIgnores
@@ -26,7 +27,9 @@ describe('.gitignore lines', () => {
   it('match at any depth without a slash, and from the root with one', () => {
     expect(fromGitignoreLine('dist')).toBe('**/dist')
     expect(fromGitignoreLine('dist/')).toBe('**/dist')
-    expect(fromGitignoreLine('/dist')).toBe('dist')
+    expect(fromGitignoreLine('/dist')).toBe('/dist')
+    expect(fromGitignoreLine('/dist/')).toBe('/dist')
+    expect(fromGitignoreLine('/src/out')).toBe('src/out')
     expect(fromGitignoreLine('src/out/')).toBe('src/out')
     expect(fromGitignoreLine('*.log')).toBe('**/*.log')
     expect(fromGitignoreLine('!keep.log')).toBe('!**/keep.log')
@@ -37,6 +40,32 @@ describe('.gitignore lines', () => {
     expect(fromGitignoreLine('')).toBeUndefined()
     expect(fromGitignoreLine('   ')).toBeUndefined()
     expect(fromGitignoreLine('# build output')).toBeUndefined()
+  })
+
+  it('keep a name with a leading slash at the root', () => {
+    const ignored = makeIgnore(['/build', '!/keep'].map(line => fromGitignoreLine(line) as string))
+
+    expect(ignored('build/out.js')).toBe(true)
+    expect(ignored('build')).toBe(true)
+    // "/build" is the folder at the root only. A page or a package of that name is still checked.
+    expect(ignored('src/build/page.ts')).toBe(false)
+    expect(toEslintIgnores('/build')).toEqual(['build', 'build/**'])
+  })
+
+  it('read a character class, and a backslash as the next character itself', () => {
+    const ignored = makeIgnore(
+      ['*.py[cod]', '[Bb]in/', 'v[0-9]', '[!a-c]x', 'notes\\[1\\].md', 'lone[.md'].map(
+        line => fromGitignoreLine(line) as string
+      )
+    )
+
+    for (const file of ['a.pyc', 'src/a.pyd', 'Bin/tool', 'pkg/bin/tool', 'v2/a.js', 'dx', 'notes[1].md', 'lone[.md']) {
+      expect(ignored(file), file).toBe(true)
+    }
+
+    for (const file of ['a.py', 'a.pyx', 'cin/tool', 'vy/a.js', 'ax', 'notes1.md', '/x']) {
+      expect(ignored(file), file).toBe(false)
+    }
   })
 
   it('follow the last pattern that matches, so ! re-includes a file', () => {
@@ -95,6 +124,94 @@ describe('the shared ignore list', () => {
     expect(configIgnores(policy)).toEqual(['.pawl'])
     expect(biomeProjectConfig(policy).files).toEqual({ includes: DEFAULT_IGNORES.map(pattern => `**/${pattern}`) })
     expect(biomeProjectConfig(defaultPolicy()).files).toBeUndefined()
+  })
+})
+
+describe('a folder with brackets in its name, in every engine', { timeout: 60_000 }, () => {
+  // The route folders of Next.js, SvelteKit and Astro. "s" would match "[slug]" read as a character class.
+  const files = {
+    'src/app/[slug]/page.js': 'debugger\n',
+    'src/app/(group)/page.js': 'debugger\n',
+    'src/app/s/page.js': 'debugger\n',
+    'src/pages/[id].js': 'debugger\n',
+    'src/pages/i.js': 'debugger\n',
+    'src/app/[slug]/notes.md': '[empty]()\n'
+  }
+  const policy = {
+    ignore: ['src/app/[slug]'],
+    overrides: [{ files: ['src/pages/[id].js', 'src/app/(group)/**'], rules: { 'no-debugger': 'off' as const } }]
+  }
+  // The Markdown file in the ignored folder has an empty link, which pawl's own check would report.
+  const expected = ['src/app/s/page.js no-debugger', 'src/pages/i.js no-debugger']
+  const flagged = (result: Awaited<ReturnType<typeof check>>): string[] =>
+    result.findings
+      .filter(finding => finding.rule === 'no-debugger' || finding.engine === 'pawl')
+      .map(finding => `${finding.file} ${finding.rule}`)
+      .sort()
+
+  it('is named as it is in a policy, and escaped for every reader', () => {
+    const merged = policyWith(policy)
+
+    expect(literalBrackets('src/app/[slug]')).toBe('src/app/\\[slug\\]')
+    expect(literalBrackets('src/app/\\[slug\\]')).toBe('src/app/\\[slug\\]')
+    expect(merged.ignore).toEqual(['src/app/\\[slug\\]'])
+    expect(merged.overrides[0]?.files).toEqual(['src/pages/\\[id\\].js', 'src/app/(group)/**'])
+
+    const ignored = makeIgnore(merged.ignore)
+
+    expect(ignored('src/app/[slug]/page.js')).toBe(true)
+    expect(ignored('src/app/s/page.js')).toBe(false)
+  })
+
+  it('is skipped and overridden by the real Biome', async () => {
+    const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' }, ...files })
+
+    write(root, { 'pawl.config.json': policy })
+    link(root)
+    applyInit(await planInit({ root, install: false, editor: false }))
+
+    const result = await check({ root })
+
+    // Biome refuses a config with a character class in a glob, so an unescaped bracket would stop the run.
+    expect(result.setup).toEqual([])
+    expect(flagged(result)).toEqual(expected)
+  })
+
+  it.runIf(existsSync(join(PACKAGE_ROOT, 'dist/index.js')))(
+    'is skipped and overridden by the real ESLint',
+    async () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'pawl.config.json': { engine: 'eslint', formatter: 'prettier', ...policy },
+        'eslint.config.js':
+          "import { eslint } from '@santi020k/pawl'\n\nexport default eslint({ root: import.meta.dirname })\n",
+        '.prettierrc.json': '{}\n',
+        ...files
+      })
+
+      link(root, { eslint: true, prettier: true })
+
+      const result = await check({ root })
+
+      expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+      expect(flagged(result)).toEqual(expected)
+    }
+  )
+
+  it('is skipped and overridden by the real Oxlint', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'oxlint', ...policy },
+      ...files
+    })
+
+    link(root)
+    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    const result = await check({ root })
+
+    expect(result.setup).toEqual([])
+    expect(flagged(result)).toEqual(expected)
   })
 })
 

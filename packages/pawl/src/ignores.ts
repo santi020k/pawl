@@ -65,7 +65,8 @@ export const WALK_SKIP = new Set([
 /**
  * Turn one line of a .gitignore into pawl's glob form, or undefined for a blank line or a comment.
  * Pawl globs match at any depth when they have no slash, as .gitignore lines do; a line with a
- * slash anywhere but the end is anchored at the root. A leading `!` re-includes what an earlier line ignored.
+ * slash anywhere but the end is anchored at the root, and keeps its leading slash when that is the
+ * only one, so `/build` stays the folder at the root. A leading `!` re-includes what an earlier line ignored.
  */
 export const fromGitignoreLine = (line: string): string | undefined => {
   const trimmed = line.replace(/(?<!\\)\s+$/, '')
@@ -79,10 +80,21 @@ export const fromGitignoreLine = (line: string): string | undefined => {
   if (withoutTrailing === '' || withoutTrailing === '**') return undefined
 
   const anchored = withoutTrailing.includes('/')
-  const pattern = anchored ? withoutTrailing.replace(/^\//, '') : `**/${withoutTrailing}`
+  const fromRoot = withoutTrailing.replace(/^\//, '')
+  // Without its slash, a single name would match at any depth again.
+  const rooted = fromRoot.includes('/') ? fromRoot : `/${fromRoot}`
+  const pattern = anchored ? rooted : `**/${withoutTrailing}`
 
   return `${negated ? '!' : ''}${pattern}`
 }
+
+/**
+ * A glob as a policy writes it, in `ignore` and in the `files` of an override, made safe for every
+ * reader. There, `[` and `]` are the characters themselves, so that `app/[slug]` names that folder:
+ * each one gets a backslash, which is how Biome, ESLint, Oxlint and pawl's own matcher all read a
+ * literal bracket. One that already has its backslash is left alone.
+ */
+export const literalBrackets = (pattern: string): string => pattern.replace(/(?<!\\)[[\]]/g, '\\$&')
 
 /** The patterns of the root .gitignore, in pawl's glob form and in their order. Empty without one. */
 export const gitignorePatterns = (root: string): string[] => {
@@ -144,15 +156,60 @@ export const toBiomeIgnore = (pattern: string): string => {
   return glob.startsWith('!') ? glob.slice(1) : `!${glob}`
 }
 
-/** A small glob matcher: `**`, `*` and `?`. A pattern without a slash matches at any depth. */
+const REGEXP_SPECIAL = /[.*+?^${}()|[\]\\/-]/g
+
+const literal = (text: string): string => text.replace(REGEXP_SPECIAL, '\\$&')
+
+/** Where the character class that opens at `open` closes, or -1 when the `[` is on its own. */
+const classEnd = (pattern: string, open: number): number => {
+  let index = open + 1
+
+  if (pattern[index] === '!' || pattern[index] === '^') index++
+
+  // A `]` right after the opening is one of the characters, not the end.
+  if (pattern[index] === ']') index++
+
+  for (; index < pattern.length; index++) {
+    if (pattern[index] === '\\') index++
+    else if (pattern[index] === ']') return index
+  }
+
+  return -1
+}
+
+/** A character class of a .gitignore line, such as `[cod]`, `[a-z]` or `[!_]`. It never matches a slash. */
+const classSource = (body: string): string => {
+  const negated = body.startsWith('!') || body.startsWith('^')
+  let source = ''
+
+  for (let index = negated ? 1 : 0; index < body.length; index++) {
+    const char = body[index] as string
+
+    if (char === '\\' && index + 1 < body.length) source += literal(body[++index] as string)
+    else source += char === '-' ? '-' : literal(char)
+  }
+
+  return `(?!/)[${negated ? '^' : ''}${source}]`
+}
+
+/**
+ * A small glob matcher: `**`, `*`, `?`, a character class in brackets, and a backslash to take the
+ * next character as it is. A pattern without a slash matches at any depth.
+ */
 const globToRegExp = (pattern: string): RegExp => {
   const anchored = pattern.includes('/') ? pattern.replace(/^\.?\//, '') : `**/${pattern}`
   let source = ''
 
   for (let index = 0; index < anchored.length; index++) {
     const char = anchored[index] as string
+    const close = char === '[' ? classEnd(anchored, index) : -1
 
-    if (char === '*' && anchored[index + 1] === '*') {
+    if (char === '\\' && index + 1 < anchored.length) {
+      source += literal(anchored[++index] as string)
+    } else if (close !== -1) {
+      source += classSource(anchored.slice(index + 1, close))
+      index = close
+    } else if (char === '*' && anchored[index + 1] === '*') {
       source += anchored[index + 2] === '/' ? '(?:.*/)?' : '.*'
       index += anchored[index + 2] === '/' ? 2 : 1
     } else if (char === '*') {
@@ -160,7 +217,7 @@ const globToRegExp = (pattern: string): RegExp => {
     } else if (char === '?') {
       source += '[^/]'
     } else {
-      source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      source += literal(char)
     }
   }
 

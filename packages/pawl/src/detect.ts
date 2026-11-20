@@ -303,20 +303,37 @@ const pnpmWorkspacePatterns = (root: string): string[] => {
 
   const patterns: string[] = []
   let inPackages = false
+  // A flow list that goes on over more lines, such as `packages: [` and then a name on each line.
+  let flow: string | undefined
 
   for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
     const line = raw.replace(/(^|\s)#.*$/, '')
 
     if (line.trim() === '') continue
 
+    if (flow !== undefined) {
+      flow += ` ${line.trim()}`
+
+      const closed = /^\[(.*)\]$/.exec(flow)
+
+      if (closed) {
+        patterns.push(...(closed[1] ?? '').split(',').map(unquote).filter(Boolean))
+        flow = undefined
+      }
+
+      continue
+    }
+
     const key = /^packages\s*:\s*(.*)$/.exec(line)
 
     if (key) {
-      const flow = /^\[(.*)\]$/.exec((key[1] ?? '').trim())
+      const value = (key[1] ?? '').trim()
+      const list = /^\[(.*)\]$/.exec(value)
 
-      if (flow) patterns.push(...(flow[1] ?? '').split(',').map(unquote).filter(Boolean))
+      if (list) patterns.push(...(list[1] ?? '').split(',').map(unquote).filter(Boolean))
+      else if (value.startsWith('[')) flow = value
 
-      inPackages = !flow
+      inPackages = value === ''
     } else if (inPackages) {
       const item = /^\s*-\s+(.+)$/.exec(line)
 
@@ -329,44 +346,83 @@ const pnpmWorkspacePatterns = (root: string): string[] => {
   return patterns
 }
 
-/** How far below a `**` the search for packages goes. */
-const WORKSPACE_DEPTH = 4
+/** How many folders a `**` of a workspace pattern looks through at most, so a huge tree cannot stall a check. */
+const WORKSPACE_FOLDERS = 20_000
+
+/** Folders pnpm never looks for packages in. A `**` does not enter a dot folder either. */
+const NOT_PACKAGES = new Set(['node_modules', 'bower_components'])
 
 const packageFolders = (root: string, dir: string): string[] => {
   try {
     return readdirSync(join(root, dir), { withFileTypes: true })
-      .filter(entry => entry.isDirectory() && entry.name !== 'node_modules' && !entry.name.startsWith('.'))
+      .filter(entry => entry.isDirectory() && !NOT_PACKAGES.has(entry.name) && !entry.name.startsWith('.'))
       .map(entry => entry.name)
   } catch {
     return []
   }
 }
 
-/** A folder and every folder below it, a few levels down. */
-const foldersBelow = (root: string, dir: string, depth = 0): string[] =>
-  depth >= WORKSPACE_DEPTH
-    ? [dir]
-    : [dir, ...packageFolders(root, dir).flatMap(name => foldersBelow(root, join(dir, name), depth + 1))]
+/** A folder and every folder below it, as a `**` reads them. */
+const foldersBelow = (root: string, dir: string): string[] => {
+  const found = [dir]
 
-/** One path segment of a workspace pattern, such as `plugin-*`, as a test for a folder name. */
+  for (let index = 0; index < found.length && found.length < WORKSPACE_FOLDERS; index++) {
+    const parent = found[index] as string
+
+    found.push(...packageFolders(root, parent).map(name => join(parent, name)))
+  }
+
+  return found.slice(0, WORKSPACE_FOLDERS)
+}
+
+/** One path segment of a workspace pattern, such as `plugin-*` or `[ab]*`, as a test for a folder name. */
 const segmentMatcher = (segment: string): ((name: string) => boolean) => {
-  const source = segment
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replaceAll('*', '.*')
-    .replaceAll('?', '.')
-  const regexp = new RegExp(`^${source}$`)
+  let source = ''
 
-  return name => regexp.test(name)
+  for (let index = 0; index < segment.length; index++) {
+    const char = segment[index] as string
+    const close = char === '[' ? segment.indexOf(']', index + 2) : -1
+
+    if (char === '*') source += '.*'
+    else if (char === '?') source += '.'
+    else if (close !== -1) {
+      const body = segment.slice(index + 1, close).replace(/^!/, '^')
+
+      source += `[${body.replace(/[\\\]]/g, '\\$&')}]`
+      index = close
+    } else source += char.replace(/[.+^${}()|[\]\\]/, '\\$&')
+  }
+
+  try {
+    const regexp = new RegExp(`^${source}$`)
+
+    return name => regexp.test(name)
+  } catch {
+    // A class pnpm's glob cannot read either, such as a range written backwards.
+    return () => false
+  }
+}
+
+/** A pattern with braces, such as `{apps,tools}/*`, as the patterns it stands for. */
+const expandBraces = (pattern: string): string[] => {
+  const group = /\{([^{}]*)\}/.exec(pattern)
+
+  if (!group) return [pattern]
+
+  const before = pattern.slice(0, group.index)
+  const after = pattern.slice(group.index + group[0].length)
+
+  return (group[1] ?? '').split(',').flatMap(choice => expandBraces(`${before}${choice}${after}`))
 }
 
 /** The package folders a workspace pattern names: `packages/*`, `plugins/plugin-*`, `apps/**` or a plain path. */
 const expandPattern = (root: string, pattern: string): string[] => {
-  const parts = pattern.replace(/^\.\//, '').replace(/\/$/, '').split('/')
+  const parts = pattern.split('/').filter(part => part !== '' && part !== '.')
   let dirs = ['']
 
   for (const part of parts) {
     if (part === '**') dirs = dirs.flatMap(dir => foldersBelow(root, dir))
-    else if (/[*?]/.test(part)) {
+    else if (/[*?[]/.test(part)) {
       const matches = segmentMatcher(part)
 
       dirs = dirs.flatMap(dir =>
@@ -385,16 +441,27 @@ const workspacePackages = (root: string, manifest: Manifest | undefined): string
   const fromManifest = Array.isArray(manifest?.workspaces)
     ? manifest.workspaces
     : (manifest?.workspaces?.packages ?? [])
-  const patterns = [...pnpmWorkspacePatterns(root), ...fromManifest].filter(
-    (pattern): pattern is string => typeof pattern === 'string'
-  )
-  // A pattern with a leading "!" takes packages out again. The slash anchors it at the root.
+  const patterns = [...pnpmWorkspacePatterns(root), ...fromManifest]
+    .filter((pattern): pattern is string => typeof pattern === 'string')
+    .flatMap(expandBraces)
+  // A pattern with a leading "!" takes packages out again. As in pnpm, it is matched against the
+  // package's package.json, so `!**/test/**` takes out the package in `packages/test` too.
   const excluded = makeIgnore(
-    patterns.filter(pattern => pattern.startsWith('!')).map(pattern => `/${pattern.slice(1).replace(/^\.?\//, '')}`)
+    patterns
+      .filter(pattern => pattern.startsWith('!'))
+      .map(
+        pattern =>
+          `/${pattern
+            .slice(1)
+            .replace(/^\.?\//, '')
+            .replace(/\/$/, '')}/package.json`
+      )
   )
   const included = patterns.filter(pattern => !pattern.startsWith('!'))
 
-  return [...new Set(included.flatMap(pattern => expandPattern(root, pattern)))].filter(dir => !excluded(dir)).sort()
+  return [...new Set(included.flatMap(pattern => expandPattern(root, pattern)))]
+    .filter(dir => !excluded(`${dir}/package.json`))
+    .sort()
 }
 
 const dependencyNames = (manifest: Manifest | undefined): string[] =>

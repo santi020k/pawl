@@ -32,7 +32,7 @@ import { type EngineName, type Finding, type Policy, type SetupIssue } from './t
 
 export interface CheckOptions {
   root: string
-  /** Only look at files changed against HEAD, plus untracked ones. */
+  /** Only look at files changed against HEAD, plus untracked ones. Outside a git repository, every file. */
   changed?: boolean
   /** Only look at files changed since the branch left this git ref, such as `origin/main`. */
   since?: string
@@ -146,7 +146,11 @@ interface Scope {
 const gitScope = (root: string, options: CheckOptions, setup: SetupIssue[]): Scope | undefined => {
   const whole = (files: string[]): Scope => ({ targets: files, files })
 
-  if (options.since === undefined) return options.changed ? whole(changedFiles(root)) : undefined
+  if (options.since === undefined) {
+    const changed = options.changed ? changedFiles(root) : undefined
+
+    return changed && whole(changed)
+  }
 
   try {
     return whole(changedSince(root, options.since))

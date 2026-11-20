@@ -32,7 +32,7 @@ Here is a real run, after an agent added a file that imports a package that is n
 
 {agentRun && <Terminal lines={agentRun.lines} title="agent run" />}
 
-`--changed` limits the run to files changed against `HEAD`, plus untracked ones, so the agent hears about its own work only. `--format json` prints the whole result as one document instead.
+`--changed` limits the run to files changed against `HEAD`, plus untracked ones, so the agent hears about its own work only. In a folder that is not a git repository it checks every file. `--format json` prints the whole result as one document instead.
 
 ## Disable comments fail
 

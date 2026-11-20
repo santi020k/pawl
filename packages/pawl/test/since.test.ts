@@ -104,8 +104,21 @@ describe('file names git would quote', () => {
     commit(root, 'add a file')
     write(root, { [NAMES[0] as string]: '# The menu\n', [NAMES[2] as string]: 'export const c = 1\n' })
 
-    expect(changedFiles(root).sort()).toEqual([NAMES[0], NAMES[2]].sort())
+    expect(changedFiles(root)?.sort()).toEqual([NAMES[0], NAMES[2]].sort())
     expect(changedSince(root, 'main').sort()).toEqual([...NAMES].sort())
+  })
+})
+
+describe('changedFiles', () => {
+  it('is every file before the first commit, and undefined outside a git repository', () => {
+    const root = project({ 'src/a.js': 'export const a = 1\n' })
+
+    // Nothing can say what changed here, so the caller looks at every file.
+    expect(changedFiles(root)).toBeUndefined()
+
+    git(root, 'init', '-q', '-b', 'main')
+
+    expect(changedFiles(root)).toEqual(['src/a.js'])
   })
 })
 

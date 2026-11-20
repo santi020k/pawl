@@ -54,7 +54,7 @@ Then it lists each problem, or `No problems found.` A problem is:
 | `doctor`       | No problems                                          |                                                             | At least one problem                                              |
 | Any            |                                                      |                                                             | An unknown command, option or option value, or any other error    |
 
-`--ci` is on automatically when the `CI` environment variable is `true`.
+`--ci` is on automatically when the `CI` environment variable is set, as CI services set it; an empty value, `0` and `false` mean it is not.
 
 ## Common problems
 

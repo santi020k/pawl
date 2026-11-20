@@ -70,7 +70,7 @@ The engines also work on their own: `npx biome check` and `npx eslint .` use the
 | 1    | New errors, or more new warnings than `--max-warnings` or the policy's `maxWarnings` allows   |
 | 2    | A setup problem: an engine could not run, or, with `--ci`, the config drifted from the policy |
 
-`--ci` is on automatically when the `CI` environment variable is `true`.
+`--ci` is on automatically when the `CI` environment variable is set, as CI services set it; an empty value, `0` and `false` mean it is not.
 
 ### Output for coding agents
 

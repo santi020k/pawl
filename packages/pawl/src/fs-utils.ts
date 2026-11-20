@@ -150,9 +150,10 @@ const gitFiles = (root: string, [command, ...args]: [string, ...string[]]): stri
 
 /**
  * Files changed against HEAD, plus untracked ones. In a repository with no commit yet,
- * that is every file. Empty outside a git repository.
+ * that is every file. Undefined outside a git repository, where nothing can say what changed:
+ * the caller then looks at every file, because an empty list would pass a check without running it.
  */
-export const changedFiles = (root: string): string[] => {
+export const changedFiles = (root: string): string[] | undefined => {
   let files: string[]
 
   try {
@@ -164,7 +165,7 @@ export const changedFiles = (root: string): string[] => {
     try {
       files = gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard'])
     } catch {
-      return []
+      return undefined
     }
   }
 

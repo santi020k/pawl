@@ -10,7 +10,7 @@ description: Run pawl in GitHub Actions and before each commit.
 pawl check --ci
 ```
 
-`--ci` also fails when the setup has drifted from the policy, for example when someone edited `biome.json` by hand instead of changing the policy and running `pawl sync`. It is on automatically when the `CI` environment variable is `true`, which most CI services set.
+`--ci` also fails when the setup has drifted from the policy, for example when someone edited `biome.json` by hand instead of changing the policy and running `pawl sync`. It is on automatically when the `CI` environment variable is set, which CI services do: `true`, `1` and any other value count, except an empty one, `0` and `false`.
 
 | Exit code | Meaning                                                                                       |
 | --------- | --------------------------------------------------------------------------------------------- |

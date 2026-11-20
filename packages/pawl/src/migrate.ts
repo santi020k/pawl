@@ -3,7 +3,7 @@ import { extname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { allTechnologies, detect } from './detect.ts'
 import { eslintPlan, importFromProject, importPlugin, packPreset, pluginPreset } from './engines/eslint.ts'
-import { listFiles, readJson, writeText } from './fs-utils.ts'
+import { listFiles, readJson, readJsonc, writeText } from './fs-utils.ts'
 import { ALWAYS_IGNORED, DEFAULT_IGNORES, WALK_SKIP } from './ignores.ts'
 import { ESLINT_CONFIG, type InitAction, policyFile } from './init.ts'
 import { getPack, PACKS, type Pack } from './packs.ts'
@@ -252,10 +252,30 @@ interface PrettierOptions {
   arrowParens?: string
 }
 
+const isOptions = (value: unknown): value is PrettierOptions =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** The Prettier options of a project, when its config is one pawl can read: JSON, in a file or in package.json. */
 const readPrettier = (root: string): PrettierOptions | undefined =>
-  readJson<PrettierOptions>(join(root, '.prettierrc')) ??
-  readJson<PrettierOptions>(join(root, '.prettierrc.json')) ??
-  readJson<{ prettier?: PrettierOptions }>(join(root, 'package.json'))?.prettier
+  [
+    readJsonc<unknown>(join(root, '.prettierrc')).value,
+    readJsonc<unknown>(join(root, '.prettierrc.json')).value,
+    readJson<{ prettier?: unknown }>(join(root, 'package.json'))?.prettier
+  ].find(isOptions)
+
+/**
+ * What Prettier does with an option its config leaves out. A project with a Prettier config is
+ * formatted this way already, so these are part of its style as much as the options it wrote down.
+ */
+const PRETTIER_DEFAULTS = {
+  singleQuote: false,
+  semi: true,
+  tabWidth: 2,
+  useTabs: false,
+  printWidth: 80,
+  trailingComma: 'all',
+  arrowParens: 'always'
+} satisfies Required<PrettierOptions>
 
 const indentOf = (value: unknown): StyleOptions['indent'] | undefined => {
   if (value === 'tab') return 'tab'
@@ -272,14 +292,13 @@ const commasOf = (value: unknown): StyleOptions['trailingCommas'] | undefined =>
 }
 
 /** Read the formatting style out of the old formatting rules, then out of a Prettier config when there is one. */
-const styleFrom = (root: string, formatting: RuleMap): Partial<StyleOptions> => {
+const styleFrom = (formatting: RuleMap, prettier: PrettierOptions | undefined): Partial<StyleOptions> => {
   const style: { [Key in keyof StyleOptions]?: StyleOptions[Key] | undefined } = {}
   const option = (short: string): unknown => first(formatting, short)?.options[0]
   const quotes = option('quotes')
   const semi = first(formatting, 'semi')
   const maxLen = option('max-len')
   const arrow = option('arrow-parens')
-  const prettier = readPrettier(root)
 
   if (quotes === 'single' || quotes === 'double') style.quotes = quotes
 
@@ -291,19 +310,16 @@ const styleFrom = (root: string, formatting: RuleMap): Partial<StyleOptions> => 
 
   if (arrow === 'as-needed' || arrow === 'always') style.arrowParens = arrow
 
+  // Prettier formats the code, so its options decide, the ones it defaults to included.
   if (prettier) {
-    if (prettier.singleQuote !== undefined) style.quotes = prettier.singleQuote ? 'single' : 'double'
+    const set = { ...PRETTIER_DEFAULTS, ...prettier }
 
-    if (prettier.semi !== undefined) style.semicolons = prettier.semi
-
-    if (prettier.useTabs) style.indent = 'tab'
-    else style.indent = indentOf(prettier.tabWidth) ?? style.indent
-
-    style.trailingCommas = commasOf(prettier.trailingComma) ?? style.trailingCommas
-    style.lineWidth = prettier.printWidth ?? style.lineWidth
-
-    if (prettier.arrowParens === 'always') style.arrowParens = 'always'
-    else if (prettier.arrowParens === 'avoid') style.arrowParens = 'as-needed'
+    style.quotes = set.singleQuote ? 'single' : 'double'
+    style.semicolons = set.semi
+    style.indent = set.useTabs ? 'tab' : (indentOf(set.tabWidth) ?? style.indent)
+    style.trailingCommas = commasOf(set.trailingComma) ?? style.trailingCommas
+    style.lineWidth = typeof set.printWidth === 'number' ? set.printWidth : style.lineWidth
+    style.arrowParens = set.arrowParens === 'avoid' ? 'as-needed' : 'always'
   }
 
   // Only what differs from the standard is worth writing down.
@@ -633,7 +649,14 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
 
   changed.sort((a, b) => a.rule.localeCompare(b.rule))
 
-  const style = styleFrom(root, old.formatting)
+  const prettier = readPrettier(root)
+  const style = styleFrom(old.formatting, prettier)
+
+  if (detection.tools.prettier && !prettier) {
+    notes.push(
+      `Could not read the Prettier config in ${detection.tools.prettier}. Set "style" in the policy to match it, or "pawl fix" will format the code to the standard's style.`
+    )
+  }
   const ignore = legacyName ? readLegacyIgnores(root) : await readIgnores(sourcePath)
   const policy: PolicyInput = {
     ...(namedPacks.length > 0 ? { packs: namedPacks } : {}),

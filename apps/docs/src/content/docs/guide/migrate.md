@@ -26,6 +26,7 @@ Then it runs `init`, which installs the tools and records the baseline.
 - A rule at a different level is kept at your level, under `rules`. Delete the line to take the standard.
 - Options that differ go under `options`. ESLint and Oxlint take them. Biome keeps the standard's; set `biomeOptions` by hand where you need the same in Biome.
 - Formatting rules are dropped: the formatter does their job. Their quotes, semicolons, indent and line width become the `style`.
+- A Prettier config decides the `style` where there is one, in `.prettierrc`, `.prettierrc.json` or `package.json`. An option it leaves out counts as what Prettier does by itself, such as double quotes and 80 columns, so the code keeps the format it has. Pawl says so when the config is one it cannot read, such as `prettier.config.js`; set `style` by hand then.
 - Import ordering rules are dropped: import sorting does their job.
 - When your config follows a plugin's own recommended preset, the pack starts from it, as in `unicorn/recommended`.
 - Rules the standard adds apply from now on. Their existing findings go into the baseline, so nothing fails on day one.

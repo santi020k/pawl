@@ -137,7 +137,31 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
       root: fixture({ '.prettierrc': { singleQuote: true, semi: false, tabWidth: 4 } })
     })
 
-    expect(plan.policy.style).toEqual({ indent: 4, lineWidth: 100 })
+    // What the config leaves out is what Prettier does by itself: 80 columns, trailing commas, arrow parentheses.
+    expect(plan.policy.style).toEqual({ indent: 4, lineWidth: 80, trailingCommas: 'all', arrowParens: 'always' })
+  })
+
+  it("keeps Prettier's own defaults as the style of a project that set no options", async () => {
+    const plan = await planMigrate({ root: fixture({ '.prettierrc': '{\n  // The defaults.\n}\n' }) })
+
+    expect(plan.policy.style).toEqual({
+      quotes: 'double',
+      semicolons: true,
+      trailingCommas: 'all',
+      lineWidth: 80,
+      arrowParens: 'always'
+    })
+    expect(plan.notes.join(' ')).not.toContain('Could not read the Prettier config')
+  })
+
+  it('says so when the Prettier config is one it cannot read', async () => {
+    const plan = await planMigrate({ root: fixture({ 'prettier.config.js': 'export default { semi: false }\n' }) })
+
+    // The style then comes from the old formatting rules alone.
+    expect(plan.policy.style).toEqual({ quotes: 'double', semicolons: true, lineWidth: 100 })
+    expect(plan.notes).toContain(
+      'Could not read the Prettier config in prettier.config.js. Set "style" in the policy to match it, or "pawl fix" will format the code to the standard\'s style.'
+    )
   })
 
   it('shows the plan and changes nothing on a dry run, through the command line', () => {

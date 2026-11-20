@@ -194,6 +194,7 @@ export interface SetupIssue {
     | 'locked-rule'
     | 'engine-failed'
     | 'since-unresolved'
+    | 'baseline-unreadable'
   message: string
   fix?: string
 }

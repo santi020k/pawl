@@ -37,6 +37,7 @@ Then it lists each problem, or `No problems found.` A problem is:
 - a Node older than pawl's `engines.node`, a Biome other than the exact version pawl pins, or an ESLint, Oxlint, Prettier or pack plugin outside the range pawl declares for it;
 - a Biome, Oxlint or Prettier config that is missing, out of date, or, for Biome, does not extend the pawl standard;
 - a layer that tried to loosen a locked rule;
+- a `.pawl/baseline.json` that cannot be read;
 - a rule or pack ESLint cannot enforce, with the plugin it needs, or the reason an installed plugin failed to load.
 
 `pawl doctor` exits with 0 when there are no problems and 2 when there are. `pawl doctor --format json` prints the same report as one JSON document, for CI; `init --workflow` uploads it as an artifact.
@@ -46,7 +47,7 @@ Then it lists each problem, or `No problems found.` A problem is:
 | Command        | 0                                                    | 1                                                           | 2                                                                 |
 | -------------- | ---------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
 | `check`, `fix` | No new errors. Warnings alone pass, up to the limit. | At least one new error, or more new warnings than the limit | Part of the check did not run, or, with `--ci`, any setup problem |
-| `baseline`     | Baseline written                                     |                                                             | Part of the check did not run                                     |
+| `baseline`     | Baseline written                                     |                                                             | Part of the check did not run; the baseline is left as it was     |
 | `init`, `add`  | Done, a dry run, or you said no                      |                                                             | The install failed, or `init` could not record the baseline       |
 | `migrate`      | As `init`                                            |                                                             | As `init`                                                         |
 | `explain`      | The rule was found                                   | The rule is not in the catalog                              |                                                                   |
@@ -74,7 +75,16 @@ For Biome, install the exact version pawl pins. `pawl doctor` prints it.
 The check did not complete. Fix the setup problem above and run it again.
 ```
 
-An engine could not run, an engine is missing, or the Biome or Oxlint config file is missing. Pawl never reports success when part of the check did not run. Fix the `setup` line above it; `--verbose` shows the engine commands that ran.
+An engine could not run, an engine is missing, the Biome or Oxlint config file is missing, or the baseline cannot be read. Pawl never reports success when part of the check did not run. Fix the `setup` line above it; `--verbose` shows the engine commands that ran.
+
+### The baseline cannot be read
+
+```txt
+setup  .pawl/baseline.json cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.
+       Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.
+```
+
+Most often two branches changed the file and git left conflict markers in it. Resolve the conflict, or run `pawl baseline` on the merged code and review what it records. Nothing is checked until the file can be read: without it, every finding the baseline allows would fail as new.
 
 ### It passes locally but fails in CI
 

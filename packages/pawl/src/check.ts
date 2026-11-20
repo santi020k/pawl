@@ -1,6 +1,8 @@
 import { join } from 'node:path'
 import {
   applyBaseline,
+  BASELINE_FILE,
+  baselineUnreadable,
   createBaseline,
   newSuppressions,
   readBaseline,
@@ -81,7 +83,8 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'oxlint-missing',
   'oxlint-config-missing',
   'biome-config-missing',
-  'since-unresolved'
+  'since-unresolved',
+  'baseline-unreadable'
 ]
 
 /** True when the result has more new warnings than its limit allows. */
@@ -189,6 +192,17 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     files: asked.files.filter(file => !ignored(file))
   }
   const empty = scoped !== undefined && scoped.targets.length === 0
+  // Without its baseline a check would report every old finding as new, so it does not run at all.
+  const broken = options.updateBaseline !== true && baselineUnreadable(root)
+  const idle = empty || broken
+
+  if (broken) {
+    setup.push({
+      code: 'baseline-unreadable',
+      message: `${BASELINE_FILE} cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.`,
+      fix: 'Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.'
+    })
+  }
 
   for (const violation of policy.lockViolations) {
     setup.push({
@@ -234,7 +248,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
       })
     }
 
-    if (!empty && config.status !== 'missing') {
+    if (!idle && config.status !== 'missing') {
       findings.push(...(await runEngine('biome', () => runBiome({ root, ...scope, write }), setup, commands)))
     }
   }
@@ -252,7 +266,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
         message: 'This project lints with Oxlint, but Oxlint is not installed.',
         fix: 'Add oxlint to devDependencies.'
       })
-    } else if (!empty && config.status !== 'missing') {
+    } else if (!idle && config.status !== 'missing') {
       findings.push(...(await runEngine('oxlint', () => runOxlint({ root, ...scope, write }), setup, commands)))
     }
   }
@@ -266,7 +280,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
         message: 'This project is set up to run ESLint, but ESLint is not installed.',
         fix: 'Add eslint to devDependencies.'
       })
-    } else if (!empty) {
+    } else if (!idle) {
       findings.push(...(await runEngine('eslint', () => runEslint({ root, ...scope, write }), setup, commands)))
     }
   }
@@ -282,31 +296,35 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
         message: 'This project formats with Prettier, but Prettier is not installed.',
         fix: 'Add prettier to devDependencies.'
       })
-    } else if (!empty) {
+    } else if (!idle) {
       findings.push(...(await runEngine('prettier', () => runPrettier({ root, ...scope, write }), setup, commands)))
     }
   }
 
   // Pawl's own checks for the files no engine reads.
-  if (!empty) findings.push(...checkDocker({ root, policy, ...own }), ...checkMarkdown({ root, policy, ...own }))
+  if (!idle) findings.push(...checkDocker({ root, policy, ...own }), ...checkMarkdown({ root, policy, ...own }))
 
   const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
   const limit = maxWarnings === undefined ? {} : { maxWarnings }
 
   // The policy's ignore list applies at once, even before the engine config is synced.
   const kept = findings.filter(finding => !ignored(finding.file))
-  const suppressions = empty ? [] : scanSuppressions(root, ignored, scoped?.files)
+  const suppressions = idle ? [] : scanSuppressions(root, ignored, scoped?.files)
 
   if (options.updateBaseline) {
-    writeBaseline(root, createBaseline(kept, suppressions))
+    // A check that did not complete knows only some of the findings. Recorded as the baseline,
+    // they would make every finding it missed fail later as new, so the file is left as it is.
+    const complete = !setup.some(issue => BLOCKING.includes(issue.code))
+
+    if (complete) writeBaseline(root, createBaseline(kept, suppressions))
 
     return {
       findings: [],
-      baselined: kept.length,
+      baselined: complete ? kept.length : 0,
       setup,
       engines,
       commands,
-      hasBaseline: true,
+      hasBaseline: complete || readBaseline(root) !== undefined,
       canShrinkBaseline: false,
       nothingToCheck: empty,
       ...limit

@@ -1,6 +1,4 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { BASELINE_FILE, readBaseline } from './baseline.ts'
+import { BASELINE_FILE, baselineUnreadable, readBaseline } from './baseline.ts'
 import { installedVersion, satisfies } from './compat.ts'
 import { describe, detect, filePacks } from './detect.ts'
 import { BIOME_VERSION, biomeContextFor, biomeInstalled, checkBiomeConfig } from './engines/biome.ts'
@@ -195,6 +193,14 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     (sum, rules) => sum + Object.values(rules).reduce((a, b) => a + b, 0),
     0
   )
+  const unreadable = baselineUnreadable(root)
+
+  if (unreadable) {
+    problems.push(
+      `${BASELINE_FILE} cannot be read. Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.`
+    )
+  }
+
   const guards = activeGuards(detection.dependencies, policy.packs)
   const named = new Set([...policy.packs.map(entry => entry.split('/')[0] ?? entry), ...activePacks])
 
@@ -223,7 +229,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     guards: guards.map(guard => guard.name),
     // Biome runs the code patterns as rules of pawl's own. ESLint runs them as selectors. Oxlint cannot.
     guardsImportsOnly: guards.some(guard => guard.syntax) && !tools.eslint && tools.linter !== 'biome',
-    baseline: baseline ? { allowed } : { missing: existsSync(join(root, BASELINE_FILE)) ? 'unreadable' : 'none' },
+    baseline: baseline ? { allowed } : { missing: unreadable ? 'unreadable' : 'none' },
     problems
   }
 }

@@ -39,6 +39,13 @@ export const readBaseline = (root: string): Baseline | undefined => {
     : undefined
 }
 
+/**
+ * True when there is a baseline file that cannot be used: it is not valid JSON, as after a merge
+ * conflict, or it is not a baseline this version of pawl knows.
+ */
+export const baselineUnreadable = (root: string): boolean =>
+  existsSync(join(root, BASELINE_FILE)) && readBaseline(root) === undefined
+
 export const writeBaseline = (root: string, baseline: Baseline): void => writeJson(join(root, BASELINE_FILE), baseline)
 
 /** Find every comment that switches a check off. */

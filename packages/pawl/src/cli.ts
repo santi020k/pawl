@@ -428,6 +428,7 @@ const runBaseline = async (root: string): Promise<number> => {
 
   if (result.setup.some(issue => BLOCKING.includes(issue.code))) {
     out(format(result, 'pretty', { color: colorEnabled() }))
+    out(`${BASELINE_FILE} was not changed.`)
 
     return EXIT_SETUP
   }

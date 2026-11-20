@@ -1,8 +1,19 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { applyBaseline, createBaseline, newSuppressions, scanSuppressions } from '../src/baseline.ts'
+import {
+  applyBaseline,
+  BASELINE_FILE,
+  baselineUnreadable,
+  createBaseline,
+  newSuppressions,
+  readBaseline,
+  scanSuppressions
+} from '../src/baseline.ts'
+import { check, exitCode } from '../src/check.ts'
 import { makeIgnore } from '../src/ignores.ts'
 import { type Finding } from '../src/types.ts'
-import { project } from './helpers.ts'
+import { link, project, write } from './helpers.ts'
 
 const finding = (file: string, rule: string, line = 1): Finding => ({
   file,
@@ -103,5 +114,79 @@ describe('disable-comment ratchet', () => {
       severity: 'error',
       overBaseline: { allowed: 2, found: 3 }
     })
+  })
+})
+
+describe('the baseline file, with the real Biome', { timeout: 60_000 }, () => {
+  const LEGACY = 'var legacy = 1\nexport default legacy\n'
+
+  const fixture = (files: Record<string, string | object> = {}): string => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'biome.json': { extends: ['@santi020k/pawl/biome'] },
+      'src/old.js': LEGACY,
+      ...files
+    })
+
+    link(root)
+
+    return root
+  }
+
+  it('is not written by a check that did not complete', async () => {
+    // Oxlint is the linter and has no config yet, so the lint part of the check cannot run.
+    const root = fixture({ 'pawl.config.json': { engine: 'oxlint' } })
+    const first = await check({ root, updateBaseline: true })
+
+    expect(first.setup.map(issue => issue.code)).toContain('oxlint-config-missing')
+    expect(first.baselined).toBe(0)
+    expect(first.hasBaseline).toBe(false)
+    expect(existsSync(join(root, BASELINE_FILE))).toBe(false)
+
+    // An earlier baseline is kept as it was, not replaced by half the findings.
+    const kept = { version: 1, findings: { 'src/old.js': { 'no-var': 1, 'pawl/format': 4 } }, suppressions: {} }
+
+    write(root, { [BASELINE_FILE]: kept })
+
+    const second = await check({ root, updateBaseline: true })
+
+    expect(second.hasBaseline).toBe(true)
+    expect(readBaseline(root)).toEqual(kept)
+  })
+
+  it('stops the check when the file cannot be read, and is written again by "pawl baseline"', async () => {
+    const root = fixture()
+
+    await check({ root, updateBaseline: true })
+
+    const recorded = readBaseline(root)
+
+    write(root, { [BASELINE_FILE]: `<<<<<<< HEAD\n${JSON.stringify(recorded)}\n=======\n{}\n>>>>>>> feature\n` })
+
+    const result = await check({ root })
+
+    // Nothing ran: without the baseline every old finding would come back as new.
+    expect(result.setup).toEqual([
+      {
+        code: 'baseline-unreadable',
+        message: `${BASELINE_FILE} cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.`,
+        fix: 'Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.'
+      }
+    ])
+    expect(result.findings).toEqual([])
+    expect(result.commands).toEqual([])
+    expect(exitCode(result)).toBe(2)
+
+    await check({ root, updateBaseline: true })
+
+    expect(readBaseline(root)).toEqual(recorded)
+    expect((await check({ root })).setup).toEqual([])
+  })
+
+  it('counts as unreadable when a newer pawl wrote it', () => {
+    const root = fixture({ [BASELINE_FILE]: { version: 2, entries: [] } })
+
+    expect(baselineUnreadable(root)).toBe(true)
+    expect(baselineUnreadable(fixture())).toBe(false)
   })
 })

@@ -43,6 +43,17 @@ describe('pawl doctor', () => {
     expect(formatDoctor(report)).toContain(`Biome:    ${BIOME_VERSION}, biome.json in line with the policy`)
   })
 
+  it('reports a baseline that cannot be read', async () => {
+    const root = await ready({ '.pawl/baseline.json': '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> feature\n' })
+    const report = await doctor(root)
+
+    expect(report.baseline).toEqual({ missing: 'unreadable' })
+    expect(report.problems).toEqual([
+      '.pawl/baseline.json cannot be read. Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.'
+    ])
+    expect(formatDoctor(report)).toContain('Baseline: none (unreadable)')
+  })
+
   it('reports a Biome other than the one pawl pins, and an ESLint older than it supports', async () => {
     const root = await ready({
       'pawl.config.json': { engine: 'eslint' },

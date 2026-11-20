@@ -53,6 +53,17 @@ Run `pawl baseline` to record the lower counts, and commit the file. From then o
 
 `pawl baseline` records whatever the code has at that moment. A team can also use it to accept findings on purpose, and that shows up in review as a change to `.pawl/baseline.json`.
 
+It writes the file only when the whole check ran. When an engine is missing or fails, the baseline is left as it was: a baseline recorded from half the findings would fail the other half later as new.
+
+## When two branches change it
+
+The file is plain JSON with sorted keys, so most merges are clean. When git cannot merge it, resolve the conflict by hand or run `pawl baseline` on the merged code. Until then `pawl check` stops with exit code 2, because without the baseline every old finding would count as new:
+
+```txt
+setup  .pawl/baseline.json cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.
+       Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.
+```
+
 ## Why per file and rule
 
 Counts are per file and rule, not per line, so moving code around does not break the baseline, and neither do edits or merges.

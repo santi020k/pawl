@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { allTechnologies, type Detection } from '../detect.ts'
 import { readJson, readJsonc, toPosix } from '../fs-utils.ts'
 import { IMPORTS_RULE, importRestrictions } from '../guards.ts'
-import { configIgnores, toEngineGlob } from '../ignores.ts'
+import { ALWAYS_IGNORED, configIgnores, toEngineGlob } from '../ignores.ts'
 import { effectiveRules, overrideRules, type RuleContext } from '../policy.ts'
 import { getRule } from '../rules.ts'
 import { extraGlobals, oxlintEnv } from '../runtime.ts'
@@ -89,7 +89,9 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
     plugins: [...plugins].sort(),
     env: oxlintEnv(runtimes),
     ...(globals.length > 0 ? { globals: Object.fromEntries(globals.map(name => [name, 'readonly'])) } : {}),
-    ignorePatterns: configIgnores(policy).map(toEngineGlob),
+    // Oxlint skips node_modules only where a .gitignore lists it, so without one "oxlint --fix" would
+    // rewrite the project's dependencies. Pawl never checks these folders, and says so to Oxlint itself.
+    ignorePatterns: [...new Set([...ALWAYS_IGNORED, ...configIgnores(policy)])].map(toEngineGlob),
     rules: sortKeys(rules),
     ...(overrides.length > 0 ? { overrides } : {})
   }

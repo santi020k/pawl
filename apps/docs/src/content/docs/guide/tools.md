@@ -54,6 +54,8 @@ Biome is pinned to one exact version, because pawl reads a report format Biome m
 
 Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
 
+Oxlint skips `node_modules` only where a `.gitignore` lists it, so pawl names the folder in `.oxlintrc.json` itself.
+
 ### ESLint
 
 ESLint is the host for every optional [pack](/guide/packs/). The config stays one line:

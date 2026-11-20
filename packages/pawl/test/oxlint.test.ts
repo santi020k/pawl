@@ -133,6 +133,33 @@ describe('Oxlint as the linter, with the real Oxlint', { timeout: 60_000 }, () =
     ])
   })
 
+  it('never looks into node_modules, even where no .gitignore lists it', async () => {
+    // Plain files and no link to pawl: nothing in this fixture leads outside it.
+    const dependency = "var a = 'x'.replace(/x/g, 'y')\ndebugger\nmodule.exports = a\n"
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'oxlint' },
+      'src/a.js': 'debugger\n',
+      'node_modules/dep/index.js': dependency,
+      'packages/ui/node_modules/dep/index.js': dependency
+    })
+
+    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    expect((oxlintConfig(defaultPolicy()) as { ignorePatterns: string[] }).ignorePatterns.slice(0, 3)).toEqual([
+      '**/node_modules',
+      '**/.git',
+      '**/.pawl'
+    ])
+    expect((await runOxlint({ root })).findings.map(finding => finding.file)).toEqual(['src/a.js'])
+
+    // Oxlint skips node_modules only through a .gitignore. Without this, "fix" rewrote the dependency.
+    await check({ root, fix: true })
+
+    expect(readFileSync(join(root, 'node_modules/dep/index.js'), 'utf8')).toBe(dependency)
+    expect(readFileSync(join(root, 'packages/ui/node_modules/dep/index.js'), 'utf8')).toBe(dependency)
+  })
+
   it('reports the accessibility and promise rules from the real Oxlint, without their ESLint plugins', async () => {
     const root = project({
       'package.json': { name: 'fixture', private: true, type: 'module' },

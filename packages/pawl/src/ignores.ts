@@ -111,7 +111,7 @@ export const gitignorePatterns = (root: string): string[] => {
 
 /**
  * The patterns an engine config file carries: pawl's own folder, the defaults unless turned off,
- * then the policy's own. The engines skip node_modules and .git by themselves.
+ * then the policy's own. Biome skips node_modules and .git by itself; Oxlint is told to in its own config.
  */
 export const configIgnores = (policy: Pick<Policy, 'defaultIgnores' | 'ignore'>): string[] => [
   ...new Set(['.pawl', ...(policy.defaultIgnores ? DEFAULT_IGNORES : []), ...policy.ignore])

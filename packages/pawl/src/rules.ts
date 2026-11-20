@@ -539,14 +539,16 @@ export const RULES: readonly RuleDef[] = [
     '@typescript-eslint/consistent-type-exports',
     'style/useExportType',
     'warn',
-    'Promotes the use of export type for types.'
+    'Promotes the use of export type for types.',
+    { typeAware: true }
   ),
   rule(
     'typescript',
     '@typescript-eslint/no-deprecated',
     'suspicious/noDeprecatedImports',
     'warn',
-    'Restrict imports of deprecated exports.'
+    'Restrict imports of deprecated exports.',
+    { typeAware: true }
   ),
   rule(
     'typescript',
@@ -584,7 +586,7 @@ export const RULES: readonly RuleDef[] = [
     'nursery/noUselessTypeAssertion',
     'off',
     "Disallow type assertions that don't change the type of an expression.",
-    { strict: 'warn', nursery: true }
+    { strict: 'warn', typeAware: true, nursery: true }
   ),
   rule(
     'typescript',
@@ -592,7 +594,7 @@ export const RULES: readonly RuleDef[] = [
     'nursery/noUnsafeReturn',
     'off',
     'Disallow returning a value typed as any from a function.',
-    { strict: 'error', nursery: true }
+    { strict: 'error', typeAware: true, nursery: true }
   ),
   rule(
     'typescript',
@@ -615,7 +617,7 @@ export const RULES: readonly RuleDef[] = [
     'nursery/useNullishCoalescing',
     'off',
     'Enforce using the nullish coalescing operator (??) instead of logical or (||).',
-    { strict: 'warn', nursery: true }
+    { strict: 'warn', typeAware: true, nursery: true }
   ),
   rule(
     'typescript',

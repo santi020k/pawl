@@ -6,7 +6,7 @@ import { check } from '../src/check/check.ts'
 import { biomeConfig, biomeProjectConfig } from '../src/engines/biome/config.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { checkOxlintConfig, mergeOxlintConfig, oxlintConfig } from '../src/engines/oxlint/config.ts'
-import { defaultPolicy } from '../src/policy/load.ts'
+import { defaultPolicy } from '../src/policy/merge.ts'
 import { applyInit, planInit } from '../src/setup/init.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 

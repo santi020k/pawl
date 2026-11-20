@@ -6,7 +6,7 @@ import { biomeConfig, biomeProjectConfig } from '../src/engines/biome/config.ts'
 import { biomeVcs } from '../src/engines/biome/state.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { oxlintConfig } from '../src/engines/oxlint/config.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import {
   allIgnores,
   configIgnores,

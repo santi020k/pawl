@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { type Engine, EngineError, type RunOptions } from '../engines/engine.ts'
 import { activeEngines } from '../engines/registry.ts'
-import { lockIssues } from '../policy/load.ts'
+import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../project/context.ts'
 import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
 import { ignoreMatcher } from '../project/ignores.ts'

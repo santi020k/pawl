@@ -1,7 +1,8 @@
 import { importRestrictions, ruleFiles } from '../../catalog/guards.ts'
 import { GATED_TAGS, getRule, isGated, type RuleTag, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals } from '../../catalog/runtimes.ts'
-import { defaultPolicy, effectiveRules, overrideRules } from '../../policy/load.ts'
+import { effectiveRules, overrideRules } from '../../policy/levels.ts'
+import { defaultPolicy } from '../../policy/merge.ts'
 import { configIgnores, DEFAULT_IGNORES, toBiomeIgnore, toEngineGlob } from '../../project/ignores.ts'
 import { type Level, type Policy, type Runtime } from '../../types.ts'
 import { isRecord, type Json, type JsonObject, sameJson, sortKeys } from '../../utils/json.ts'
@@ -113,15 +114,8 @@ const lintRules = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObje
 /** The policy's overrides as Biome's: one per override that sets a rule Biome has, or gives one options. */
 const biomeOverrides = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObject[] =>
   policy.overrides.flatMap(override => {
-    const levels = effectiveRules(policy)
-    // A rule the override gives options but no level keeps the level it has, unless that is off.
-    const optionsOnly = Object.keys(override.biomeOptions).flatMap((name): [string, Level][] => {
-      const level = levels.get(name)
-
-      return name in override.rules || level === undefined || level === 'off' ? [] : [[name, level]]
-    })
     const entries = biomeEntries(
-      [...overrideRules(override), ...optionsOnly],
+      overrideRules(override, undefined, policy, override.biomeOptions),
       include,
       name => override.biomeOptions[name] ?? policy.biomeOptions[name]
     )

@@ -2,7 +2,7 @@ import { Linter } from 'eslint'
 import { describe, expect, it } from 'vitest'
 import { type Guard, getGuard, importRestrictions } from '../src/catalog/guards.ts'
 import { check } from '../src/check/check.ts'
-import { defaultPolicy } from '../src/policy/load.ts'
+import { defaultPolicy } from '../src/policy/merge.ts'
 import { applyInit, planInit } from '../src/setup/init.ts'
 import { link, project } from './helpers.ts'
 

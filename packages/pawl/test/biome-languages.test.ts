@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { check } from '../src/check/check.ts'
 import { biomeConfig, biomeTechConfig } from '../src/engines/biome/config.ts'
-import { defaultPolicy } from '../src/policy/load.ts'
+import { defaultPolicy } from '../src/policy/merge.ts'
 import { applyInit, formatWritten, planInit } from '../src/setup/init.ts'
 import { link, project, write } from './helpers.ts'
 

@@ -166,7 +166,7 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
 describe('policy options', () => {
   it('reach the ESLint config for rules ESLint runs', async () => {
     const { eslintPlan } = await import('../src/engines/eslint/plan.ts')
-    const { mergeLayers } = await import('../src/policy/load.ts')
+    const { mergeLayers } = await import('../src/policy/merge.ts')
     const policy = mergeLayers([
       {
         source: 'test',

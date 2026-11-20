@@ -35,17 +35,10 @@ export type { OxlintContext } from './engines/oxlint/config.ts'
 export { checkOxlintConfig, oxlintConfig, oxlintCovers } from './engines/oxlint/config.ts'
 export { OXLINT_RULES, OXLINT_VERSION } from './engines/oxlint/rules.ts'
 export { checkPrettierConfig, prettierConfig } from './engines/prettier/config.ts'
-export type { RuleContext } from './policy/load.ts'
-export {
-  DEFAULT_STYLE,
-  defaultPolicy,
-  definePolicy,
-  effectiveRules,
-  findProjectRoot,
-  loadPolicy,
-  mergeLayers,
-  resolvePolicy
-} from './policy/load.ts'
+export type { RuleContext } from './policy/levels.ts'
+export { effectiveRules } from './policy/levels.ts'
+export { findProjectRoot, loadPolicy, resolvePolicy } from './policy/load.ts'
+export { DEFAULT_STYLE, defaultPolicy, definePolicy, mergeLayers } from './policy/merge.ts'
 export type { JsonSchema } from './policy/schema.ts'
 export { POLICY_KEYS, POLICY_SCHEMA } from './policy/schema.ts'
 export type { Detection, DetectOptions, FileFormat, PackageManager, WorkspaceTool } from './project/detect.ts'

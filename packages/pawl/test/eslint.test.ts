@@ -3,7 +3,7 @@ import { check } from '../src/check/check.ts'
 import { exitCode } from '../src/check/result.ts'
 import { readReport } from '../src/engines/engine.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { link, project } from './helpers.ts'
 
 const block = (config: Record<string, unknown>[], name: string): Record<string, unknown> | undefined =>

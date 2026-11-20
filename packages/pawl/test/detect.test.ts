@@ -1,5 +1,5 @@
 import { expect, it, describe as suite } from 'vitest'
-import { mergeLayers } from '../src/policy/load.ts'
+import { mergeLayers } from '../src/policy/merge.ts'
 import {
   allTechnologies,
   DETECTABLE,

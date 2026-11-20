@@ -2,15 +2,9 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { eslint } from '../src/engines/eslint/plan.ts'
-import {
-  DEFAULT_STYLE,
-  defaultPolicy,
-  effectiveRules,
-  findProjectRoot,
-  loadPolicy,
-  mergeLayers,
-  resolvePolicy
-} from '../src/policy/load.ts'
+import { effectiveRules } from '../src/policy/levels.ts'
+import { findProjectRoot, loadPolicy, resolvePolicy } from '../src/policy/load.ts'
+import { DEFAULT_STYLE, defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { project } from './helpers.ts'
 
 describe('mergeLayers', () => {

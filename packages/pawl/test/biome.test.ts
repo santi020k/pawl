@@ -12,7 +12,7 @@ import {
   biomeTechPreset
 } from '../src/engines/biome/config.ts'
 import { checkBiomeConfig } from '../src/engines/biome/state.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { PACKAGE_ROOT, project } from './helpers.ts'
 
 const preset = (name: string): unknown => JSON.parse(readFileSync(join(PACKAGE_ROOT, 'presets', name), 'utf8'))

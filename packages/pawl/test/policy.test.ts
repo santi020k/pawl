@@ -201,6 +201,35 @@ describe('the values of a policy', () => {
       /^pawl\.config\.json has a value pawl cannot use: "packs" names "unicorns", which is not a pack\. The packs are: javascript, /
     )
     expect(await refused({ packs: ['unicorn', 'de-morgan', 'unicorn/recommended'] })).toBe('accepted')
+    // The guards a policy switches on by name are in the list too.
+    expect(await refused({ packs: ['de-morgen'] })).toMatch(/, de-morgan\.$/)
+  })
+
+  it('count an option set to undefined in a JS policy as not set, as the merge does', async () => {
+    const root = project({
+      'pawl.config.mjs': [
+        'const ci = false',
+        'export default {',
+        '  maxWarnings: ci ? 0 : undefined,',
+        '  runtime: undefined,',
+        '  extends: undefined,',
+        '  style: { quotes: undefined, indent: 4 },',
+        "  overrides: [{ files: ['*.test.ts'], rules: { 'no-console': undefined } }],",
+        "  rules: { 'no-var': undefined, eqeqeq: 'warn' }",
+        '}',
+        ''
+      ].join('\n')
+    })
+    const policy = await loadPolicy(root)
+
+    expect(policy.maxWarnings).toBeUndefined()
+    expect(policy.runtime).toBeUndefined()
+    expect(policy.style.indent).toBe(4)
+    expect(policy.style.quotes).toBe(defaultPolicy().style.quotes)
+    expect(policy.rules.eqeqeq).toBe('warn')
+    expect(policy.rules['no-var']).toBe(defaultPolicy().rules['no-var'])
+    // A value that is there still has to be right, and an override still needs its files.
+    expect(await refused({ overrides: [{ files: null }] })).toContain('"overrides[0].files" is null.')
   })
 
   it('are checked in every layer, and left alone when they are right', async () => {

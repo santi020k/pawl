@@ -3,7 +3,7 @@ import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ancestors, toList } from './fs-utils.ts'
-import { getGuard } from './guards.ts'
+import { GUARDS, getGuard } from './guards.ts'
 import { literalBrackets, makeIgnore } from './ignores.ts'
 import { getPack, PACKS } from './packs.ts'
 import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from './rules.ts'
@@ -372,8 +372,31 @@ const pickEntry = (exportsField: unknown): string | undefined => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/**
+ * A JS or TS policy can set an option to undefined, as in `maxWarnings: ci ? 0 : undefined`, and
+ * means it is not set. Leaving such keys out of plain objects, at any depth, lets the checks and the
+ * merge read them that way. JSON cannot say undefined, so a JSON policy is unchanged.
+ */
+const withoutUndefined = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutUndefined)
+
+  if (!isRecord(value)) return value
+
+  const prototype = Object.getPrototypeOf(value) as unknown
+
+  if (prototype !== Object.prototype && prototype !== null) return value
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, withoutUndefined(item)])
+  )
+}
+
 /** Refuse a policy with keys pawl does not know, so a typo does not pass in silence. */
-const validate = (value: unknown, source: string): PolicyInput => {
+const validate = (given: unknown, source: string): PolicyInput => {
+  const value = withoutUndefined(given)
+
   if (!isRecord(value)) throw new Error(`${source} must be an object: export default definePolicy({ ... })`)
 
   const unknown = Object.keys(value).filter(key => !(POLICY_KEYS as readonly string[]).includes(key))
@@ -404,7 +427,7 @@ const unknownPacks = (packs: unknown): string[] => {
 
   return unknown.length > 0
     ? [
-        `"packs" names ${unknown.map(name => `"${name}"`).join(', ')}, which ${unknown.length === 1 ? 'is not a pack' : 'are not packs'}. The packs are: ${PACKS.map(pack => pack.name).join(', ')}.`
+        `"packs" names ${unknown.map(name => `"${name}"`).join(', ')}, which ${unknown.length === 1 ? 'is not a pack' : 'are not packs'}. The packs are: ${[...PACKS.map(pack => pack.name), ...GUARDS.filter(guard => guard.optIn).map(guard => guard.name)].join(', ')}.`
       ]
     : []
 }

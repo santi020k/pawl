@@ -5,6 +5,18 @@ import { type Detectable, type Framework, type Policy, type Runtime } from '../t
 import { toPosix } from '../utils/fs.ts'
 import { readJson } from '../utils/json.ts'
 import { plural } from '../utils/text.ts'
+import {
+  BIOME_CONFIG_FILES,
+  CSPELL_CONFIG_FILES,
+  ESLINT_CONFIG_FILES,
+  ESLINT_LEGACY_CONFIG_FILES,
+  firstExisting,
+  hasAny,
+  JSDOC_CONFIG_FILES,
+  OXLINT_CONFIG_FILES,
+  PRETTIER_CONFIG_FILES,
+  TSCONFIG_FILES
+} from './config-files.ts'
 import { isGitRepo } from './files.ts'
 import { makeIgnore, WALK_SKIP } from './ignores.ts'
 
@@ -131,50 +143,15 @@ const FRONTEND: readonly Framework[] = [
 /** Frameworks for servers only. */
 const SERVER: readonly Framework[] = ['nest', 'hono']
 
+/** The config files that show a tool is in use. */
 const TOOL_FILES = {
-  biome: ['biome.json', 'biome.jsonc'],
-  eslint: [
-    'eslint.config.js',
-    'eslint.config.mjs',
-    'eslint.config.cjs',
-    'eslint.config.ts',
-    'eslint.config.mts',
-    '.eslintrc',
-    '.eslintrc.js',
-    '.eslintrc.cjs',
-    '.eslintrc.json',
-    '.eslintrc.yml'
-  ],
-  oxlint: ['oxlint.config.ts', 'oxlint.config.mts', '.oxlintrc.json'],
-  prettier: [
-    '.prettierrc',
-    '.prettierrc.json',
-    '.prettierrc.js',
-    '.prettierrc.cjs',
-    '.prettierrc.mjs',
-    '.prettierrc.yml',
-    '.prettierrc.yaml',
-    'prettier.config.js',
-    'prettier.config.mjs',
-    'prettier.config.cjs'
-  ],
-  cspell: [
-    'cspell.json',
-    '.cspell.json',
-    'cSpell.json',
-    'cspell.jsonc',
-    '.cspell.jsonc',
-    'cspell.config.json',
-    'cspell.config.yaml',
-    'cspell.config.yml',
-    'cspell.config.js',
-    'cspell.config.cjs',
-    'cspell.config.mjs'
-  ],
-  jsdoc: ['jsdoc.json', '.jsdoc.json', 'jsdoc.config.js', 'jsdoc.config.cjs', 'jsdoc.config.mjs']
+  biome: BIOME_CONFIG_FILES,
+  eslint: [...ESLINT_CONFIG_FILES, ...ESLINT_LEGACY_CONFIG_FILES],
+  oxlint: OXLINT_CONFIG_FILES,
+  prettier: PRETTIER_CONFIG_FILES,
+  cspell: CSPELL_CONFIG_FILES,
+  jsdoc: JSDOC_CONFIG_FILES
 } as const
-
-const TSCONFIG_FILES = ['tsconfig.json', 'tsconfig.base.json', 'tsconfig.app.json', 'tsconfig.node.json']
 
 /** How far down the probe for file formats looks, and how many entries it reads at most. */
 const PROBE_DEPTH = 4
@@ -273,9 +250,6 @@ export const DETECTABLE: readonly Detectable[] = [
   ...new Set(FRAMEWORK_PACKAGES.map(([, framework]) => framework)),
   'turbo'
 ]
-
-const firstExisting = (root: string, names: readonly string[]): string | undefined =>
-  names.find(name => existsSync(join(root, name)))
 
 const detectPackageManager = (root: string, manifest: Manifest | undefined): PackageManager | undefined => {
   const declared = manifest?.packageManager?.split('@')[0]
@@ -474,8 +448,8 @@ export const detect = (root: string, options: DetectOptions = {}): Detection => 
     },
     typescript:
       dependencies.has('typescript') ||
-      TSCONFIG_FILES.some(name => existsSync(join(root, name))) ||
-      packages.some(dir => TSCONFIG_FILES.some(name => existsSync(join(root, dir, name)))),
+      hasAny(root, TSCONFIG_FILES) ||
+      packages.some(dir => hasAny(join(root, dir), TSCONFIG_FILES)),
     dependencies: [...dependencies].sort(),
     frameworks,
     // Astro components found in the files count for the root: Astro's rules then apply repo-wide.

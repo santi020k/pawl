@@ -5,6 +5,7 @@ import { IMPORTS_RULE, importRestrictions } from '../../catalog/guards.ts'
 import { getRule } from '../../catalog/rules.ts'
 import { extraGlobals, oxlintEnv } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules, type RuleContext } from '../../policy/load.ts'
+import { OXLINT_CONFIG_FILE } from '../../project/config-files.ts'
 import { allTechnologies, type Detection } from '../../project/detect.ts'
 import { configIgnores, toEngineGlob } from '../../project/ignores.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
@@ -13,8 +14,6 @@ import { isRecord, readJson, readJsonc, sameJson, sortKeys } from '../../utils/j
 import { type EngineRun, type RunOptions } from '../biome/config.ts'
 import { EngineError, readReport, runNode } from '../engine.ts'
 import { OXLINT_RULES } from './rules.ts'
-
-export const OXLINT_CONFIG_FILE = '.oxlintrc.json'
 
 /** Oxlint's own name back to the neutral one, for reading its report. */
 const NEUTRAL = new Map(Object.entries(OXLINT_RULES).map(([name, rule]) => [rule, name]))

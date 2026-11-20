@@ -16,16 +16,17 @@ import {
   runBiome,
   syncBiomeGlobals
 } from '../engines/biome/config.ts'
-import {
-  checkOxlintConfig,
-  mergeOxlintConfig,
-  OXLINT_CONFIG_FILE,
-  oxlintConfig,
-  oxlintContextFor
-} from '../engines/oxlint/config.ts'
+import { checkOxlintConfig, mergeOxlintConfig, oxlintConfig, oxlintContextFor } from '../engines/oxlint/config.ts'
 import { OXLINT_VERSION } from '../engines/oxlint/rules.ts'
 import { checkPrettierConfig, prettierConfig } from '../engines/prettier/config.ts'
 import { findConfigFile, loadPolicy } from '../policy/load.ts'
+import {
+  ESLINT_CONFIG_FILES,
+  firstExisting,
+  hasAny,
+  LEFTHOOK_CONFIG_FILES,
+  OXLINT_CONFIG_FILE
+} from '../project/config-files.ts'
 import {
   type Detection,
   describe,
@@ -35,7 +36,6 @@ import {
   type PackageManager,
   packageTechnologies
 } from '../project/detect.ts'
-import { ESLINT_CONFIG_FILES } from '../project/toolset.ts'
 import { type EngineName, type FormatterName, type Policy, type PolicyInput } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
 import { isRecord, type JsonRecord, mergeDeep, readJson, readJsonc, sameJson, writeJson } from '../utils/json.ts'
@@ -639,7 +639,7 @@ const planHook = (root: string, detection: Detection, notes: string[]): InitActi
     }
   }
 
-  const lefthook = ['lefthook.yml', '.lefthook.yml', 'lefthook.yaml'].find(name => existsSync(join(root, name)))
+  const lefthook = firstExisting(root, LEFTHOOK_CONFIG_FILES)
 
   if (lefthook) {
     notes.push(`This repo uses lefthook. Add "${HOOK_COMMAND}" to the pre-commit commands in ${lefthook}.`)
@@ -783,7 +783,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const { tools } = detection
   const actions: InitAction[] = []
   const notes: string[] = []
-  const hasFlatEslint = ESLINT_CONFIG_FILES.some(name => existsSync(join(root, name)))
+  const hasFlatEslint = hasAny(root, ESLINT_CONFIG_FILES)
   const keep = mode === 'keep' && !tools.biome
   const kept: EngineName | undefined = (tools.oxlint && 'oxlint') || (tools.eslint && 'eslint') || undefined
   const linter: EngineName = options.engine ?? (keep && kept ? kept : 'biome')
@@ -1083,7 +1083,7 @@ export const planAdd = async (root: string, names: readonly string[], install = 
       summary: 'ESLint for the packs',
       apply: () => writeText(join(root, 'eslint.config.js'), ESLINT_CONFIG)
     })
-  } else if (ESLINT_CONFIG_FILES.some(name => existsSync(join(root, name)))) {
+  } else if (hasAny(root, ESLINT_CONFIG_FILES)) {
     notes.push(
       `Packs apply through eslint() from ${PACKAGE_NAME}. Make sure your ${detection.tools.eslint} exports it or spreads it.`
     )

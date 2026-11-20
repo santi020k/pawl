@@ -1,7 +1,6 @@
-import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { PRETTIER_CONFIG_FILES } from '../../project/toolset.ts'
+import { firstExisting, PRETTIER_CONFIG_FILES } from '../../project/config-files.ts'
 import { type Finding, type Policy, type SetupIssue } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { readJson, readJsonc } from '../../utils/json.ts'
@@ -34,7 +33,7 @@ export interface PrettierConfigCheck {
  * Only JSON configs can be read; a config written in JavaScript is left to its owner.
  */
 export const checkPrettierConfig = (root: string, policy: Policy): PrettierConfigCheck => {
-  const file = PRETTIER_CONFIG_FILES.find(name => existsSync(join(root, name)))
+  const file = firstExisting(root, PRETTIER_CONFIG_FILES)
 
   if (!file) {
     const inManifest = readJson<{ prettier?: unknown }>(join(root, 'package.json'))?.prettier !== undefined

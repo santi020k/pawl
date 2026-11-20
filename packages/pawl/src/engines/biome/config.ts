@@ -5,6 +5,7 @@ import { guardOfMessage, importRestrictions, ruleFiles } from '../../catalog/gua
 import { GATED_TAGS, getRule, getRuleByBiome, isGated, type RuleTag, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, RUNTIMES } from '../../catalog/runtimes.ts'
 import { defaultPolicy, effectiveRules, overrideRules } from '../../policy/load.ts'
+import { BIOME_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
 import { type Detection, technologies as repoTechnologies } from '../../project/detect.ts'
 import { configIgnores, DEFAULT_IGNORES, toBiomeIgnore, toEngineGlob } from '../../project/ignores.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
@@ -81,8 +82,6 @@ export const biomeContextFor = (
   vcs: biomeVcs(root, policy),
   runtimes: detection.runtimes
 })
-
-export const BIOME_CONFIG_FILES = ['biome.json', 'biome.jsonc']
 
 const BIOME_PREFIX = 'biome:'
 
@@ -412,7 +411,7 @@ const findPreset = (config: JsonObject): string | undefined =>
 
 /** Compare the project's biome.json with what the policy calls for. */
 export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeContext = {}): BiomeConfigCheck => {
-  const file = BIOME_CONFIG_FILES.find(name => existsSync(join(root, name)))
+  const file = firstExisting(root, BIOME_CONFIG_FILES)
 
   if (!file) {
     return {
@@ -492,7 +491,7 @@ export const checkBiomePackages = (
 ): BiomePackageCheck[] =>
   Object.entries(perPackage).map(([dir, technologies]) => {
     const expected = biomePackageConfig(dir, technologies, rootFile, preset)
-    const name = BIOME_CONFIG_FILES.find(candidate => existsSync(join(root, dir, candidate)))
+    const name = firstExisting(join(root, dir), BIOME_CONFIG_FILES)
     const file = `${dir}/${name ?? 'biome.json'}`
 
     if (!name) return { dir, file, status: 'missing', expected }

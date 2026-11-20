@@ -3,8 +3,8 @@ import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from '../catalog/rules.ts'
+import { ESLINT_CONFIG_FILES, hasAny, PAWL_CONFIG_FILES } from '../project/config-files.ts'
 import { literalBrackets } from '../project/ignores.ts'
-import { ESLINT_CONFIG_FILES } from '../project/toolset.ts'
 import { type Level, type Override, type Policy, type PolicyInput, type StyleOptions } from '../types.ts'
 import { ancestors } from '../utils/fs.ts'
 import { isRecord } from '../utils/json.ts'
@@ -19,14 +19,6 @@ export const DEFAULT_STYLE: StyleOptions = {
   trailingCommas: 'none',
   arrowParens: 'as-needed'
 }
-
-export const CONFIG_FILES = [
-  'pawl.config.ts',
-  'pawl.config.mts',
-  'pawl.config.js',
-  'pawl.config.mjs',
-  'pawl.config.json'
-]
 
 const ORDER: Record<Level, number> = { off: 0, warn: 1, error: 2 }
 
@@ -275,7 +267,7 @@ export const overrideRules = (override: Override, context?: RuleContext, policy?
 }
 
 export const findConfigFile = (root: string): string | undefined =>
-  CONFIG_FILES.map(name => join(root, name)).find(file => existsSync(file))
+  PAWL_CONFIG_FILES.map(name => join(root, name)).find(file => existsSync(file))
 
 /**
  * The project root for a start directory, such as the folder an editor started ESLint in.
@@ -284,10 +276,10 @@ export const findConfigFile = (root: string): string | undefined =>
  */
 export const findProjectRoot = (start: string): string => {
   const dirs = ancestors(start)
-  const has = (names: readonly string[]) => (dir: string) => names.some(name => existsSync(join(dir, name)))
+  const has = (names: readonly string[]) => (dir: string) => hasAny(dir, names)
 
   return (
-    dirs.find(has(CONFIG_FILES)) ??
+    dirs.find(has(PAWL_CONFIG_FILES)) ??
     dirs.find(has(ESLINT_CONFIG_FILES)) ??
     dirs.find(has(['package.json'])) ??
     resolve(start)

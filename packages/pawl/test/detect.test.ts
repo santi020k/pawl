@@ -115,6 +115,13 @@ suite('detect', () => {
     ])
   })
 
+  it('finds every config file name ESLint reads, flat and legacy', () => {
+    expect(detect(project({ 'eslint.config.cts': 'export default []\n' })).tools.eslint).toBe('eslint.config.cts')
+    expect(detect(project({ '.eslintrc.yaml': 'root: true\n' })).tools.eslint).toBe('.eslintrc.yaml')
+    // A flat config wins over a legacy one, as it does in ESLint.
+    expect(detect(project({ '.eslintrc': '{}', 'eslint.config.mjs': '' })).tools.eslint).toBe('eslint.config.mjs')
+  })
+
   it('reads Nx and package.json workspaces', () => {
     const root = project({
       'package.json': { workspaces: { packages: ['libs/*'] } },

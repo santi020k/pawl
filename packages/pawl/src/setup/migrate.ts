@@ -5,10 +5,10 @@ import { getPack, PACKS, type Pack } from '../catalog/packs.ts'
 import { getRule, type RuleDef } from '../catalog/rules.ts'
 import { eslintPlan, importFromProject, importPlugin, packPreset, pluginPreset } from '../engines/eslint/plan.ts'
 import { DEFAULT_STYLE, effectiveRules, findConfigFile, resolvePolicy } from '../policy/load.ts'
+import { ESLINT_CONFIG_FILES, ESLINT_LEGACY_CONFIG_FILES, firstExisting } from '../project/config-files.ts'
 import { allTechnologies, detect } from '../project/detect.ts'
 import { listFiles } from '../project/files.ts'
 import { ALWAYS_IGNORED, DEFAULT_IGNORES, WALK_SKIP } from '../project/ignores.ts'
-import { ESLINT_CONFIG_FILES } from '../project/toolset.ts'
 import { type Level, type PolicyInput, type StyleOptions } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
 import { readJson, sameJson } from '../utils/json.ts'
@@ -385,11 +385,9 @@ const catalogRule = (name: string): RuleDef | undefined =>
 /** Options worth carrying: more than the empty defaults ESLint fills in. */
 const hasOptions = (options: unknown[]): boolean => !['[]', '[{}]'].includes(JSON.stringify(options))
 
-const LEGACY_FILES = ['.eslintrc.js', '.eslintrc.cjs', '.eslintrc.json', '.eslintrc.yml', '.eslintrc.yaml', '.eslintrc']
-
 /** The legacy ESLint config of a project: an .eslintrc file, or `eslintConfig` in package.json. */
 const legacyConfig = (root: string): string | undefined =>
-  LEGACY_FILES.find(name => existsSync(join(root, name))) ??
+  firstExisting(root, ESLINT_LEGACY_CONFIG_FILES) ??
   (readJson<{ eslintConfig?: unknown }>(join(root, 'package.json'))?.eslintConfig ? 'package.json' : undefined)
 
 /** The patterns of a legacy config's .eslintignore file. */
@@ -469,7 +467,7 @@ const reportFile = (plan: Omit<MigratePlan, 'actions'>, backup: string | undefin
 
 /** Read an existing ESLint flat config and work out the pawl policy that keeps its rules. */
 export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions): Promise<MigratePlan> => {
-  const flatName = ESLINT_CONFIG_FILES.find(name => existsSync(join(root, name)))
+  const flatName = firstExisting(root, ESLINT_CONFIG_FILES)
   const legacyName = flatName ? undefined : legacyConfig(root)
   const sourceName = flatName ?? legacyName
 

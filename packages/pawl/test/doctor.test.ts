@@ -73,6 +73,26 @@ describe('pawl doctor', () => {
     expect((await doctor(root)).problems).toEqual([])
   })
 
+  it('names a missing plugin once, however many rules wait on it', async () => {
+    // ESLint lints alone, and none of the plugins the standard's rules come from is installed.
+    const root = await ready({ 'pawl.config.json': { engine: 'eslint' } })
+    const report = await doctor(root)
+    const unicorn = report.problems.filter(problem => problem.includes('eslint-plugin-unicorn'))
+    const waiting = report.engines.eslint?.notEnforced.filter(item => item.needs === 'eslint-plugin-unicorn') ?? []
+
+    expect(waiting.length).toBeGreaterThan(4)
+    expect(unicorn).toEqual([
+      `Not enforced by ESLint: ${waiting
+        .slice(0, 3)
+        .map(item => item.rule)
+        .join(', ')} and ${waiting.length - 3} more (install eslint-plugin-unicorn).`
+    ])
+    // A plugin one rule waits on still names that rule.
+    expect(report.problems).toContain(
+      'Not enforced by ESLint: unused-imports/no-unused-imports (install eslint-plugin-unused-imports).'
+    )
+  })
+
   it('reports a baseline that cannot be read', async () => {
     const root = await ready({ '.pawl/baseline.json': '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> feature\n' })
     const report = await doctor(root)

@@ -38,7 +38,7 @@ Then it lists each problem, or `No problems found.` A problem is:
 - a Biome, Oxlint or Prettier config that is missing, out of date, or, for Biome, does not extend the pawl standard;
 - a layer that tried to loosen a locked rule;
 - a `.pawl/baseline.json` that cannot be read;
-- a rule or pack ESLint cannot enforce, with the plugin it needs, or the reason an installed plugin failed to load.
+- a rule or pack ESLint cannot enforce, with the plugin it needs, or the reason an installed plugin failed to load. One plugin is named once, with the first of the rules that wait on it; `--format json` lists them all.
 
 `pawl doctor` exits with 0 when there are no problems and 2 when there are. `pawl doctor --format json` prints the same report as one JSON document, for CI; `init --workflow` uploads it as an artifact.
 

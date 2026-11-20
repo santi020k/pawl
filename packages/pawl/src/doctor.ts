@@ -83,6 +83,27 @@ const compatibility = (root: string, name: string, wanted: string | undefined): 
   return { name, wanted, installed, ok: installed !== undefined && satisfies(installed, wanted) }
 }
 
+/** How many rule names one problem line spells out before it counts the rest. */
+const NAMED = 3
+
+/**
+ * One problem for each thing that is missing, not one for each rule that waits on it: a plugin
+ * that is not installed can hold back twenty rules, and twenty lines would bury the other problems.
+ * The whole list stays in the report, under `engines.eslint.notEnforced`.
+ */
+const notEnforcedProblems = (notEnforced: ReadonlyArray<{ rule: string; needs: string }>): string[] => {
+  const byNeed = new Map<string, string[]>()
+
+  for (const { rule, needs } of notEnforced) byNeed.set(needs, [...(byNeed.get(needs) ?? []), rule])
+
+  return [...byNeed].map(([needs, rules]) => {
+    const rest = rules.length - NAMED
+    const named = rest > 1 ? `${rules.slice(0, NAMED).join(', ')} and ${rest} more` : rules.join(', ')
+
+    return `Not enforced by ESLint: ${named} (install ${needs}).`
+  })
+}
+
 /** Work out everything `pawl doctor` reports. Reads files only; runs no engine. */
 export const doctor = async (root: string): Promise<DoctorReport> => {
   const policy = await loadPolicy(root)
@@ -189,7 +210,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
       if (pack && pack.plugin !== 'eslint') push(compatibility(root, pack.plugin, pack.range))
     }
 
-    for (const { rule, needs } of plan.notEnforced) problems.push(`Not enforced by ESLint: ${rule} (install ${needs}).`)
+    problems.push(...notEnforcedProblems(plan.notEnforced))
   }
 
   for (const entry of compat) {

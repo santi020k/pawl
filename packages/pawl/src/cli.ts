@@ -49,6 +49,7 @@ Usage
 
 Options for check and fix
   --changed             Only files changed against HEAD, plus untracked ones
+  --since <ref>         Only files changed since the branch left <ref>, such as origin/main
   --format <kind>       pretty (default), agent or json
   --ci                  Also fail when the setup has drifted from the policy
   --max-warnings <n>    Fail when there are more than n new warnings
@@ -79,6 +80,7 @@ Options for migrate (it also takes the options for init)
 
 const OPTIONS = {
   changed: { type: 'boolean' },
+  since: { type: 'string' },
   format: { type: 'string' },
   ci: { type: 'boolean' },
   'max-warnings': { type: 'string' },
@@ -129,14 +131,31 @@ const maxWarnings = (flags: Flags): number | undefined => {
   return Number(value)
 }
 
+/** The value of --since: a git ref, on its own, since it names the files to check. */
+const sinceRef = (flags: Flags, files: readonly string[]): string | undefined => {
+  const ref = flags.since
+
+  if (ref === undefined) return undefined
+
+  if (ref.trim().length === 0) throw new UsageError('--since takes a git ref, such as origin/main.')
+
+  if (flags.changed === true) throw new UsageError('Use --since or --changed, not both.')
+
+  if (files.length > 0) throw new UsageError('Use --since or a list of files, not both.')
+
+  return ref
+}
+
 const runCheck = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
   const ci = flags.ci === true || process.env.CI === 'true'
   const limit = maxWarnings(flags)
+  const since = sinceRef(flags, files)
   const result = await check({
     root,
     fix,
     changed: flags.changed === true,
     ...(files.length > 0 ? { files } : {}),
+    ...(since === undefined ? {} : { since }),
     ...(limit === undefined ? {} : { maxWarnings: limit })
   })
 

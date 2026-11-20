@@ -50,6 +50,7 @@ A legacy `.eslintrc` works too, as long as the project has ESLint 8 or 9: pawl r
 ```sh
 pawl check              # lint, check formatting, apply the ratchet
 pawl check --changed    # only files changed against HEAD
+pawl check --since origin/main  # only files the branch changed
 pawl fix                # apply safe fixes and format
 pawl baseline           # accept the current findings as the new baseline
 pawl sync               # rewrite biome.json after the policy changed

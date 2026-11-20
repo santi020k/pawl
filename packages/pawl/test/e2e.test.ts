@@ -369,6 +369,57 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       })
     })
 
+    test('checks only what a branch changed since a ref, and exits 2 when the ref is unknown', () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': 'export const a = 1\n'
+      })
+      const git = (...args: string[]): void => {
+        spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: root })
+      }
+
+      link(root)
+      git('init', '-q', '-b', 'main')
+      write(root, { '.gitignore': 'node_modules\n' })
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      git('add', '-A')
+      git('commit', '-qm', 'init')
+      git('checkout', '-qb', 'feature')
+
+      expect(run(root, 'check', '--since', 'main')).toMatchObject({ code: 0, stdout: 'No files to check.\n' })
+
+      write(root, { 'src/b.js': 'debugger\n' })
+      git('add', '-A')
+      git('commit', '-qm', 'add b')
+
+      // What main gained after the branch left it is not the branch's work.
+      git('checkout', '-q', 'main')
+      write(root, { 'src/c.js': 'debugger\n' })
+      git('add', '-A')
+      git('commit', '-qm', 'add c')
+      git('checkout', '-q', 'feature')
+
+      const result = run(root, 'check', '--since', 'main', '--format', 'agent')
+
+      expect(result.code).toBe(1)
+      expect(JSON.parse(result.stdout)).toMatchObject({ file: 'src/b.js', rule: 'biome:suspicious/noDebugger' })
+
+      const unknown = run(root, 'check', '--since', 'origin/missing')
+
+      expect(unknown.code).toBe(2)
+      expect(unknown.stdout).toContain('--since: git does not know "origin/missing".')
+      expect(unknown.stdout).toContain('The check did not complete.')
+
+      expect(run(root, 'check', '--since', 'main', '--changed')).toMatchObject({
+        code: 2,
+        stderr: 'pawl: Use --since or --changed, not both.\n'
+      })
+      expect(run(root, 'check', '--since', 'main', 'src/a.js')).toMatchObject({
+        code: 2,
+        stderr: 'pawl: Use --since or a list of files, not both.\n'
+      })
+    })
+
     test('reports usage errors on stderr with exit code 2', () => {
       const root = project()
 

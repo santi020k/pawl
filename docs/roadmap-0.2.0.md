@@ -15,6 +15,7 @@ The work planned on `release/v0.2.0`. The branch starts from `release/v0.1.0`. T
 - [x] The `stencil` pack on the official `@stencil/eslint-plugin`.
 - [x] Docs site metadata: `santi-og audit` and its CI step, the icons and `metadata.ts`.
 - [x] Rule options for Biome: `biomeOptions` in the policy and in overrides.
+- [x] `check --since <ref>`: only the files a branch changed, for pull requests and gradual adoption.
 
 ## Candidates
 

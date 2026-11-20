@@ -193,6 +193,7 @@ export interface SetupIssue {
     | 'pack-missing'
     | 'locked-rule'
     | 'engine-failed'
+    | 'since-unresolved'
   message: string
   fix?: string
 }

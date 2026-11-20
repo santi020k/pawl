@@ -18,15 +18,16 @@ description: Every pawl command and option.
 
 ## Options for check and fix
 
-| Option               | Meaning                                              |
-| -------------------- | ---------------------------------------------------- |
-| `--changed`          | Only files changed against HEAD, plus untracked ones |
-| `--format <kind>`    | `pretty` (default), `agent` or `json`                |
-| `--ci`               | Also fail when the setup has drifted from the policy |
-| `--max-warnings <n>` | Fail when there are more than `n` new warnings       |
-| `--verbose`          | Show the engine commands that ran                    |
+| Option               | Meaning                                                                 |
+| -------------------- | ----------------------------------------------------------------------- |
+| `--changed`          | Only files changed against HEAD, plus untracked ones                    |
+| `--since <ref>`      | Only files changed since the branch left `<ref>`, such as `origin/main` |
+| `--format <kind>`    | `pretty` (default), `agent` or `json`                                   |
+| `--ci`               | Also fail when the setup has drifted from the policy                    |
+| `--max-warnings <n>` | Fail when there are more than `n` new warnings                          |
+| `--verbose`          | Show the engine commands that ran                                       |
 
-`--ci` is on automatically when the `CI` environment variable is `true`. `--max-warnings` counts only warnings the baseline does not allow, and fails with exit code 1; when the policy sets [`maxWarnings`](/reference/config/#maxwarnings), the lower limit wins. `--format agent` prints one JSON line per finding, errors first, with a `fix` where pawl has one; see [Coding agents](/guide/agents/). `--format json` prints the whole result as one document.
+`--since` takes the place of `--changed` and of a list of files; see [Only what a pull request changed](/guide/ci/#only-what-a-pull-request-changed). `--ci` is on automatically when the `CI` environment variable is `true`. `--max-warnings` counts only warnings the baseline does not allow, and fails with exit code 1; when the policy sets [`maxWarnings`](/reference/config/#maxwarnings), the lower limit wins. `--format agent` prints one JSON line per finding, errors first, with a `fix` where pawl has one; see [Coding agents](/guide/agents/). `--format json` prints the whole result as one document.
 
 ## Options for init
 

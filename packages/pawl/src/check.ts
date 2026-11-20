@@ -20,7 +20,7 @@ import { eslintInstalled, runEslint } from './engines/eslint.ts'
 import { checkOxlintConfig, oxlintContextFor, oxlintInstalled, runOxlint } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled, runPrettier } from './engines/prettier.ts'
 import { EngineError } from './engines/run.ts'
-import { changedFiles } from './fs-utils.ts'
+import { changedFiles, changedSince, SinceError } from './fs-utils.ts'
 import { ignoreMatcher } from './ignores.ts'
 import { checkMarkdown } from './markdown.ts'
 import { loadPolicy } from './policy.ts'
@@ -31,6 +31,8 @@ export interface CheckOptions {
   root: string
   /** Only look at files changed against HEAD, plus untracked ones. */
   changed?: boolean
+  /** Only look at files changed since the branch left this git ref, such as `origin/main`. */
+  since?: string
   /** Only look at these files, relative to the root. */
   files?: readonly string[]
   /** Apply safe fixes and formatting before reporting. */
@@ -74,7 +76,8 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'prettier-missing',
   'oxlint-missing',
   'oxlint-config-missing',
-  'biome-config-missing'
+  'biome-config-missing',
+  'since-unresolved'
 ]
 
 /** True when the result has more new warnings than its limit allows. */
@@ -124,6 +127,22 @@ const runEngine = async (
   }
 }
 
+/** The files `--since` or `--changed` asks for. Undefined means every file. */
+const scopedFiles = (root: string, options: CheckOptions, setup: SetupIssue[]): string[] | undefined => {
+  if (options.since === undefined) return options.changed ? changedFiles(root) : undefined
+
+  try {
+    return changedSince(root, options.since)
+  } catch (error) {
+    if (!(error instanceof SinceError)) throw error
+
+    // Nothing runs: checking every file, or none, would answer a question nobody asked.
+    setup.push({ code: 'since-unresolved', message: error.message, fix: error.fix })
+
+    return []
+  }
+}
+
 /** Run every active engine, then pawl's own checks, and compare with the baseline. */
 export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const { root } = options
@@ -132,7 +151,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const commands: string[] = []
   const engines: EngineName[] = []
   const ignored = ignoreMatcher(root, policy)
-  const scoped = options.files ?? (options.changed ? changedFiles(root) : undefined)
+  const scoped = options.files ?? scopedFiles(root, options, setup)
   const files = scoped?.filter(file => !ignored(file))
   const empty = files !== undefined && files.length === 0
 

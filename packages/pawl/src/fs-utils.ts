@@ -132,6 +132,73 @@ export const changedFiles = (root: string): string[] => {
   return [...new Set(files)].filter(file => existsSync(join(root, file)))
 }
 
+/** Why `changedSince` could not tell which files changed. */
+export class SinceError extends Error {
+  readonly fix: string
+
+  constructor(message: string, fix: string) {
+    super(message)
+    this.fix = fix
+  }
+}
+
+/**
+ * Files changed since the current branch left `ref`: the commits on the branch,
+ * what is not committed yet, and untracked files. Throws a `SinceError` when git
+ * cannot answer, because an empty list would pass the check without running it.
+ */
+export const changedSince = (root: string, ref: string): string[] => {
+  if (!isGitRepo(root))
+    throw new SinceError(`--since ${ref} needs a git repository.`, 'Run the check inside the repository.')
+
+  let commit: string | undefined
+
+  try {
+    ;[commit] = git(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`])
+  } catch {
+    commit = undefined
+  }
+
+  if (!commit)
+    throw new SinceError(
+      `--since: git does not know "${ref}".`,
+      'Fetch it first. In GitHub Actions, set "fetch-depth: 0" on actions/checkout.'
+    )
+
+  let base: string | undefined
+
+  try {
+    ;[base] = git(root, ['merge-base', commit, 'HEAD'])
+  } catch {
+    base = undefined
+  }
+
+  if (!base)
+    throw new SinceError(
+      `--since: "${ref}" and HEAD share no commit in this clone.`,
+      'Fetch the full history. In GitHub Actions, set "fetch-depth: 0" on actions/checkout.'
+    )
+
+  let files: string[] | undefined
+
+  try {
+    files = [
+      ...git(root, ['diff', '--name-only', '--diff-filter=d', '--relative', base]),
+      ...git(root, ['ls-files', '--others', '--exclude-standard'])
+    ]
+  } catch {
+    files = undefined
+  }
+
+  if (!files)
+    throw new SinceError(
+      `--since: git could not list the files changed since "${ref}".`,
+      'Run "git status" to see what is wrong with the repository.'
+    )
+
+  return [...new Set(files)].filter(file => existsSync(join(root, file)))
+}
+
 /** Every project file: what git tracks or would track, else a directory walk. */
 export const listFiles = (root: string): string[] => {
   try {

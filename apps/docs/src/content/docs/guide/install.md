@@ -5,7 +5,7 @@ description: What pawl needs, how init installs it, and the optional tools it ca
 ---
 
 :::caution[Early]
-Pawl is not published to npm yet, and the API may still change.
+Pawl is early, and the API may still change before 1.0.
 :::
 
 ## Requirements

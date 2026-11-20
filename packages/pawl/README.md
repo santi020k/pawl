@@ -2,7 +2,7 @@
 
 Fast guardrails for AI-written code. One standard, for the linter and formatter you choose.
 
-> **Status: early.** Not published to npm yet. The API may still change.
+> **Status: early.** The API may still change before 1.0.
 
 ## Set up a repo
 

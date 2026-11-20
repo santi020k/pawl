@@ -17,6 +17,7 @@ words:
   - distroless
   - esbuild
   - Dockerfiles
+  - fflate
   - fontsource
   - genai
   - heredocs
@@ -32,6 +33,7 @@ words:
   - lockfiles
   - menuitemcheckbox
   - menuitemradio
+  - minimatch
   - miterlimit
   - modelcontextprotocol
   - noninteractive

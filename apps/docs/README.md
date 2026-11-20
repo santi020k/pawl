@@ -39,14 +39,14 @@ The landing page uses the hand-made `public/og.jpg`. Every doc page gets its own
 
 ## Deploy
 
-`.github/workflows/deploy-docs.yml` builds the site and deploys `dist` to the Cloudflare Pages project `pawl-docs` with `wrangler pages deploy`. It runs on a push to `main` that touches `apps/docs/`, `packages/pawl/` or the lockfile, and on demand from the Actions tab. It uses the GitHub environment `docs-production`, which needs two secrets:
+`.github/workflows/deploy-docs.yml` builds the site and deploys `dist` to the Cloudflare Pages project `pawl-docs` with `wrangler pages deploy`. It runs on a push to `main` that touches `apps/docs/`, `packages/pawl/` or the lockfile, and on demand from the Actions tab. It uses the GitHub environment `docs-production`, which gets two secrets from Doppler (project `pawl`, config `prd`) through a Doppler sync. Change them in Doppler, not in GitHub:
 
 | Secret                  | What it is                                               |
 | ----------------------- | -------------------------------------------------------- |
 | `CLOUDFLARE_API_TOKEN`  | An API token with the Cloudflare Pages: Edit permission  |
 | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account that owns the `pawl-docs` project |
 
-One-time setup, done by hand once: create the `docs-production` environment and its secrets in GitHub, create the `pawl-docs` Pages project in Cloudflare (Direct Upload, production branch `main`), and add `pawl.santi020k.com` as its custom domain. Every deploy after that goes through the workflow.
+The first run creates the `pawl-docs` Pages project (Direct Upload, production branch `main`) when the account does not have it. Then add `pawl.santi020k.com` as its custom domain once, in the Cloudflare dashboard, which also writes the DNS record. Every deploy after that goes through the workflow.
 
 ## The brand
 

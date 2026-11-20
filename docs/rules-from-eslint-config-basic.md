@@ -12,9 +12,9 @@ Only the rules the old config set explicitly are covered here. Rules it inherite
 | In the catalog as another name for a rule above            |      17 |
 | In the catalog, on only under `strict` (unstable in Biome) |      26 |
 | In the catalog, enforced by Oxlint (no Biome equivalent)   |      16 |
-| Checked by pawl itself: a guard or a Markdown check        |      16 |
+| Checked by pawl itself: a guard or a Markdown check        |      17 |
 | Replaced by the formatter or by import sorting             |      41 |
-| No dependency-free home yet                                |      56 |
+| No dependency-free home yet                                |      55 |
 | Left out on purpose                                        |      18 |
 | **Total configured in eslint-config-basic**                | **260** |
 
@@ -191,6 +191,7 @@ These need no engine and no plugin. The guards switch on when the project depend
 | --------------------------------------------- | ------------------------------------------------------- | ----- |
 | `markdown/no-duplicate-headings`              | `pawl/markdown-no-duplicate-headings`                   | off   |
 | `markdown/no-empty-links`                     | `pawl/markdown-no-empty-links`                          | error |
+| `markdown/no-invalid-label-refs`              | `pawl/markdown-no-invalid-label-refs`                   | error |
 | `markdown/no-missing-label-refs`              | `pawl/markdown-no-missing-label-refs`                   | off   |
 | `nuxt/prefer-import-meta`                     | `pawl/nuxt` guard                                       | error |
 | `testing-library/no-await-sync-queries`       | `pawl/testing-library` guard                            | error |
@@ -227,7 +228,6 @@ Neither Biome nor Oxlint has an equivalent for these, and pawl has no check of i
 | @graphql-eslint         |     1 | `no-unreachable-types`                                                                                                                                                                                                                                                                                                                                                                                  |
 | import                  |     1 | `no-relative-packages`                                                                                                                                                                                                                                                                                                                                                                                  |
 | jsonc                   |     1 | `sort-keys`                                                                                                                                                                                                                                                                                                                                                                                             |
-| markdown                |     1 | `no-invalid-label-refs`                                                                                                                                                                                                                                                                                                                                                                                 |
 | qwik                    |     1 | `no-async-prevent-default`                                                                                                                                                                                                                                                                                                                                                                              |
 | tsdoc                   |     1 | `syntax`                                                                                                                                                                                                                                                                                                                                                                                                |
 | vue                     |     1 | `padding-line-between-blocks`                                                                                                                                                                                                                                                                                                                                                                           |

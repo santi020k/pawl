@@ -107,7 +107,7 @@ The old config set 260 rules itself. Rules it inherited from plugin presets are 
 | Unicorn                                |           26 |      12 |                    4 |                                 8 |                         0 |               2 |
 | Astro                                  |           11 |       3 |                    0 |                                 0 |                         6 |               2 |
 | Qwik                                   |           12 |      10 |                    0 |                                 0 |                         1 |               1 |
-| Markdown                               |           10 |       0 |                    2 |                                 3 |                         1 |               4 |
+| Markdown                               |           10 |       0 |                    2 |                                 4 |                         1 |               3 |
 | Vue                                    |            9 |       2 |                    4 |                                 1 |                         1 |               1 |
 | Vitest                                 |            9 |       6 |                    0 |                                 3 |                         0 |               0 |
 | Stencil                                |           18 |       0 |                    0 |                                 0 |                         0 |              18 |
@@ -115,12 +115,12 @@ The old config set 260 rules itself. Rules it inherited from plugin presets are 
 | Testing Library                        |            7 |       0 |                    0 |                                 5 |                         0 |               2 |
 | Angular                                |            6 |       0 |                    0 |                                 0 |                         0 |               6 |
 | Everything else                        |           45 |      12 |                    6 |                                 1 |                         2 |              24 |
-| **Total**                              |      **260** |  **87** |               **26** |                            **32** |                    **41** |          **74** |
+| **Total**                              |      **260** |  **87** |               **26** |                            **33** |                    **41** |          **73** |
 
 - "In pawl" means Biome enforces it with no plugin, under its own name or as an alias.
 - "Strict only" rules are ones Biome still marks as unstable.
-- "By Oxlint or pawl itself" means Oxlint enforces it and Biome has no equivalent (16 rules), or a guard or a Markdown check of pawl's own does (16). Oxlint still marks one of the 16, `import/export`, as unstable, so it too is on only under strict.
-- Of the 74 not in pawl yet, 18 were left out on purpose.
+- "By Oxlint or pawl itself" means Oxlint enforces it and Biome has no equivalent (16 rules), or a guard or a Markdown check of pawl's own does (17). Oxlint still marks one of the 16, `import/export`, as unstable, so it too is on only under strict.
+- Of the 73 not in pawl yet, 18 were left out on purpose.
 
 The rule-by-rule list is in [docs/rules-from-eslint-config-basic.md](docs/rules-from-eslint-config-basic.md). Pawl also has rules the old config did not set: the catalog holds 200.
 

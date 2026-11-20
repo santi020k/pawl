@@ -309,6 +309,7 @@ Pawl also checks Markdown files itself, skipping code blocks, code spans, HTML c
 | ------------------------------------- | ----- | -------------------------------------------------------------- |
 | `pawl/markdown-no-empty-links`        | error | A link with no destination: `[text]()` or `[text](#)`          |
 | `pawl/markdown-no-duplicate-headings` | off   | A heading with the same text as an earlier one in the document |
+| `pawl/markdown-no-invalid-label-refs` | error | A reference with whitespace between its brackets: `[text][ ]`  |
 | `pawl/markdown-no-missing-label-refs` | off   | A reference such as `[text][label]` with no `[label]:` line    |
 
 ## API

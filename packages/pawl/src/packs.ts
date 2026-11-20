@@ -393,7 +393,7 @@ export const PACKS: readonly Pack[] = [
       'markdown/no-duplicate-headings': 'off',
       'markdown/no-empty-links': 'off',
       'markdown/no-html': 'off',
-      'markdown/no-invalid-label-refs': 'error',
+      'markdown/no-invalid-label-refs': 'off',
       'markdown/no-missing-label-refs': 'off'
     }
   },

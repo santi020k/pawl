@@ -35,7 +35,7 @@ A pawl is the part of a ratchet that stops it slipping backward. Pawl does the s
 
 - Findings within those counts are allowed.
 - Anything beyond them fails the check.
-- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
+- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`. Pawl looks for them in scripts and components, and in the stylesheets, JSON, GraphQL, YAML and TOML files a linter reads.
 
 That last rule matters most when an agent writes the code: switching a check off is not a way past it.
 

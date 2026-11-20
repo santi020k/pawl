@@ -23,10 +23,23 @@ export interface Suppression {
   text: string
 }
 
-const SOURCE_FILE = /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/
+/** The words that switch a check off, in a comment of Biome, ESLint, Oxlint or TypeScript. */
+const DIRECTIVE =
+  'biome-ignore(?:-all|-start)?|eslint-disable(?:-next-line|-line)?|oxlint-disable(?:-next-line|-line)?|@ts-ignore|@ts-expect-error|@ts-nocheck'
 
-const SUPPRESSION =
-  /(?:\/\/|\/\*|\*|<!--)\s*(biome-ignore(?:-all|-start)?|eslint-disable(?:-next-line|-line)?|@ts-ignore|@ts-expect-error|@ts-nocheck)\b/
+/**
+ * The files a linter reads, by how each writes a comment. Markdown is left out on purpose:
+ * its code blocks show such comments far more often than they mean them.
+ */
+const COMMENTS: readonly [RegExp, RegExp][] = [
+  // Scripts and components, then the stylesheets and JSON files Biome lints.
+  [/\.(?:[cm]?[jt]sx?|vue|svelte|astro|css|jsonc?)$/, new RegExp(`(?:\\/\\/|\\/\\*|\\*|<!--)\\s*(${DIRECTIVE})\\b`)],
+  // GraphQL, which Biome lints, and the YAML and TOML files an ESLint pack lints.
+  [/\.(?:graphql|gql|ya?ml|toml)$/, new RegExp(`#\\s*(${DIRECTIVE})\\b`)]
+]
+
+/** The pattern that finds a disable comment in a file, or undefined for a file no linter reads. */
+const suppressionPattern = (file: string): RegExp | undefined => COMMENTS.find(([files]) => files.test(file))?.[1]
 
 const sortKeys = <T>(record: Record<string, T>): Record<string, T> =>
   Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
@@ -57,12 +70,14 @@ export const scanSuppressions = (
   const found: Suppression[] = []
 
   for (const file of files ?? listFiles(root)) {
-    if (!SOURCE_FILE.test(file) || ignored(file) || !existsSync(join(root, file))) continue
+    const pattern = suppressionPattern(file)
+
+    if (!pattern || ignored(file) || !existsSync(join(root, file))) continue
 
     const lines = readFileSync(join(root, file), 'utf8').split('\n')
 
     lines.forEach((text, index) => {
-      const match = SUPPRESSION.exec(text)
+      const match = pattern.exec(text)
 
       if (match?.[1]) found.push({ file, line: index + 1, text: match[1] })
     })

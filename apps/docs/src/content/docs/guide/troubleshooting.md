@@ -102,7 +102,7 @@ Biome is running with its own settings. Add `@santi020k/pawl/biome` to `extends`
 
 ### A disable comment fails the check
 
-A file that gains `biome-ignore`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` fails with `pawl/no-new-disable`. Fix the code instead. Existing comments are part of the [baseline](/guide/ratchet/), so only new ones fail.
+A file that gains `biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` fails with `pawl/no-new-disable`. Fix the code instead. Existing comments are part of the [baseline](/guide/ratchet/), so only new ones fail.
 
 ### Old findings fail the check
 

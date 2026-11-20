@@ -161,7 +161,7 @@ Repos extend it. A repo can still tighten any rule, but an attempt to loosen a l
 
 - Findings within those counts are allowed.
 - Anything beyond them fails the check.
-- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
+- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
 - When the code improves, `pawl check` says so. Run `pawl baseline` to lock the improvement in.
 
 Counts are per file and rule, not per line, so moving code around does not break the baseline. The cost is that when a file goes over its count, every finding of that rule in the file is shown.

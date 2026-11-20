@@ -97,6 +97,34 @@ describe('disable-comment ratchet', () => {
     ])
   })
 
+  it('finds the comments of Oxlint, and those in stylesheets, JSON, GraphQL and YAML', () => {
+    // Put together here, so that pawl's check of this file does not count them.
+    const comment = (open: string, text: string): string => `${open} ${text}`
+    const files = project({
+      'src/a.ts': [comment('//', 'oxlint-disable-next-line no-console'), 'console.log(1)', ''].join('\n'),
+      'src/b.js': `${comment('/*', 'oxlint-disable */')}\nconsole.log(2) ${comment('//', 'oxlint-disable-line')}\n`,
+      'src/a.css': `a {\n  ${comment('/*', 'biome-ignore lint/suspicious/noDuplicateProperties: legacy */')}\n}\n`,
+      'data.jsonc': `{\n  ${comment('//', 'biome-ignore lint/suspicious/noDuplicateObjectKeys: legacy')}\n  "a": 1\n}\n`,
+      'schema.graphql': `${comment('#', 'biome-ignore lint/style/useNamingConvention: legacy')}\ntype a { b: Int }\n`,
+      'ci.yml': `${comment('#', 'eslint-disable yml/no-empty-key')}\na: 1 # a note about eslint\n`,
+      'notes.txt': `${comment('//', 'eslint-disable')}\n`
+    })
+
+    expect(
+      scanSuppressions(files, () => false)
+        .map(item => `${item.file}:${item.line} ${item.text}`)
+        .sort()
+    ).toEqual([
+      'ci.yml:1 eslint-disable',
+      'data.jsonc:2 biome-ignore',
+      'schema.graphql:1 biome-ignore',
+      'src/a.css:2 biome-ignore',
+      'src/a.ts:1 oxlint-disable-next-line',
+      'src/b.js:1 oxlint-disable',
+      'src/b.js:2 oxlint-disable-line'
+    ])
+  })
+
   it('fails only files that gained a comment since the baseline', () => {
     const found = scanSuppressions(root, makeIgnore(['generated/**']))
     const baseline = createBaseline(

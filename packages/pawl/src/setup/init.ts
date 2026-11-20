@@ -37,7 +37,10 @@ import {
 } from '../project/detect.ts'
 import { ESLINT_CONFIG_FILES } from '../project/toolset.ts'
 import { type EngineName, type FormatterName, type Policy, type PolicyInput } from '../types.ts'
-import { readJson, readJsonc, toList, writeJson, writeText } from '../utils/fs.ts'
+import { writeText } from '../utils/fs.ts'
+import { isRecord, type JsonRecord, mergeDeep, readJson, readJsonc, sameJson, writeJson } from '../utils/json.ts'
+import { toList } from '../utils/list.ts'
+import { plural } from '../utils/text.ts'
 import { PACKAGE_NAME, VERSION } from '../version.ts'
 
 /**
@@ -94,26 +97,6 @@ export interface InitPlan {
   /** The policy the plan was made for, including an engine the plan pins. */
   policy: Policy
 }
-
-type JsonObject = Record<string, unknown>
-
-const isObject = (value: unknown): value is JsonObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-/** Merge `patch` into `target`, keeping every key `patch` does not mention. */
-const mergeDeep = (target: JsonObject, patch: JsonObject): JsonObject => {
-  const out: JsonObject = { ...target }
-
-  for (const [key, value] of Object.entries(patch)) {
-    const current = out[key]
-
-    out[key] = isObject(current) && isObject(value) ? mergeDeep(current, value) : value
-  }
-
-  return out
-}
-
-const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 
 const INSTALL: Record<PackageManager, string> = {
   pnpm: 'pnpm add -D',
@@ -178,7 +161,7 @@ export const planBiomeConfig = (
     }
   }
 
-  const { value, hasComments } = readJsonc<JsonObject>(path)
+  const { value, hasComments } = readJsonc<JsonRecord>(path)
 
   if (!value || hasComments) {
     notes.push(
@@ -302,7 +285,7 @@ const toSource = (value: unknown, depth: number): string => {
     return inline.length <= INLINE_WIDTH ? inline : `[\n${items.map(item => pad + item).join(',\n')}\n${close}]`
   }
 
-  if (isObject(value)) {
+  if (isRecord(value)) {
     const entries = Object.entries(value).map(
       ([key, item]) => `${pad}${IDENTIFIER.test(key) ? key : toSource(key, 0)}: ${toSource(item, depth + 1)}`
     )
@@ -377,7 +360,7 @@ ${setup}      - run: ${install}
 /** Add the check and fix scripts, and, when pawl is not running the install, the packages to install. */
 const planScripts = (root: string, notes: string[], packages: readonly string[]): InitAction | undefined => {
   const path = join(root, 'package.json')
-  const manifest = readJson<JsonObject>(path)
+  const manifest = readJson<JsonRecord>(path)
 
   if (!manifest) {
     notes.push('No package.json here, so pawl added no scripts. Run "npx pawl check" directly.')
@@ -385,7 +368,7 @@ const planScripts = (root: string, notes: string[], packages: readonly string[])
     return undefined
   }
 
-  const scripts = isObject(manifest.scripts) ? { ...manifest.scripts } : {}
+  const scripts = isRecord(manifest.scripts) ? { ...manifest.scripts } : {}
   const added: string[] = []
 
   for (const [name, command] of [
@@ -402,14 +385,14 @@ const planScripts = (root: string, notes: string[], packages: readonly string[])
     added.push(key)
   }
 
-  const devDependencies = isObject(manifest.devDependencies) ? { ...manifest.devDependencies } : {}
+  const devDependencies = isRecord(manifest.devDependencies) ? { ...manifest.devDependencies } : {}
 
   for (const name of packages) devDependencies[name] = rangeFor(name)
 
   // Under Nx, the root becomes a project whose check and fix scripts are targets, never cached:
   // pawl checks the whole repo in one run, and a cached result would hide new findings.
-  const nx = isObject(manifest.nx) ? manifest.nx : {}
-  const targets: JsonObject = isObject(nx.targets) ? { ...nx.targets } : {}
+  const nx = isRecord(manifest.nx) ? manifest.nx : {}
+  const targets: JsonRecord = isRecord(nx.targets) ? { ...nx.targets } : {}
   const nxTargets: string[] = []
 
   if (existsSync(join(root, 'nx.json'))) {
@@ -453,15 +436,15 @@ const planScripts = (root: string, notes: string[], packages: readonly string[])
 const planTurboTasks = (root: string, notes: string[]): InitAction | undefined => {
   if (!existsSync(join(root, 'turbo.json'))) return undefined
 
-  const { value } = readJsonc<JsonObject>(join(root, 'turbo.json'))
-  const manifest = readJson<JsonObject>(join(root, 'package.json'))
+  const { value } = readJsonc<JsonRecord>(join(root, 'turbo.json'))
+  const manifest = readJson<JsonRecord>(join(root, 'package.json'))
   // Turborepo 2 calls them tasks. Version 1 called them a pipeline.
-  const key = isObject(value?.pipeline) ? 'pipeline' : 'tasks'
+  const key = isRecord(value?.pipeline) ? 'pipeline' : 'tasks'
 
-  if (!value || !manifest || !isObject(value[key])) return undefined
+  if (!value || !manifest || !isRecord(value[key])) return undefined
 
-  const scripts = isObject(manifest.scripts) ? manifest.scripts : {}
-  const tasks: JsonObject = {}
+  const scripts = isRecord(manifest.scripts) ? manifest.scripts : {}
+  const tasks: JsonRecord = {}
 
   for (const [name, command] of [
     ['check', 'pawl check'],
@@ -491,7 +474,7 @@ const planTurboTasks = (root: string, notes: string[]): InitAction | undefined =
 const planJsonMerge = (
   root: string,
   file: string,
-  patch: JsonObject,
+  patch: JsonRecord,
   summary: string,
   notes: string[]
 ): InitAction | undefined => {
@@ -499,7 +482,7 @@ const planJsonMerge = (
 
   if (!existsSync(path)) return { path: file, kind: 'create', summary, apply: () => writeJson(path, patch) }
 
-  const { value, hasComments } = readJsonc<JsonObject>(path)
+  const { value, hasComments } = readJsonc<JsonRecord>(path)
 
   if (!value || hasComments) {
     notes.push(`${file} has comments or could not be read, so pawl left it alone.`)
@@ -509,10 +492,12 @@ const planJsonMerge = (
 
   const merged = mergeDeep(value, patch)
 
-  return same(merged, value) ? undefined : { path: file, kind: 'update', summary, apply: () => writeJson(path, merged) }
+  return sameJson(merged, value)
+    ? undefined
+    : { path: file, kind: 'update', summary, apply: () => writeJson(path, merged) }
 }
 
-const EDITOR_SETTINGS: JsonObject = {
+const EDITOR_SETTINGS: JsonRecord = {
   'editor.defaultFormatter': 'biomejs.biome',
   'editor.formatOnSave': true,
   'editor.codeActionsOnSave': {
@@ -525,7 +510,7 @@ const planAgentHook = (root: string, notes: string[]): InitAction | undefined =>
   const file = '.claude/settings.json'
   const path = join(root, file)
   const command = 'npx pawl check --changed --format agent'
-  const existing = existsSync(path) ? readJsonc<JsonObject>(path) : { value: {} as JsonObject, hasComments: false }
+  const existing = existsSync(path) ? readJsonc<JsonRecord>(path) : { value: {} as JsonRecord, hasComments: false }
 
   if (!existing.value || existing.hasComments) {
     notes.push(`${file} could not be read, so pawl added no agent hook.`)
@@ -535,7 +520,7 @@ const planAgentHook = (root: string, notes: string[]): InitAction | undefined =>
 
   if (JSON.stringify(existing.value).includes(command)) return undefined
 
-  const hooks = isObject(existing.value.hooks) ? existing.value.hooks : {}
+  const hooks = isRecord(existing.value.hooks) ? existing.value.hooks : {}
   const postToolUse = Array.isArray(hooks.PostToolUse) ? hooks.PostToolUse : []
   const entry = { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command }] }
 
@@ -558,7 +543,7 @@ const planCursorHook = (root: string, notes: string[]): InitAction | undefined =
   const file = '.cursor/hooks.json'
   const path = join(root, file)
   const command = 'npx pawl fix --changed'
-  const existing = existsSync(path) ? readJsonc<JsonObject>(path) : { value: {} as JsonObject, hasComments: false }
+  const existing = existsSync(path) ? readJsonc<JsonRecord>(path) : { value: {} as JsonRecord, hasComments: false }
 
   if (!existing.value || existing.hasComments) {
     notes.push(`${file} could not be read, so pawl added no Cursor hook.`)
@@ -568,7 +553,7 @@ const planCursorHook = (root: string, notes: string[]): InitAction | undefined =
 
   if (JSON.stringify(existing.value).includes(command)) return undefined
 
-  const hooks = isObject(existing.value.hooks) ? existing.value.hooks : {}
+  const hooks = isRecord(existing.value.hooks) ? existing.value.hooks : {}
   const afterFileEdit = Array.isArray(hooks.afterFileEdit) ? hooks.afterFileEdit : []
 
   return {
@@ -691,7 +676,7 @@ const planHook = (root: string, detection: Detection, notes: string[]): InitActi
   }
 }
 
-const PRETTIER_EDITOR_SETTINGS: JsonObject = {
+const PRETTIER_EDITOR_SETTINGS: JsonRecord = {
   'editor.defaultFormatter': 'esbenp.prettier-vscode',
   'editor.formatOnSave': true
 }
@@ -743,7 +728,7 @@ export const planPrettierConfig = (
   }
 
   const path = join(root, state.file)
-  const current = readJsonc<JsonObject>(path).value ?? {}
+  const current = readJsonc<JsonRecord>(path).value ?? {}
 
   return {
     path: state.file,
@@ -761,7 +746,7 @@ export const planOxlintConfig = (root: string, policy: Policy, detection: Detect
 
   if (state.status === 'ok') return undefined
 
-  const current = state.status === 'stale' ? (readJsonc<JsonObject>(path).value ?? {}) : {}
+  const current = state.status === 'stale' ? (readJsonc<JsonRecord>(path).value ?? {}) : {}
 
   return {
     path: OXLINT_CONFIG_FILE,
@@ -982,7 +967,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const count = detection.workspace.packages.length
 
   if (count > 0) {
-    notes.push(`Monorepo: pawl runs once from the root and covers all ${count} package${count === 1 ? '' : 's'}.`)
+    notes.push(`Monorepo: pawl runs once from the root and covers all ${plural(count, 'package')}.`)
   }
 
   return {

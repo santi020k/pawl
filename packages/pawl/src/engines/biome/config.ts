@@ -8,7 +8,17 @@ import { defaultPolicy, effectiveRules, overrideRules } from '../../policy/load.
 import { type Detection, technologies as repoTechnologies } from '../../project/detect.ts'
 import { configIgnores, DEFAULT_IGNORES, toBiomeIgnore, toEngineGlob } from '../../project/ignores.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
-import { readJsonc, toList, toPosix } from '../../utils/fs.ts'
+import { toPosix } from '../../utils/fs.ts'
+import {
+  isRecord,
+  type Json,
+  type JsonObject,
+  type JsonRecord,
+  readJsonc,
+  sameJson,
+  sortKeys
+} from '../../utils/json.ts'
+import { toList } from '../../utils/list.ts'
 import { EngineError, readReport, runNode } from '../engine.ts'
 
 /** The Biome version this release of pawl is tested with. Kept in step with package.json by a test. */
@@ -74,10 +84,6 @@ export const biomeContextFor = (
 
 export const BIOME_CONFIG_FILES = ['biome.json', 'biome.jsonc']
 
-type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
-
-type JsonObject = { [key: string]: Json }
-
 const BIOME_PREFIX = 'biome:'
 
 /** Keep the gated technologies in one fixed order, so generated files do not churn. */
@@ -98,7 +104,7 @@ const toGroups = (entries: readonly [string, Json][]): JsonObject => {
   const rules: JsonObject = {}
 
   for (const group of Object.keys(groups).sort()) {
-    rules[group] = Object.fromEntries(Object.entries(groups[group] ?? {}).sort(([a], [b]) => a.localeCompare(b)))
+    rules[group] = sortKeys(groups[group] ?? {})
   }
 
   return rules
@@ -287,11 +293,8 @@ export const biomeTechConfig = (policy: Policy, technology: Technology): JsonObj
   }
 }
 
-const isObject = (value: Json | undefined): value is JsonObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 /** A rule set with options is one value: Biome does not merge half of it from a preset. */
-const isRuleValue = (value: Json | undefined): boolean => isObject(value) && 'level' in value
+const isRuleValue = (value: Json | undefined): boolean => isRecord(value) && 'level' in value
 
 /** The parts of `value` that differ from `base`. Arrays and rule values are compared whole. */
 const diff = (value: JsonObject, base: JsonObject): JsonObject => {
@@ -300,11 +303,11 @@ const diff = (value: JsonObject, base: JsonObject): JsonObject => {
   for (const [key, entry] of Object.entries(value)) {
     const other = base[key]
 
-    if (isObject(entry) && isObject(other) && !isRuleValue(entry) && !isRuleValue(other)) {
+    if (isRecord(entry) && isRecord(other) && !isRuleValue(entry) && !isRuleValue(other)) {
       const nested = diff(entry, other)
 
       if (Object.keys(nested).length > 0) out[key] = nested
-    } else if (JSON.stringify(entry) !== JSON.stringify(other)) {
+    } else if (!sameJson(entry, other)) {
       out[key] = entry
     }
   }
@@ -314,34 +317,30 @@ const diff = (value: JsonObject, base: JsonObject): JsonObject => {
 
 /** True when everything in `expected` is present in `actual` with the same value. */
 const contains = (actual: Json | undefined, expected: Json): boolean => {
-  if (isObject(expected) && !isRuleValue(expected)) {
-    return isObject(actual) && Object.entries(expected).every(([key, entry]) => contains(actual[key], entry))
+  if (isRecord(expected) && !isRuleValue(expected)) {
+    return isRecord(actual) && Object.entries(expected).every(([key, entry]) => contains(actual[key], entry))
   }
 
-  return JSON.stringify(actual) === JSON.stringify(expected)
+  return sameJson(actual, expected)
 }
 
 /** The global names pawl writes for a runtime. Any other name in `javascript.globals` is the project's own. */
 const PAWL_GLOBALS = new Set(extraGlobals(RUNTIMES))
 
-type Loose = Record<string, unknown>
-
-const isLoose = (value: unknown): value is Loose => typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const globalsOf = (config: Loose): string[] => {
-  const list = isLoose(config.javascript) ? config.javascript.globals : undefined
+const globalsOf = (config: JsonRecord): string[] => {
+  const list = isRecord(config.javascript) ? config.javascript.globals : undefined
 
   return Array.isArray(list) ? list.filter((name): name is string => typeof name === 'string') : []
 }
 
 /** The runtime globals pawl wrote, sorted. */
-const ownedGlobals = (config: Loose): string[] =>
+const ownedGlobals = (config: JsonRecord): string[] =>
   globalsOf(config)
     .filter(name => PAWL_GLOBALS.has(name))
     .sort()
 
 const withoutGlobals = (config: JsonObject): JsonObject => {
-  if (!isObject(config.javascript)) return config
+  if (!isRecord(config.javascript)) return config
 
   const { globals: _globals, ...javascript } = config.javascript
 
@@ -352,9 +351,9 @@ const withoutGlobals = (config: JsonObject): JsonObject => {
  * Put the runtime globals of `expected` into a biome.json, keeping the names the project added
  * itself. A runtime the project no longer uses takes its names with it.
  */
-export const syncBiomeGlobals = (config: Loose, expected: Loose): Loose => {
+export const syncBiomeGlobals = (config: JsonRecord, expected: JsonRecord): JsonRecord => {
   const globals = [...globalsOf(config).filter(name => !PAWL_GLOBALS.has(name)), ...globalsOf(expected)]
-  const javascript = isLoose(config.javascript) ? config.javascript : {}
+  const javascript = isRecord(config.javascript) ? config.javascript : {}
   const { globals: _globals, ...rest } = javascript
   const next = globals.length > 0 ? { ...rest, globals } : rest
 
@@ -441,7 +440,7 @@ export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeCon
   const { extends: expectedExtends, ...expected } = biomeProjectConfig(policy, context, preset)
   const present = extendsList(value)
   const extendsOk = (expectedExtends as Json[]).every(entry => present.includes(entry))
-  const globalsOk = JSON.stringify(ownedGlobals(value)) === JSON.stringify(ownedGlobals(expected))
+  const globalsOk = sameJson(ownedGlobals(value), ownedGlobals(expected))
 
   if (!extendsOk || !globalsOk || !contains(withoutGlobals(value), withoutGlobals(expected))) {
     return {

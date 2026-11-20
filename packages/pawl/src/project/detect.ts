@@ -2,7 +2,10 @@ import { type Dirent, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { GATED_TAGS, type Technology } from '../catalog/rules.ts'
 import { type Detectable, type Framework, type Policy, type Runtime } from '../types.ts'
-import { isGitRepo, readJson, toPosix } from '../utils/fs.ts'
+import { toPosix } from '../utils/fs.ts'
+import { readJson } from '../utils/json.ts'
+import { plural } from '../utils/text.ts'
+import { isGitRepo } from './files.ts'
 import { makeIgnore, WALK_SKIP } from './ignores.ts'
 
 export type { Framework } from '../types.ts'
@@ -597,7 +600,7 @@ export const describe = (detection: Detection): string => {
   const count = detection.workspace.packages.length
   const toolName = detection.workspace.tool ? WORKSPACE_TOOL_NAMES[detection.workspace.tool] : undefined
 
-  const packages = `${count} package${count === 1 ? '' : 's'}`
+  const packages = plural(count, 'package')
 
   if (toolName) parts.push(count > 0 ? `${toolName} with ${packages}` : toolName)
   else if (count > 0) parts.push(`workspace with ${packages}`)

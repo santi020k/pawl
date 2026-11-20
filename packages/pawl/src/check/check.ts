@@ -13,12 +13,13 @@ import { checkOxlintConfig, oxlintContextFor, oxlintInstalled, runOxlint } from 
 import { checkPrettierConfig, prettierInstalled, runPrettier } from '../engines/prettier/config.ts'
 import { loadPolicy } from '../policy/load.ts'
 import { detect, packageTechnologies } from '../project/detect.ts'
+import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
 import { ignoreMatcher } from '../project/ignores.ts'
 import { toolset } from '../project/toolset.ts'
 import { checkDocker } from '../scans/docker.ts'
 import { checkMarkdown } from '../scans/markdown.ts'
 import { type EngineName, type Finding, type Policy, type SetupIssue } from '../types.ts'
-import { changedFiles, changedSince, isDirectory, listFiles, projectPath, SinceError } from '../utils/fs.ts'
+import { isDirectory } from '../utils/fs.ts'
 import {
   applyBaseline,
   BASELINE_FILE,

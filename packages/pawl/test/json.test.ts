@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { applyInit, planInit } from '../src/setup/init.ts'
-import { readJsonc } from '../src/utils/fs.ts'
+import { readJsonc } from '../src/utils/json.ts'
 import { link, project } from './helpers.ts'
 
 describe('JSON with comments', () => {

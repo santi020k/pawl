@@ -31,6 +31,7 @@ import {
 } from './setup/init.ts'
 import { describeMigration, planMigrate } from './setup/migrate.ts'
 import { type EngineName, type FormatterName } from './types.ts'
+import { kebabCase, plural } from './utils/text.ts'
 import { VERSION } from './version.ts'
 
 const HELP = `pawl ${VERSION}
@@ -296,7 +297,7 @@ const runInit = async (root: string, flags: Flags): Promise<number> => {
 
     if (baselined !== undefined) {
       out(
-        `Baseline: ${baselined} existing finding${baselined === 1 ? '' : 's'} recorded in ${BASELINE_FILE}. New ones will fail the check.`
+        `Baseline: ${plural(baselined, 'existing finding')} recorded in ${BASELINE_FILE}. New ones will fail the check.`
       )
     }
   } catch (error) {
@@ -443,7 +444,7 @@ const runBaseline = async (root: string): Promise<number> => {
     return EXIT_SETUP
   }
 
-  out(`Baseline updated: ${result.baselined} finding${result.baselined === 1 ? '' : 's'} recorded in ${BASELINE_FILE}.`)
+  out(`Baseline updated: ${plural(result.baselined, 'finding')} recorded in ${BASELINE_FILE}.`)
 
   return EXIT_OK
 }
@@ -499,7 +500,7 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
     lines.push('  Checked by:  pawl')
   } else {
     lines.push(
-      `  Biome:       ${def.biome ? `${def.biome}  https://biomejs.dev/linter/rules/${kebab(def.biome.split('/')[1] ?? '')}` : 'no equivalent'}`
+      `  Biome:       ${def.biome ? `${def.biome}  https://biomejs.dev/linter/rules/${kebabCase(def.biome.split('/')[1] ?? '')}` : 'no equivalent'}`
     )
     lines.push(`  Oxlint:      ${OXLINT_RULES[def.name] ?? 'no equivalent'}`)
     lines.push(`  ESLint:      ${def.name}`)
@@ -513,8 +514,6 @@ const runExplain = async (root: string, query: string | undefined): Promise<numb
 
   return EXIT_OK
 }
-
-const kebab = (name: string): string => name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)
 
 const runDoctor = async (root: string, flags: Flags): Promise<number> => {
   const kind = outputFormat(flags)

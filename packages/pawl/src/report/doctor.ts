@@ -10,6 +10,7 @@ import { describe, detect, filePacks } from '../project/detect.ts'
 import { toolset } from '../project/toolset.ts'
 import { type EngineName, type FormatterName, type Runtime } from '../types.ts'
 import { installedVersion, satisfies } from '../utils/semver.ts'
+import { plural } from '../utils/text.ts'
 import { NODE_RANGE, PACKAGE_ROOT, PEER_RANGES, VERSION } from '../version.ts'
 
 /** One tool's installed version against the versions pawl works with. */
@@ -295,7 +296,7 @@ export const formatDoctor = (report: DoctorReport): string => {
   const { baseline } = report
 
   lines.push(
-    `Baseline: ${'allowed' in baseline ? `${baseline.allowed} finding${baseline.allowed === 1 ? '' : 's'} allowed` : `none (${baseline.missing === 'unreadable' ? 'unreadable' : 'run "pawl baseline"'})`}`
+    `Baseline: ${'allowed' in baseline ? `${plural(baseline.allowed, 'finding')} allowed` : `none (${baseline.missing === 'unreadable' ? 'unreadable' : 'run "pawl baseline"'})`}`
   )
   lines.push(
     '',

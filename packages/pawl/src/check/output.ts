@@ -1,5 +1,6 @@
 import { getRule } from '../catalog/rules.ts'
 import { type Finding } from '../types.ts'
+import { plural } from '../utils/text.ts'
 import { BLOCKING, type CheckResult, tooManyWarnings } from './check.ts'
 
 export type OutputFormat = 'pretty' | 'agent' | 'json'
@@ -17,8 +18,6 @@ const paint = (enabled: boolean) => {
 
   return { red: wrap(31), yellow: wrap(33), dim: wrap(2), bold: wrap(1), green: wrap(32) }
 }
-
-const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
 
 /** The engine's own name for the rule, so it can be searched in that engine's docs. */
 const engineLabel = (finding: Finding): string => (finding.engine === 'pawl' ? finding.rule : finding.engineRule)

@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { listFiles } from '../project/files.ts'
 import { type Finding } from '../types.ts'
-import { listFiles, readJson, writeJson } from '../utils/fs.ts'
+import { readJson, sortKeys, writeJson } from '../utils/json.ts'
 
 export const BASELINE_FILE = '.pawl/baseline.json'
 
@@ -40,9 +41,6 @@ const COMMENTS: readonly [RegExp, RegExp][] = [
 
 /** The pattern that finds a disable comment in a file, or undefined for a file no linter reads. */
 const suppressionPattern = (file: string): RegExp | undefined => COMMENTS.find(([files]) => files.test(file))?.[1]
-
-const sortKeys = <T>(record: Record<string, T>): Record<string, T> =>
-  Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
 
 export const readBaseline = (root: string): Baseline | undefined => {
   const baseline = readJson<Baseline>(join(root, BASELINE_FILE))

@@ -8,7 +8,8 @@ import { effectiveRules, overrideRules, type RuleContext } from '../../policy/lo
 import { allTechnologies, type Detection } from '../../project/detect.ts'
 import { configIgnores, toEngineGlob } from '../../project/ignores.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
-import { readJson, readJsonc, toPosix } from '../../utils/fs.ts'
+import { toPosix } from '../../utils/fs.ts'
+import { isRecord, readJson, readJsonc, sameJson, sortKeys } from '../../utils/json.ts'
 import { type EngineRun, type RunOptions } from '../biome/config.ts'
 import { EngineError, readReport, runNode } from '../engine.ts'
 import { OXLINT_RULES } from './rules.ts'
@@ -37,9 +38,6 @@ export const oxlintContextFor = (detection: Detection): OxlintContext => ({
 /** Oxlint's name for a rule of the standard, or undefined when Oxlint does not have it. */
 const oxlintRule = (name: string): string | undefined =>
   name.startsWith('oxlint:') ? name.slice('oxlint:'.length) : OXLINT_RULES[name]
-
-const sortKeys = (record: Record<string, unknown>): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
 
 /**
  * The Oxlint configuration for a policy. Oxlint refuses a rule it does not know, so only the
@@ -101,9 +99,6 @@ export const OXLINT_MANAGED_KEYS = ['plugins', 'ignorePatterns', 'rules', 'overr
 /** Keys pawl adds entries to, keeping the ones the project added itself, such as a test framework's globals. */
 export const OXLINT_MERGED_KEYS = ['env', 'globals']
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 /** The .oxlintrc.json to write: the project's file with pawl's part brought up to date. */
 export const mergeOxlintConfig = (
   current: Record<string, unknown>,
@@ -144,7 +139,7 @@ export const checkOxlintConfig = (root: string, policy: Policy, context?: Oxlint
 
   const current = readJsonc<Record<string, unknown>>(path).value
   const expected = oxlintConfig(policy, context)
-  const same = (key: string): boolean => JSON.stringify(current?.[key]) === JSON.stringify(expected[key])
+  const same = (key: string): boolean => sameJson(current?.[key], expected[key])
   const covers = (key: string): boolean => {
     const own = isRecord(current?.[key]) ? (current[key] as Record<string, unknown>) : {}
     const wanted = isRecord(expected[key]) ? expected[key] : {}

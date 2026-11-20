@@ -1,4 +1,5 @@
 import { type Level, type Policy } from '../types.ts'
+import { isRecord } from '../utils/json.ts'
 
 /** A module that should not be imported, or names that should not be imported from it. */
 export interface RestrictedPath {
@@ -465,11 +466,6 @@ export const guardLevel = (policy: Policy, guard: Guard): Level =>
 export const IMPORTS_RULE = 'no-restricted-imports'
 
 export const SYNTAX_RULE = 'no-restricted-syntax'
-
-type Options = Record<string, unknown>
-
-const isRecord = (value: unknown): value is Options =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : [])
 

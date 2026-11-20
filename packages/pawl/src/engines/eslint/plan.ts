@@ -10,7 +10,9 @@ import { allTechnologies, detect } from '../../project/detect.ts'
 import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../../project/ignores.ts'
 import { toolset } from '../../project/toolset.ts'
 import { type Finding, type Policy, type Runtime } from '../../types.ts'
-import { toList, toPosix } from '../../utils/fs.ts'
+import { toPosix } from '../../utils/fs.ts'
+import { isRecord } from '../../utils/json.ts'
+import { toList } from '../../utils/list.ts'
 import { type EngineRun, type RunOptions } from '../biome/config.ts'
 import { EngineError, readReport, runNode } from '../engine.ts'
 import { oxlintCovers } from '../oxlint/config.ts'
@@ -139,9 +141,6 @@ const splitRule = (name: string): string | undefined => {
 type RuleValue = unknown
 
 type Rules = Record<string, RuleValue>
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** Read the rules out of a plugin preset: a rules object, a flat config, or a list of flat configs. */
 const presetRules = (value: unknown): Rules => {

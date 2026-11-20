@@ -6,10 +6,13 @@ import { getRule, type RuleDef } from '../catalog/rules.ts'
 import { eslintPlan, importFromProject, importPlugin, packPreset, pluginPreset } from '../engines/eslint/plan.ts'
 import { DEFAULT_STYLE, effectiveRules, findConfigFile, resolvePolicy } from '../policy/load.ts'
 import { allTechnologies, detect } from '../project/detect.ts'
+import { listFiles } from '../project/files.ts'
 import { ALWAYS_IGNORED, DEFAULT_IGNORES, WALK_SKIP } from '../project/ignores.ts'
 import { ESLINT_CONFIG_FILES } from '../project/toolset.ts'
 import { type Level, type PolicyInput, type StyleOptions } from '../types.ts'
-import { listFiles, readJson, writeText } from '../utils/fs.ts'
+import { writeText } from '../utils/fs.ts'
+import { readJson, sameJson } from '../utils/json.ts'
+import { plural } from '../utils/text.ts'
 import { PACKAGE_NAME } from '../version.ts'
 import { ESLINT_CONFIG, type InitAction, policyFile } from './init.ts'
 
@@ -401,10 +404,6 @@ const readLegacyIgnores = (root: string): string[] => {
     .filter(line => line.length > 0 && !line.startsWith('#') && !line.startsWith('!') && !COVERED.has(line))
 }
 
-const sameOptions = (a: unknown[], b: unknown[]): boolean => JSON.stringify(a) === JSON.stringify(b)
-
-const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
-
 const NEW_EXTENSION: Record<string, string> = { '.cjs': '.mjs', '.cts': '.mts' }
 
 const reportFile = (plan: Omit<MigratePlan, 'actions'>, backup: string | undefined): string => {
@@ -668,7 +667,7 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
 
       if (resolved.level === 'off' || !mine || mine.level === 'off') continue
 
-      if (!hasOptions(resolved.options) || sameOptions(resolved.options, mine.options)) continue
+      if (!hasOptions(resolved.options) || sameJson(resolved.options, mine.options)) continue
 
       options[def?.name ?? name] = resolved.options
 

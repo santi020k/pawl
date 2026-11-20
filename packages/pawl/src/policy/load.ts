@@ -6,7 +6,9 @@ import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology }
 import { literalBrackets } from '../project/ignores.ts'
 import { ESLINT_CONFIG_FILES } from '../project/toolset.ts'
 import { type Level, type Override, type Policy, type PolicyInput, type StyleOptions } from '../types.ts'
-import { ancestors, toList } from '../utils/fs.ts'
+import { ancestors } from '../utils/fs.ts'
+import { isRecord } from '../utils/json.ts'
+import { toList } from '../utils/list.ts'
 import { POLICY_KEYS } from './schema.ts'
 
 export const DEFAULT_STYLE: StyleOptions = {
@@ -344,9 +346,6 @@ const pickEntry = (exportsField: unknown): string | undefined => {
 
   return undefined
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** Refuse a policy with keys pawl does not know, so a typo does not pass in silence. */
 const validate = (value: unknown, source: string): PolicyInput => {

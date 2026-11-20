@@ -153,17 +153,27 @@ interface Instruction {
   args: string
 }
 
+/** The instructions that take a heredoc. */
+const HEREDOC_KEYWORDS = new Set(['RUN', 'COPY', 'ADD'])
+
+/**
+ * A heredoc as BuildKit reads one: a word of its own, `<<EOF`, `<<-EOF` or `<<"EOF"`. A here-string
+ * (`<<<`) and a shift in shell arithmetic (`1 << 4`) are not one, and must not hide the lines after them.
+ */
+const HEREDOC = /(?:^|\s)\d*<<-?(["']?)([A-Za-z_][^<\s"']*)\1(?=\s|$)/g
+
 /** Split a Dockerfile into instructions, joining continued lines and skipping comments and heredocs. */
 const parseDockerfile = (text: string): Instruction[] => {
   const instructions: Instruction[] = []
   const lines = text.split(/\r?\n/)
-  let heredoc: string | undefined
+  /** The end markers of the heredocs still open, in the order they close. */
+  const heredocs: string[] = []
 
   for (let index = 0; index < lines.length; index += 1) {
     const raw = lines[index] ?? ''
 
-    if (heredoc !== undefined) {
-      if (raw.trim() === heredoc) heredoc = undefined
+    if (heredocs.length > 0) {
+      if (raw.trim() === heredocs[0]) heredocs.shift()
 
       continue
     }
@@ -185,8 +195,11 @@ const parseDockerfile = (text: string): Instruction[] => {
 
     if (!match) continue
 
-    instructions.push({ line: start + 1, keyword: (match[1] ?? '').toUpperCase(), args: (match[2] ?? '').trim() })
-    heredoc = /<<-?\s*["']?(\w+)["']?/.exec(joined)?.[1]
+    const keyword = (match[1] ?? '').toUpperCase()
+
+    instructions.push({ line: start + 1, keyword, args: (match[2] ?? '').trim() })
+
+    if (HEREDOC_KEYWORDS.has(keyword)) heredocs.push(...[...joined.matchAll(HEREDOC)].map(found => found[2] ?? ''))
   }
 
   return instructions

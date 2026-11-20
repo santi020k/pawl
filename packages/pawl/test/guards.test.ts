@@ -157,6 +157,48 @@ describe('Dockerfile and Compose checks', () => {
     expect(rules(project({ Dockerfile: GOOD_DOCKERFILE }))).toEqual([])
   })
 
+  it('skips what a heredoc holds, and nothing after it', () => {
+    const root = project({
+      Dockerfile: [
+        'FROM node:22-slim',
+        'RUN <<EOF',
+        'sudo apt-get install -y curl',
+        'MAINTAINER nobody',
+        'EOF',
+        'COPY <<-"FIRST" <<SECOND /config/',
+        'CMD not an instruction',
+        'FIRST',
+        'WORKDIR also/not/one',
+        'SECOND',
+        'MAINTAINER someone',
+        'USER node',
+        'CMD ["node", "server.js"]',
+        ''
+      ].join('\n')
+    })
+
+    expect(rules(root)).toEqual(['Dockerfile:11 docker-no-maintainer'])
+  })
+
+  it('does not take a here-string or a shift for a heredoc', () => {
+    const root = project({
+      Dockerfile: [
+        'FROM node:22-slim',
+        'SHELL ["/bin/bash", "-c"]',
+        'RUN grep -q ready <<< "ready"',
+        'RUN echo $(( 1 << 4 )) && echo "a << b"',
+        'ENV NOTE="see <<EOF in the docs"',
+        'MAINTAINER someone',
+        'USER node',
+        'CMD ["node", "server.js"]',
+        ''
+      ].join('\n')
+    })
+
+    // Every line after them is still read: the MAINTAINER is found and the USER counts.
+    expect(rules(root)).toEqual(['Dockerfile:6 docker-no-maintainer'])
+  })
+
   it('finds what is wrong in a Compose file, and leaves variable references and secret files alone', () => {
     const root = project({ 'compose.yml': COMPOSE })
 

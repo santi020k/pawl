@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,4 +41,23 @@ export const link = (
   if (tsgolint) {
     symlinkSync(join(PACKAGE_ROOT, 'node_modules/oxlint-tsgolint'), join(root, 'node_modules/oxlint-tsgolint'))
   }
+}
+
+/**
+ * Take oxlint-tsgolint out of a project that `pawl init` set up for Oxlint, as in one set up before
+ * pawl added it, or where it was removed, and bring .oxlintrc.json in line, as `pawl sync` would.
+ */
+export const withoutTsgolint = async (root: string): Promise<void> => {
+  const { detect } = await import('../src/detect.ts')
+  const { applyInit, planOxlintConfig } = await import('../src/init.ts')
+  const { loadPolicy } = await import('../src/policy.ts')
+  const manifestPath = join(root, 'package.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { devDependencies?: Record<string, string> }
+
+  delete manifest.devDependencies?.['oxlint-tsgolint']
+  write(root, { 'package.json': manifest })
+
+  const action = planOxlintConfig(root, await loadPolicy(root), detect(root))
+
+  if (action) applyInit({ actions: [action] })
 }

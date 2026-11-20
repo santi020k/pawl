@@ -18,6 +18,7 @@ interface OxlintRule {
 const require = createRequire(import.meta.url)
 const manifestPath = require.resolve('oxlint/package.json')
 const manifest = require('oxlint/package.json') as { version: string; bin: Record<string, string> | string }
+const tsgolint = require('oxlint-tsgolint/package.json') as { version: string }
 const bin = join(
   dirname(manifestPath),
   typeof manifest.bin === 'string' ? manifest.bin : (manifest.bin.oxlint as string)
@@ -86,6 +87,9 @@ writeFileSync(
 
 /** The Oxlint version this list was read from. */
 export const OXLINT_VERSION = ${JSON.stringify(manifest.version)}
+
+/** The oxlint-tsgolint version the type-aware rules were checked with. \`pawl init\` asks for at least this one. */
+export const TSGOLINT_VERSION = ${JSON.stringify(tsgolint.version)}
 
 /** Rules of the standard that Oxlint enforces, by neutral name, with Oxlint's own name for each. */
 export const OXLINT_RULES: Readonly<Record<string, string>> = {

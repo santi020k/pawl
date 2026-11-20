@@ -21,7 +21,7 @@ The work planned on `release/v0.2.0`. The branch starts from `release/v0.1.0`. T
 
 Taken from "What is left" and "Not built yet" in the README and from `docs/rules-from-eslint-config-basic.md`. None is committed to this release until someone starts it.
 
-- [ ] Oxlint's type-aware rules.
+- [x] Oxlint's type-aware rules. They run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects on Oxlint, and `pawl doctor` names the rules Oxlint leaves to it.
 - [ ] Move the strict-only rules into the default standard as Biome marks them stable. Biome 2.6.8 is still the newest release, so nothing can move yet.
 - [x] Bring the comparison table in the README up to date. It now counts 26 strict-only rules and 18 left out on purpose, as the rules document does.
 - [ ] Give more of the 60 rules with no home a check without a plugin. The largest groups: Stencil (18), Angular, typescript-eslint and ESLint core (6 each), Testing Library and Zod (4 each).

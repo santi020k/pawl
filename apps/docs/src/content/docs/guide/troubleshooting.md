@@ -69,6 +69,15 @@ The policy, or the files in the repo, call for a tool that is not in `node_modul
 
 For Biome, install the exact version pawl pins. `pawl doctor` prints it.
 
+The same goes for `oxlint-tsgolint`, which runs Oxlint's rules that need type information:
+
+```txt
+setup  This project depends on oxlint-tsgolint, but it is not installed, so Oxlint cannot run the rules that need type information.
+       Install the dependencies.
+```
+
+`pawl init` adds it to TypeScript projects on Oxlint, and `.oxlintrc.json` asks for the type-aware rules from then on. Run the install. To lint without those rules, remove the package from `package.json` and run `pawl sync`.
+
 ### Pawl itself is not installed
 
 ```txt

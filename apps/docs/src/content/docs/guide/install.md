@@ -48,6 +48,14 @@ With nothing chosen, Biome lints and formats. [Choosing tools](/guide/tools/) co
 
 Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases. `init` installs that version.
 
+### Oxlint as the linter
+
+In a TypeScript project, `init` also installs `oxlint-tsgolint`. Oxlint runs the rules of the standard that need type information through it, such as `@typescript-eslint/no-floating-promises`.
+
+| Package           | Peer range   |
+| ----------------- | ------------ |
+| `oxlint-tsgolint` | `>=7.0.2007` |
+
 ### ESLint as the linter
 
 When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-eslint` in a TypeScript project. These run the `javascript` and `typescript` packs.

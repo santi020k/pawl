@@ -2,23 +2,24 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
+import { check, exitCode } from '../src/check.ts'
 import { doctor } from '../src/doctor.ts'
 import { BIOME_PRESET } from '../src/engines/biome.ts'
 import { eslintPlan } from '../src/engines/eslint.ts'
 import { checkOxlintConfig, mergeOxlintConfig, oxlintConfig, oxlintCovers, runOxlint } from '../src/engines/oxlint.ts'
-import { OXLINT_RULES, OXLINT_VERSION } from '../src/engines/oxlint-rules.ts'
+import { OXLINT_RULES, OXLINT_VERSION, TSGOLINT_VERSION } from '../src/engines/oxlint-rules.ts'
 import { applyInit, planInit } from '../src/init.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy.ts'
 import { getRule } from '../src/rules.ts'
 import { toolset } from '../src/tools.ts'
-import { link, project, write } from './helpers.ts'
+import { link, project, withoutTsgolint, write } from './helpers.ts'
 
 const require = createRequire(import.meta.url)
 
 describe('Oxlint rule list', () => {
   it('was generated from the Oxlint that is installed (run "pnpm run oxlint-rules" if this fails)', () => {
     expect((require('oxlint/package.json') as { version: string }).version).toBe(OXLINT_VERSION)
+    expect((require('oxlint-tsgolint/package.json') as { version: string }).version).toBe(TSGOLINT_VERSION)
   })
 
   it('only names rules of the standard', () => {
@@ -224,7 +225,8 @@ describe('Oxlint as the linter, with the real Oxlint', { timeout: 60_000 }, () =
 
 describe('the rules that need type information', { timeout: 120_000 }, () => {
   const FLOATING = '@typescript-eslint/no-floating-promises'
-  const fixture = async (tsgolint: boolean): Promise<string> => {
+  /** `declared: false` is a project set up before pawl added oxlint-tsgolint. */
+  const fixture = async (tsgolint: boolean, declared = tsgolint): Promise<string> => {
     const root = project({
       'package.json': { name: 'fixture', private: true, type: 'module' },
       'tsconfig.json': {
@@ -236,6 +238,8 @@ describe('the rules that need type information', { timeout: 120_000 }, () => {
 
     link(root, { tsgolint })
     applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    if (!declared) await withoutTsgolint(root)
 
     return root
   }
@@ -292,6 +296,37 @@ describe('the rules that need type information', { timeout: 120_000 }, () => {
     expect((await doctor(root)).problems).toEqual([
       'Not enforced by Oxlint: @typescript-eslint/await-thenable, @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated and 6 more (install oxlint-tsgolint).'
     ])
+  })
+
+  it('are asked for by init in a TypeScript project, and not in a JavaScript one', async () => {
+    const typescript = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'tsconfig.json': { compilerOptions: { strict: true } }
+    })
+    const javascript = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+    const packages = async (root: string): Promise<readonly string[]> =>
+      (await planInit({ root, engine: 'oxlint', install: false, editor: false })).packages
+
+    expect(await packages(typescript)).toContain('oxlint-tsgolint')
+    expect(await packages(javascript)).not.toContain('oxlint-tsgolint')
+  })
+
+  it('stop the check as a setup problem when tsgolint is declared but not installed', async () => {
+    const root = await fixture(false, true)
+    const config = JSON.parse(readFileSync(join(root, '.oxlintrc.json'), 'utf8')) as { options?: unknown }
+    const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+
+    // The config follows package.json, so it does not change when the install runs.
+    expect(manifest.devDependencies['oxlint-tsgolint']).toBe(TSGOLINT_VERSION)
+    expect(config.options).toEqual({ typeAware: true })
+
+    const result = await check({ root, files: ['src/a.ts'] })
+
+    expect(result.setup.map(issue => issue.code)).toEqual(['tsgolint-missing'])
+    expect(result.findings).toEqual([])
+    expect(exitCode(result)).toBe(2)
   })
 
   it("make the config stale when tsgolint is added or removed, and sync keeps the project's other options", async () => {

@@ -23,7 +23,14 @@ import {
   runBiome
 } from './engines/biome.ts'
 import { eslintInstalled, runEslint } from './engines/eslint.ts'
-import { checkOxlintConfig, oxlintContextFor, oxlintInstalled, runOxlint } from './engines/oxlint.ts'
+import {
+  checkOxlintConfig,
+  oxlintContextFor,
+  oxlintInstalled,
+  runOxlint,
+  TYPE_AWARE_PACKAGE,
+  tsgolintInstalled
+} from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled, runPrettier } from './engines/prettier.ts'
 import { EngineError } from './engines/run.ts'
 import { changedFiles, changedSince, isDirectory, listFiles, projectPath, SinceError } from './fs-utils.ts'
@@ -85,6 +92,7 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'eslint-missing',
   'prettier-missing',
   'oxlint-missing',
+  'tsgolint-missing',
   'oxlint-config-missing',
   'biome-config-missing',
   'since-unresolved',
@@ -276,9 +284,20 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   if (tools.linter === 'oxlint') {
     engines.push('oxlint')
 
-    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection, root))
+    const context = oxlintContextFor(detection, root)
+    const config = checkOxlintConfig(root, policy, context)
+    // The config asks Oxlint for type information, which it cannot get without the package.
+    const tsgolintMissing = context.typeAware === true && !tsgolintInstalled(root)
 
     if (config.issue) setup.push(config.issue)
+
+    if (tsgolintMissing) {
+      setup.push({
+        code: 'tsgolint-missing',
+        message: `This project depends on ${TYPE_AWARE_PACKAGE}, but it is not installed, so Oxlint cannot run the rules that need type information.`,
+        fix: 'Install the dependencies.'
+      })
+    }
 
     if (!oxlintInstalled(root)) {
       setup.push({
@@ -286,7 +305,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
         message: 'This project lints with Oxlint, but Oxlint is not installed.',
         fix: 'Add oxlint to devDependencies.'
       })
-    } else if (!idle && config.status !== 'missing') {
+    } else if (!idle && !tsgolintMissing && config.status !== 'missing') {
       findings.push(...(await runEngine('oxlint', () => runOxlint({ root, ...scope, write }), setup, commands)))
     }
   }

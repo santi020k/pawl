@@ -187,6 +187,7 @@ export interface SetupIssue {
     | 'biome-config-foreign'
     | 'eslint-missing'
     | 'oxlint-missing'
+    | 'tsgolint-missing'
     | 'oxlint-config-missing'
     | 'oxlint-config-stale'
     | 'prettier-missing'

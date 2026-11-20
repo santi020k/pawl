@@ -28,9 +28,10 @@ import {
   mergeOxlintConfig,
   OXLINT_CONFIG_FILE,
   oxlintConfig,
-  oxlintContextFor
+  oxlintContextFor,
+  TYPE_AWARE_PACKAGE
 } from './engines/oxlint.ts'
-import { OXLINT_VERSION } from './engines/oxlint-rules.ts'
+import { OXLINT_VERSION, TSGOLINT_VERSION } from './engines/oxlint-rules.ts'
 import { checkPrettierConfig, prettierConfig } from './engines/prettier.ts'
 import { readJson, readJsonc, toList, writeJson, writeText } from './fs-utils.ts'
 import { getGuard } from './guards.ts'
@@ -128,6 +129,7 @@ const TOOL_RANGES: Record<string, string> = {
   '@biomejs/biome': BIOME_VERSION,
   eslint: '^10.0.0',
   oxlint: OXLINT_VERSION,
+  [TYPE_AWARE_PACKAGE]: TSGOLINT_VERSION,
   '@eslint/js': '^10.0.0',
   'typescript-eslint': '^8.0.0',
   prettier: '^3.0.0'
@@ -753,9 +755,17 @@ export const planPrettierConfig = (
   }
 }
 
-/** Bring .oxlintrc.json in line with the policy. Used by `init` and `sync`. */
-export const planOxlintConfig = (root: string, policy: Policy, detection: Detection): InitAction | undefined => {
-  const context = oxlintContextFor(detection, root)
+/**
+ * Bring .oxlintrc.json in line with the policy. Used by `init` and `sync`. `adding` names what
+ * `init` is about to add to devDependencies: the config is written before the install runs.
+ */
+export const planOxlintConfig = (
+  root: string,
+  policy: Policy,
+  detection: Detection,
+  adding: readonly string[] = []
+): InitAction | undefined => {
+  const context = oxlintContextFor({ ...detection, dependencies: [...detection.dependencies, ...adding] }, root)
   const state = checkOxlintConfig(root, policy, context)
   const path = join(root, OXLINT_CONFIG_FILE)
 
@@ -878,7 +888,10 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     for (const action of planRuleFiles(root, policy, context, detection)) push(action)
   }
 
-  if (linter === 'oxlint') push(planOxlintConfig(root, policy, detection))
+  // Oxlint needs oxlint-tsgolint for the rules of the standard that read types.
+  const typeAware = linter === 'oxlint' && detection.typescript && existsSync(join(root, 'package.json'))
+
+  if (linter === 'oxlint') push(planOxlintConfig(root, policy, detection, typeAware ? [TYPE_AWARE_PACKAGE] : []))
 
   if (formatter === 'prettier') push(planPrettierConfig(root, policy, notes, false))
   else if (tools.prettier)
@@ -918,7 +931,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const wanted = [
     PACKAGE_NAME,
     ...(usesBiome ? ['@biomejs/biome'] : []),
-    ...(linter === 'oxlint' ? ['oxlint'] : []),
+    ...(linter === 'oxlint' ? ['oxlint', ...(typeAware ? [TYPE_AWARE_PACKAGE] : [])] : []),
     ...(wantsEslint ? ['eslint'] : []),
     ...(linter === 'eslint' ? ['@eslint/js', ...(detection.typescript ? ['typescript-eslint'] : [])] : []),
     ...(formatter === 'prettier' ? ['prettier'] : []),

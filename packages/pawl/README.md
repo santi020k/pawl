@@ -210,7 +210,7 @@ Biome is pinned to one exact version, because pawl reads a report format Biome m
 
 Biome also lints and formats CSS and GraphQL, sorts `package.json` fields in the usual order, and parses Tailwind's at-rules in projects that use Tailwind.
 
-Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
+Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Nine more need type information and run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects. Pawl writes them where the project depends on it.
 
 ## Packs
 

@@ -17,7 +17,9 @@ import {
   OXLINT_CONFIG_FILE,
   oxlintContextFor,
   oxlintGaps,
-  oxlintInstalled
+  oxlintInstalled,
+  TYPE_AWARE_PACKAGE,
+  tsgolintInstalled
 } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled } from './engines/prettier.ts'
 import { activeGuards } from './guards.ts'
@@ -194,6 +196,12 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
       push(compatibility(root, 'oxlint', peers.oxlint))
     } else {
       problems.push('Oxlint is not installed. Add oxlint to devDependencies.')
+    }
+
+    if (oxlintContextFor(detection, root).typeAware === true && !tsgolintInstalled(root)) {
+      problems.push(
+        `${TYPE_AWARE_PACKAGE} is a dependency of this project but is not installed. Install the dependencies.`
+      )
     }
 
     if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())

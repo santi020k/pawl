@@ -54,7 +54,11 @@ export const oxlintGaps = (policy: Policy, context?: OxlintContext): Array<{ rul
 export interface OxlintContext extends RuleContext {
   /** Where the code runs, for the globals Oxlint knows. Node and the browser when not given. */
   runtimes?: readonly Runtime[]
-  /** oxlint-tsgolint can be run, so the rules that need type information are written and switched on. */
+  /**
+   * The project has oxlint-tsgolint, so the rules that need type information are written and switched
+   * on. Declared counts as having it, as for every other tool: the config follows package.json, not
+   * whether the install has run yet, and a check says so when it has not.
+   */
   typeAware?: boolean
 }
 
@@ -64,7 +68,7 @@ export const oxlintContextFor = (detection: Detection, root?: string): OxlintCon
   technologies: allTechnologies(detection),
   dependencies: detection.dependencies,
   runtimes: detection.runtimes,
-  typeAware: root !== undefined && tsgolintInstalled(root)
+  typeAware: detection.dependencies.includes(TYPE_AWARE_PACKAGE) || (root !== undefined && tsgolintInstalled(root))
 })
 
 /** Oxlint's name for a rule of the standard, or undefined when Oxlint does not have it. */

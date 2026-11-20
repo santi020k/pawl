@@ -6,7 +6,7 @@ import { check, exitCode } from '../src/check.ts'
 import { type DoctorReport, doctor, formatDoctor } from '../src/doctor.ts'
 import { BIOME_VERSION } from '../src/engines/biome.ts'
 import { applyInit, formatWritten, planInit } from '../src/init.ts'
-import { link, PACKAGE_ROOT, project } from './helpers.ts'
+import { link, PACKAGE_ROOT, project, withoutTsgolint } from './helpers.ts'
 
 const ready = async (files: Record<string, string | object> = {}): Promise<string> => {
   const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' }, ...files })
@@ -25,6 +25,7 @@ const ready = async (files: Record<string, string | object> = {}): Promise<strin
   return root
 }
 
+/** A TypeScript project on Oxlint without oxlint-tsgolint, as one set up before pawl added it. */
 const oxlintProject = async (files: Record<string, string | object> = {}): Promise<string> => {
   const root = project({
     'package.json': { name: 'fixture', private: true, type: 'module' },
@@ -35,6 +36,7 @@ const oxlintProject = async (files: Record<string, string | object> = {}): Promi
 
   link(root)
   applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+  await withoutTsgolint(root)
 
   return root
 }
@@ -116,6 +118,24 @@ describe('pawl doctor, with Oxlint', () => {
     expect(report.problems).toEqual([
       'Not enforced by Oxlint: @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated, @typescript-eslint/prefer-optional-chain (install oxlint-tsgolint).'
     ])
+  })
+
+  it('says to install the dependencies when init added tsgolint and the install has not run', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'tsconfig.json': { compilerOptions: { strict: true } },
+      'pawl.config.json': { engine: 'oxlint', strict: true }
+    })
+
+    link(root)
+    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    const report = await doctor(root)
+
+    expect(report.problems).toEqual([
+      'oxlint-tsgolint is a dependency of this project but is not installed. Install the dependencies.'
+    ])
+    expect(report.engines.oxlint?.notEnforced.filter(gap => gap.needs === 'oxlint-tsgolint')).toEqual([])
   })
 })
 

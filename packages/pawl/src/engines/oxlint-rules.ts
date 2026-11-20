@@ -3,6 +3,9 @@
 /** The Oxlint version this list was read from. */
 export const OXLINT_VERSION = '1.94.0'
 
+/** The oxlint-tsgolint version the type-aware rules were checked with. `pawl init` asks for at least this one. */
+export const TSGOLINT_VERSION = '7.0.2007'
+
 /** Rules of the standard that Oxlint enforces, by neutral name, with Oxlint's own name for each. */
 export const OXLINT_RULES: Readonly<Record<string, string>> = {
   '@typescript-eslint/array-type': 'typescript/array-type',

@@ -129,14 +129,23 @@ export const isGitRepo = (root: string): boolean => {
   }
 }
 
-const git = (root: string, args: string[]): string[] =>
+const gitOutput = (root: string, args: string[]): string =>
   execFileSync('git', args, {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
     maxBuffer: 64 * 1024 * 1024
   })
-    .split('\n')
+
+const git = (root: string, args: string[]): string[] => gitOutput(root, args).split('\n').filter(Boolean)
+
+/**
+ * A git command that lists files. Read with `-z`, so each name comes as it is on disk: without it
+ * git quotes and escapes any name with a character outside ASCII, and that file would never be found.
+ */
+const gitFiles = (root: string, [command, ...args]: [string, ...string[]]): string[] =>
+  gitOutput(root, [command, '-z', ...args])
+    .split('\0')
     .filter(Boolean)
 
 /**
@@ -148,12 +157,12 @@ export const changedFiles = (root: string): string[] => {
 
   try {
     files = [
-      ...git(root, ['diff', '--name-only', '--diff-filter=d', 'HEAD', '--relative']),
-      ...git(root, ['ls-files', '--others', '--exclude-standard'])
+      ...gitFiles(root, ['diff', '--name-only', '--diff-filter=d', 'HEAD', '--relative']),
+      ...gitFiles(root, ['ls-files', '--others', '--exclude-standard'])
     ]
   } catch {
     try {
-      files = git(root, ['ls-files', '--cached', '--others', '--exclude-standard'])
+      files = gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard'])
     } catch {
       return []
     }
@@ -213,8 +222,8 @@ export const changedSince = (root: string, ref: string): string[] => {
 
   try {
     files = [
-      ...git(root, ['diff', '--name-only', '--diff-filter=d', '--relative', base]),
-      ...git(root, ['ls-files', '--others', '--exclude-standard'])
+      ...gitFiles(root, ['diff', '--name-only', '--diff-filter=d', '--relative', base]),
+      ...gitFiles(root, ['ls-files', '--others', '--exclude-standard'])
     ]
   } catch {
     files = undefined
@@ -232,7 +241,7 @@ export const changedSince = (root: string, ref: string): string[] => {
 /** Every project file: what git tracks or would track, else a directory walk. */
 export const listFiles = (root: string): string[] => {
   try {
-    return git(root, ['ls-files', '--cached', '--others', '--exclude-standard']).filter(file =>
+    return gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard']).filter(file =>
       existsSync(join(root, file))
     )
   } catch {

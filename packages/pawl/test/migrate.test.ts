@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { applyInit } from '../src/init.ts'
 import { describeMigration, MIGRATION_REPORT, planMigrate } from '../src/migrate.ts'
+import { DEFAULT_STYLE as defaultStyle } from '../src/policy.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
 
 const manifest = (name: string): object => ({ name, type: 'module', exports: './index.js' })
@@ -152,6 +153,31 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
       arrowParens: 'always'
     })
     expect(plan.notes.join(' ')).not.toContain('Could not read the Prettier config')
+  })
+
+  it('reads .editorconfig for what the Prettier config leaves out, as the real Prettier resolves it', async () => {
+    const prettier = (await import('prettier')) as typeof import('prettier')
+    const cases = [
+      '[*]\nindent_style = space\nindent_size = 4\nmax_line_length = 120\n',
+      'root = true\n\n[*]\nindent_style = tab\ntab_width = 8\n\n[*.{js,ts}]\nquote_type = single\n',
+      '[*.md]\nindent_size = 4\n\n[*]\nindent_style = space\nindent_size = 2\nmax_line_length = off\n',
+      '[*.py]\nindent_size = 4\n'
+    ]
+
+    for (const editorconfig of cases) {
+      const root = fixture({ '.prettierrc': { semi: false }, '.editorconfig': editorconfig, '.git/HEAD': '' })
+      const plan = await planMigrate({ root })
+      const resolved = (await prettier.resolveConfig(join(root, 'src/index.ts'), { editorconfig: true })) ?? {}
+      const style = { ...defaultStyle, ...plan.policy.style }
+
+      expect(style.indent, editorconfig).toBe(resolved.useTabs ? 'tab' : (resolved.tabWidth ?? 2))
+      expect(style.quotes, editorconfig).toBe(resolved.singleQuote ? 'single' : 'double')
+      expect(style.lineWidth, editorconfig).toBe(
+        // No limit at all is the widest Biome formats to.
+        resolved.printWidth === Number.POSITIVE_INFINITY ? 320 : (resolved.printWidth ?? 80)
+      )
+      expect(style.semicolons, editorconfig).toBe(false)
+    }
   })
 
   it('says so when the Prettier config is one it cannot read', async () => {

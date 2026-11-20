@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { allTechnologies, detect } from './detect.ts'
 import { eslintPlan, importFromProject, importPlugin, packPreset, pluginPreset } from './engines/eslint.ts'
 import { listFiles, readJson, readJsonc, writeText } from './fs-utils.ts'
-import { ALWAYS_IGNORED, DEFAULT_IGNORES, WALK_SKIP } from './ignores.ts'
+import { ALWAYS_IGNORED, DEFAULT_IGNORES, makeIgnore, WALK_SKIP } from './ignores.ts'
 import { ESLINT_CONFIG, type InitAction, policyFile } from './init.ts'
 import { getPack, PACKS, type Pack } from './packs.ts'
 import { DEFAULT_STYLE, effectiveRules, findConfigFile, resolvePolicy } from './policy.ts'
@@ -262,6 +262,81 @@ const readPrettier = (root: string): PrettierOptions | undefined =>
     readJsonc<unknown>(join(root, '.prettierrc.json')).value,
     readJson<{ prettier?: unknown }>(join(root, 'package.json'))?.prettier
   ].find(isOptions)
+
+/** The widest line Biome formats to. */
+const WIDEST_LINE = 320
+
+/** A section name of .editorconfig with braces, such as `*.{js,ts}`, as the globs it stands for. */
+const editorconfigGlobs = (section: string): string[] => {
+  const group = /\{([^{}]*)\}/.exec(section)
+
+  if (!group) return [section]
+
+  const rest = (choice: string): string[] =>
+    editorconfigGlobs(`${section.slice(0, group.index)}${choice}${section.slice(group.index + group[0].length)}`)
+
+  return (group[1] ?? '').split(',').flatMap(rest)
+}
+
+/**
+ * The options Prettier takes from the root .editorconfig for the project's scripts, as Prettier's CLI
+ * reads them for an option its own config leaves out. Later sections win, as in EditorConfig.
+ */
+export const readEditorconfig = (root: string): PrettierOptions => {
+  let text: string
+
+  try {
+    text = readFileSync(join(root, '.editorconfig'), 'utf8')
+  } catch {
+    return {}
+  }
+
+  const scripts = ['src/index.ts', 'src/index.js']
+  const values: Record<string, string> = {}
+  let applies = false
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim()
+
+    if (line === '' || line.startsWith('#') || line.startsWith(';')) continue
+
+    const section = /^\[(.*)\]$/.exec(line)
+
+    if (section) {
+      const matches = makeIgnore(editorconfigGlobs(section[1] ?? ''))
+
+      applies = scripts.some(matches)
+    } else if (applies) {
+      const pair = /^([^=]+?)\s*=\s*(.*)$/.exec(line)
+
+      if (pair?.[1] && pair[2] !== undefined) values[pair[1].toLowerCase()] = pair[2].toLowerCase()
+    }
+  }
+
+  // The same reading as Prettier's own, in src/config/editorconfig/editorconfig-to-prettier.js.
+  const size = (value: string | undefined): number | undefined =>
+    value !== undefined && /^[1-9]\d*$/.test(value) ? Number(value) : undefined
+  const options: PrettierOptions = {}
+
+  if (values.indent_style === 'space') options.useTabs = false
+  else if (values.indent_style === 'tab' || values.indent_size === 'tab') options.useTabs = true
+
+  const width =
+    options.useTabs === false ? (size(values.indent_size) ?? size(values.tab_width)) : size(values.tab_width)
+
+  if (width !== undefined) options.tabWidth = width
+
+  // `off` is no limit at all. The widest a style can be is the widest Biome formats to.
+  const lineWidth = values.max_line_length === 'off' ? WIDEST_LINE : size(values.max_line_length)
+
+  if (lineWidth !== undefined) options.printWidth = lineWidth
+
+  if (values.quote_type === 'single' || values.quote_type === 'double') {
+    options.singleQuote = values.quote_type === 'single'
+  }
+
+  return options
+}
 
 /**
  * What Prettier does with an option its config leaves out. A project with a Prettier config is
@@ -649,7 +724,9 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
 
   changed.sort((a, b) => a.rule.localeCompare(b.rule))
 
-  const prettier = readPrettier(root)
+  const configured = readPrettier(root)
+  // Prettier's CLI reads .editorconfig for what its own config leaves out.
+  const prettier = configured && { ...readEditorconfig(root), ...configured }
   const style = styleFrom(old.formatting, prettier)
 
   if (detection.tools.prettier && !prettier) {

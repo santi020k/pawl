@@ -162,6 +162,9 @@ describe('the values of a policy', () => {
     expect(await refused({ maxWarnings: -1 })).toBe(one('"maxWarnings" is -1. It must be a whole number, 0 or more.'))
     expect(await refused({ maxWarnings: '0' })).toBe(one('"maxWarnings" is "0". It must be a whole number, 0 or more.'))
     expect(await refused({ style: { indent: 3 } })).toBe(one('"style.indent" is 3. It must be 2, 4 or "tab".'))
+    expect(await refused({ style: { lineWidth: 400 } })).toBe(
+      one('"style.lineWidth" is 400. It must be a whole number from 1 to 320.')
+    )
     expect(await refused({ options: { 'no-console': { allow: ['warn'] } } })).toBe(
       one('"options.no-console" is an object. It must be a list.')
     )

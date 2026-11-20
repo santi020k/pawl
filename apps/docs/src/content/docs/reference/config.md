@@ -98,7 +98,7 @@ Fail the check, with exit code 1, when there are more new warnings than this. Wa
 | Key              | Type                        | Default       |
 | ---------------- | --------------------------- | ------------- |
 | `indent`         | `2`, `4` or `'tab'`         | `2`           |
-| `lineWidth`      | `number`                    | `120`         |
+| `lineWidth`      | `number`, 1 to 320          | `120`         |
 | `quotes`         | `'single'` or `'double'`    | `'single'`    |
 | `semicolons`     | `boolean`                   | `false`       |
 | `trailingCommas` | `'none'` or `'all'`         | `'none'`      |

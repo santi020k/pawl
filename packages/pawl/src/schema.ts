@@ -16,6 +16,7 @@ export interface JsonSchema {
   items?: JsonSchema
   uniqueItems?: boolean
   minimum?: number
+  maximum?: number
   anyOf?: readonly JsonSchema[]
   $ref?: string
   definitions?: Record<string, JsonSchema>
@@ -81,7 +82,8 @@ const PROPERTIES: Record<keyof PolicyInput, JsonSchema> = {
     additionalProperties: false,
     properties: {
       indent: { enum: [2, 4, 'tab'] },
-      lineWidth: { type: 'integer', minimum: 1 },
+      // Biome refuses a config with a wider line, and pawl writes one for every project.
+      lineWidth: { type: 'integer', minimum: 1, maximum: 320 },
       quotes: { type: 'string', enum: ['single', 'double'] },
       semicolons: { type: 'boolean' },
       trailingCommas: { type: 'string', enum: ['none', 'all'] },
@@ -181,6 +183,10 @@ const accepts = (schema: JsonSchema): string => {
     case 'boolean':
       return 'true or false'
     case 'integer':
+      if (schema.minimum !== undefined && schema.maximum !== undefined) {
+        return `a whole number from ${schema.minimum} to ${schema.maximum}`
+      }
+
       return `a whole number${schema.minimum === undefined ? '' : `, ${schema.minimum} or more`}`
     case 'array':
       return schema.items?.type === 'string' && !schema.items.enum ? 'a list of strings' : 'a list'
@@ -229,7 +235,13 @@ export const schemaProblems = (schema: JsonSchema, value: unknown, path: string)
   if (!fits(schema.type, value)) return wrong
 
   if (schema.type === 'integer') {
-    return Number.isInteger(value) && (schema.minimum === undefined || (value as number) >= schema.minimum) ? [] : wrong
+    const number = value as number
+
+    return Number.isInteger(number) &&
+      (schema.minimum === undefined || number >= schema.minimum) &&
+      (schema.maximum === undefined || number <= schema.maximum)
+      ? []
+      : wrong
   }
 
   if (Array.isArray(value)) {

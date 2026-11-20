@@ -72,10 +72,40 @@ export const readJsonc = <T>(file: string): { value: T | undefined; hasComments:
   const stripped = stripJsonComments(text)
 
   try {
-    return { value: JSON.parse(stripped.replace(/,(\s*[}\]])/g, '$1')) as T, hasComments: stripped !== text }
+    return { value: JSON.parse(stripTrailingCommas(stripped)) as T, hasComments: stripped !== text }
   } catch {
     return { value: undefined, hasComments: stripped !== text }
   }
+}
+
+const CLOSING = /\s*[}\]]/y
+
+/** Drop the comma before a closing bracket, which JSON does not allow. A comma inside a string stays. */
+const stripTrailingCommas = (text: string): string => {
+  let out = ''
+  let inString = false
+
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index] as string
+
+    if (inString) {
+      out += char
+
+      if (char === '\\') out += text[++index] ?? ''
+      else if (char === '"') inString = false
+    } else if (char === '"') {
+      inString = true
+      out += char
+    } else if (char === ',') {
+      CLOSING.lastIndex = index + 1
+
+      if (!CLOSING.test(text)) out += char
+    } else {
+      out += char
+    }
+  }
+
+  return out
 }
 
 const stripJsonComments = (text: string): string => {

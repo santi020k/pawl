@@ -25,6 +25,100 @@ const ready = async (files: Record<string, string | object> = {}): Promise<strin
   return root
 }
 
+const oxlintProject = async (files: Record<string, string | object> = {}): Promise<string> => {
+  const root = project({
+    'package.json': { name: 'fixture', private: true, type: 'module' },
+    'tsconfig.json': { compilerOptions: { strict: true } },
+    'pawl.config.json': { engine: 'oxlint', strict: true },
+    ...files
+  })
+
+  link(root)
+  applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+  return root
+}
+
+describe('pawl doctor, with Oxlint', () => {
+  it('names the rules Oxlint cannot enforce, and what would give them to it', async () => {
+    const report = await doctor(await oxlintProject())
+    const gaps = report.engines.oxlint?.notEnforced ?? []
+
+    expect(gaps.filter(gap => gap.needs === 'oxlint-tsgolint').map(gap => gap.rule)).toEqual([
+      '@typescript-eslint/await-thenable',
+      '@typescript-eslint/consistent-type-exports',
+      '@typescript-eslint/no-deprecated',
+      '@typescript-eslint/no-floating-promises',
+      '@typescript-eslint/no-misused-promises',
+      '@typescript-eslint/no-unnecessary-type-assertion',
+      '@typescript-eslint/no-unsafe-return',
+      '@typescript-eslint/prefer-nullish-coalescing',
+      '@typescript-eslint/prefer-optional-chain'
+    ])
+    expect(gaps.filter(gap => gap.needs === 'no Oxlint equivalent').map(gap => gap.rule)).toEqual([
+      'import/no-extraneous-dependencies',
+      'import/no-unresolved',
+      'markdown/fenced-code-language',
+      'markdown/heading-increment',
+      'no-undef-init',
+      'unused-imports/no-unused-imports',
+      'yml/no-empty-sequence-entry'
+    ])
+    expect(gaps.some(gap => gap.rule.startsWith('pawl/') || gap.rule.startsWith('biome:'))).toBe(false)
+  })
+
+  it('counts the gap a package closes as a problem, and a rule Oxlint does not have as a note', async () => {
+    const report = await doctor(await oxlintProject())
+    const text = formatDoctor(report)
+
+    expect(report.problems).toEqual([
+      'Not enforced by Oxlint: @typescript-eslint/await-thenable, @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated and 6 more (install oxlint-tsgolint).'
+    ])
+    expect(text).toContain(
+      'Problem: Not enforced by Oxlint: @typescript-eslint/await-thenable, @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated and 6 more (install oxlint-tsgolint).'
+    )
+    expect(text).toContain(
+      '          not enforced, no Oxlint equivalent: import/no-extraneous-dependencies, import/no-unresolved, markdown/fenced-code-language and 4 more'
+    )
+    expect(text).not.toContain('Problem: Not enforced by Oxlint: import')
+  })
+
+  it('does not ask a project without TypeScript for the type-aware rules', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'oxlint', strict: true }
+    })
+
+    link(root)
+    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    const report = await doctor(root)
+
+    expect(report.problems).toEqual([])
+    expect(report.engines.oxlint?.notEnforced.filter(gap => gap.rule.startsWith('@typescript-eslint/'))).toEqual([])
+    expect(report.engines.oxlint?.notEnforced.length).toBeGreaterThan(0)
+  })
+
+  it('leaves out what ESLint next to Oxlint takes, and does not name it twice', async () => {
+    const report = await doctor(await oxlintProject({ 'eslint.config.js': 'export default []\n' }))
+    const rules = (report.engines.oxlint?.notEnforced ?? []).map(gap => gap.rule)
+
+    // ESLint takes the core rule Oxlint has no equivalent for. The rules whose plugin it cannot load
+    // are already a problem of ESLint's, with the plugin to install.
+    expect(rules).not.toContain('no-undef-init')
+    expect(report.problems.some(problem => problem.startsWith('Not enforced by ESLint'))).toBe(true)
+    expect(report.problems.some(problem => problem.startsWith('Not enforced by Oxlint'))).toBe(false)
+  })
+
+  it('asks for tsgolint without strict mode too, for the type-aware rules the standard has on by default', async () => {
+    const report = await doctor(await oxlintProject({ 'pawl.config.json': { engine: 'oxlint' } }))
+
+    expect(report.problems).toEqual([
+      'Not enforced by Oxlint: @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated, @typescript-eslint/prefer-optional-chain (install oxlint-tsgolint).'
+    ])
+  })
+})
+
 describe('pawl doctor', () => {
   it('reports the setup, the tool versions and the packs the files call for', async () => {
     const report = await doctor(await ready({ 'README.md': '# fixture\n', '.github/workflows/ci.yml': 'on: push\n' }))

@@ -56,6 +56,7 @@ words:
   - Titlebar
   - topsecret
   - treegrid
+  - tsgolint
   - Turborepo
   - unstub
   - vdom

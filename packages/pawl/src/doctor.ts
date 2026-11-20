@@ -11,7 +11,14 @@ import {
   presetInstalled
 } from './engines/biome.ts'
 import { eslintInstalled, eslintPlanFor } from './engines/eslint.ts'
-import { checkOxlintConfig, OXLINT_CONFIG_FILE, oxlintContextFor, oxlintInstalled } from './engines/oxlint.ts'
+import {
+  checkOxlintConfig,
+  NO_OXLINT_EQUIVALENT,
+  OXLINT_CONFIG_FILE,
+  oxlintContextFor,
+  oxlintGaps,
+  oxlintInstalled
+} from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled } from './engines/prettier.ts'
 import { activeGuards } from './guards.ts'
 import { getPack } from './packs.ts'
@@ -54,7 +61,10 @@ export interface DoctorReport {
   formatter: FormatterName
   engines: {
     biome?: EngineState
-    oxlint?: EngineState
+    oxlint?: EngineState & {
+      /** Rules of the standard that are on and that nothing runs: Oxlint does not enforce them, and ESLint does not take them. */
+      notEnforced: Array<{ rule: string; needs: string }>
+    }
     prettier?: EngineState
     eslint?: EngineState & {
       activePacks: string[]
@@ -91,17 +101,38 @@ const NAMED = 3
  * that is not installed can hold back twenty rules, and twenty lines would bury the other problems.
  * The whole list stays in the report, under `engines.eslint.notEnforced`.
  */
-const notEnforcedProblems = (notEnforced: ReadonlyArray<{ rule: string; needs: string }>): string[] => {
+const notEnforcedProblems = (notEnforced: readonly { rule: string; needs: string }[]): string[] =>
+  groupByNeed(notEnforced).map(([needs, rules]) => `Not enforced by ESLint: ${nameRules(rules)} (install ${needs}).`)
+
+/** The rules, each group in the order given, by what they wait on. */
+const groupByNeed = (notEnforced: readonly { rule: string; needs: string }[]): [string, string[]][] => {
   const byNeed = new Map<string, string[]>()
 
   for (const { rule, needs } of notEnforced) byNeed.set(needs, [...(byNeed.get(needs) ?? []), rule])
 
-  return [...byNeed].map(([needs, rules]) => {
-    const rest = rules.length - NAMED
-    const named = rest > 1 ? `${rules.slice(0, NAMED).join(', ')} and ${rest} more` : rules.join(', ')
+  return [...byNeed]
+}
 
-    return `Not enforced by ESLint: ${named} (install ${needs}).`
-  })
+/** The first few names, then a count of the rest. */
+const nameRules = (rules: readonly string[]): string => {
+  const rest = rules.length - NAMED
+
+  return rest > 1 ? `${rules.slice(0, NAMED).join(', ')} and ${rest} more` : rules.join(', ')
+}
+
+/** Every rule an ESLint config switches on, by the name it has there. */
+const eslintEnforces = (config: ReadonlyArray<{ rules?: Record<string, unknown> }>): Set<string> => {
+  const names = new Set<string>()
+
+  for (const { rules = {} } of config) {
+    for (const [name, value] of Object.entries(rules)) {
+      const level = Array.isArray(value) ? value[0] : value
+
+      if (level !== 'off' && level !== 0) names.add(name)
+    }
+  }
+
+  return names
 }
 
 /** Work out everything `pawl doctor` reports. Reads files only; runs no engine. */
@@ -157,7 +188,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
     const installed = oxlintInstalled(root)
 
-    engines.oxlint = { installed, config: OXLINT_CONFIG_FILE, status: config.status }
+    engines.oxlint = { installed, config: OXLINT_CONFIG_FILE, status: config.status, notEnforced: [] }
 
     if (installed) {
       push(compatibility(root, 'oxlint', peers.oxlint))
@@ -184,6 +215,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
   }
 
   let activePacks: string[] = []
+  let ruleOwners: { enforced: Set<string>; failed: Set<string> } = { enforced: new Set(), failed: new Set() }
 
   if (tools.eslint) {
     const installed = eslintInstalled(root)
@@ -211,6 +243,25 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     }
 
     problems.push(...notEnforcedProblems(plan.notEnforced))
+    ruleOwners = { enforced: eslintEnforces(plan.config), failed: new Set(plan.notEnforced.map(item => item.rule)) }
+  }
+
+  if (engines.oxlint) {
+    const wanted = oxlintGaps(policy, oxlintContextFor(detection)).filter(
+      ({ rule }) =>
+        // A project without TypeScript has no file for a TypeScript rule.
+        (detection.typescript || !rule.startsWith('@typescript-eslint/')) &&
+        // ESLint next to Oxlint takes what Oxlint leaves; a rule it cannot load is already a problem above.
+        !ruleOwners.enforced.has(rule.replace(/^eslint:/, '')) &&
+        !ruleOwners.failed.has(rule)
+    )
+
+    engines.oxlint.notEnforced = wanted
+
+    for (const [needs, rules] of groupByNeed(wanted)) {
+      if (needs !== NO_OXLINT_EQUIVALENT)
+        problems.push(`Not enforced by Oxlint: ${nameRules(rules)} (install ${needs}).`)
+    }
   }
 
   for (const entry of compat) {
@@ -294,6 +345,14 @@ export const formatDoctor = (report: DoctorReport): string => {
     lines.push(
       `Oxlint:   ${engines.oxlint.installed ? (versionOf('oxlint') ?? 'installed') : 'not installed'}, ${OXLINT_CONFIG_FILE} (${engines.oxlint.status})`
     )
+  }
+
+  if (engines.oxlint) {
+    const none = engines.oxlint.notEnforced.filter(({ needs }) => needs === NO_OXLINT_EQUIVALENT)
+
+    if (none.length > 0) {
+      lines.push(`          not enforced, no Oxlint equivalent: ${nameRules(none.map(({ rule }) => rule))}`)
+    }
   }
 
   if (engines.prettier) {

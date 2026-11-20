@@ -49,9 +49,12 @@ const SCOPES: Record<string, string> = {
 /** The plugin name Oxlint wants in a config file, where it differs from the scope. */
 const PLUGINS: Record<string, string> = { jsx_a11y: 'jsx-a11y' }
 
-// Rules that need type information run through a separate Oxlint component pawl does not drive yet.
+// Rules that need type information run through a separate package, oxlint-tsgolint, so they are
+// listed apart: pawl writes them only where that package is installed.
 const available = new Set(listed.filter(rule => !rule.type_aware).map(rule => `${rule.scope}/${rule.value}`))
+const typeAware = new Set(listed.filter(rule => rule.type_aware).map(rule => `${rule.scope}/${rule.value}`))
 const mapped: Record<string, string> = {}
+const mappedTypeAware: Record<string, string> = {}
 
 for (const def of RULES) {
   for (const name of [def.name, ...(def.aliases ?? [])]) {
@@ -59,18 +62,23 @@ for (const def of RULES) {
     const scope = SCOPES[slash === -1 ? '' : name.slice(0, slash)]
     const value = slash === -1 ? name : name.slice(slash + 1)
 
-    if (!scope || !available.has(`${scope}/${value}`)) continue
+    if (!scope) continue
 
-    mapped[def.name] = scope === 'eslint' ? value : `${PLUGINS[scope] ?? scope}/${value}`
+    const oxlintName = scope === 'eslint' ? value : `${PLUGINS[scope] ?? scope}/${value}`
+
+    if (available.has(`${scope}/${value}`)) mapped[def.name] = oxlintName
+    else if (typeAware.has(`${scope}/${value}`)) mappedTypeAware[def.name] = oxlintName
+    else continue
 
     break
   }
 }
 
-const body = Object.entries(mapped)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([name, rule]) => `  ${JSON.stringify(name)}: ${JSON.stringify(rule)}`)
-  .join(',\n')
+const toBody = (rules: Record<string, string>): string =>
+  Object.entries(rules)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, rule]) => `  ${JSON.stringify(name)}: ${JSON.stringify(rule)}`)
+    .join(',\n')
 
 writeFileSync(
   new URL('../src/engines/oxlint-rules.ts', import.meta.url),
@@ -81,8 +89,18 @@ export const OXLINT_VERSION = ${JSON.stringify(manifest.version)}
 
 /** Rules of the standard that Oxlint enforces, by neutral name, with Oxlint's own name for each. */
 export const OXLINT_RULES: Readonly<Record<string, string>> = {
-${body}
+${toBody(mapped)}
+}
+
+/**
+ * Rules of the standard that Oxlint enforces only with type information, by neutral name, with
+ * Oxlint's own name for each. They run through oxlint-tsgolint, so pawl writes them only where it is installed.
+ */
+export const OXLINT_TYPE_AWARE_RULES: Readonly<Record<string, string>> = {
+${toBody(mappedTypeAware)}
 }
 `
 )
-process.stdout.write(`Oxlint ${manifest.version} enforces ${Object.keys(mapped).length} of ${RULES.length} rules\n`)
+process.stdout.write(
+  `Oxlint ${manifest.version} enforces ${Object.keys(mapped).length} of ${RULES.length} rules, and ${Object.keys(mappedTypeAware).length} more with type information\n`
+)

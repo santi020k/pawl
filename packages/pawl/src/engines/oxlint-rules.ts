@@ -168,3 +168,19 @@ export const OXLINT_RULES: Readonly<Record<string, string>> = {
   'vue/require-prop-types': 'vue/require-prop-types',
   yoda: 'yoda'
 }
+
+/**
+ * Rules of the standard that Oxlint enforces only with type information, by neutral name, with
+ * Oxlint's own name for each. They run through oxlint-tsgolint, so pawl writes them only where it is installed.
+ */
+export const OXLINT_TYPE_AWARE_RULES: Readonly<Record<string, string>> = {
+  '@typescript-eslint/await-thenable': 'typescript/await-thenable',
+  '@typescript-eslint/consistent-type-exports': 'typescript/consistent-type-exports',
+  '@typescript-eslint/no-deprecated': 'typescript/no-deprecated',
+  '@typescript-eslint/no-floating-promises': 'typescript/no-floating-promises',
+  '@typescript-eslint/no-misused-promises': 'typescript/no-misused-promises',
+  '@typescript-eslint/no-unnecessary-type-assertion': 'typescript/no-unnecessary-type-assertion',
+  '@typescript-eslint/no-unsafe-return': 'typescript/no-unsafe-return',
+  '@typescript-eslint/prefer-nullish-coalescing': 'typescript/prefer-nullish-coalescing',
+  '@typescript-eslint/prefer-optional-chain': 'typescript/prefer-optional-chain'
+}

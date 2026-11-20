@@ -10,7 +10,7 @@ import { getRule, type Technology } from '../rules.ts'
 import { extraGlobals, oxlintEnv } from '../runtime.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
-import { OXLINT_RULES } from './oxlint-rules.ts'
+import { OXLINT_RULES, OXLINT_TYPE_AWARE_RULES } from './oxlint-rules.ts'
 import { EngineError, readReport, runChunked, runNode } from './run.ts'
 
 export const OXLINT_CONFIG_FILE = '.oxlintrc.json'
@@ -20,6 +20,30 @@ const NEUTRAL = new Map(Object.entries(OXLINT_RULES).map(([name, rule]) => [rule
 
 /** True when Oxlint enforces this rule of the standard. */
 export const oxlintCovers = (name: string): boolean => OXLINT_RULES[name] !== undefined
+
+/** What a rule Oxlint has no equivalent for waits on: nothing a person can install. */
+export const NO_OXLINT_EQUIVALENT = 'no Oxlint equivalent'
+
+/** The package that gives Oxlint the rules that need type information. */
+export const TYPE_AWARE_PACKAGE = 'oxlint-tsgolint'
+
+/**
+ * The rules of the standard that are on and that Oxlint does not enforce, each with what would
+ * close the gap: the package that brings the rule, or that Oxlint has no equivalent. Pawl's own
+ * rules and the other engines' rules are not Oxlint's to enforce, so they are left out.
+ */
+export const oxlintGaps = (policy: Policy, context?: OxlintContext): Array<{ rule: string; needs: string }> =>
+  [...effectiveRules(policy, context)]
+    .filter(
+      ([name, level]) =>
+        level !== 'off' &&
+        !name.startsWith('pawl/') &&
+        !name.startsWith('biome:') &&
+        !name.startsWith('oxlint:') &&
+        OXLINT_RULES[name] === undefined
+    )
+    .map(([rule]) => ({ rule, needs: OXLINT_TYPE_AWARE_RULES[rule] ? TYPE_AWARE_PACKAGE : NO_OXLINT_EQUIVALENT }))
+    .sort((a, b) => a.rule.localeCompare(b.rule))
 
 export interface OxlintContext extends RuleContext {
   /** Where the code runs, for the globals Oxlint knows. Node and the browser when not given. */

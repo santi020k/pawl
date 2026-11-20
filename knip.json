@@ -10,11 +10,10 @@
     },
     "packages/pawl": {
       "entry": ["src/index.ts", "src/cli.ts", "scripts/*.ts", "test/**/*.test.ts"],
-      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["prettier"]
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
     },
     "packages/pawl-policy": {
-      "entry": ["index.js", "test/**/*.test.ts"]
+      "entry": ["test/**/*.test.ts"]
     },
     "apps/docs": {
       "entry": ["og.config.mjs", "og.audit.config.mjs"],

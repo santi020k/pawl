@@ -24,9 +24,9 @@ export {
   biomePackageConfig,
   biomeProjectConfig,
   biomeTechConfig,
-  biomeTechPreset,
-  checkBiomeConfig
+  biomeTechPreset
 } from './engines/biome/config.ts'
+export { checkBiomeConfig } from './engines/biome/state.ts'
 export type { EslintOptions, EslintPlan, EslintPlanOptions, FlatConfig } from './engines/eslint/plan.ts'
 export { eslint, eslintPlan, eslintPlanFor } from './engines/eslint/plan.ts'
 export type { OxlintContext } from './engines/oxlint/config.ts'

@@ -1,11 +1,7 @@
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { firstExisting, PRETTIER_CONFIG_FILES } from '../../project/config-files.ts'
-import { type Finding, type Policy, type SetupIssue } from '../../types.ts'
-import { toPosix } from '../../utils/fs.ts'
+import { type Policy, type SetupIssue } from '../../types.ts'
 import { readJson, readJsonc } from '../../utils/json.ts'
-import { type EngineRun, type RunOptions } from '../biome/config.ts'
-import { EngineError, runNode } from '../engine.ts'
 
 /** The Prettier options that express the standard's style. */
 export const prettierConfig = (policy: Policy): Record<string, string | number | boolean> => {
@@ -66,60 +62,4 @@ export const checkPrettierConfig = (root: string, policy: Policy): PrettierConfi
       fix: 'Run "pawl sync".'
     }
   }
-}
-
-const resolveBin = (root: string): string | undefined => {
-  try {
-    const manifestPath = createRequire(join(root, 'package.json')).resolve('prettier/package.json')
-    const bin = readJson<{ bin?: string | Record<string, string> }>(manifestPath)?.bin
-    const entry = typeof bin === 'string' ? bin : bin?.prettier
-
-    return entry ? join(dirname(manifestPath), entry) : undefined
-  } catch {
-    return undefined
-  }
-}
-
-export const prettierInstalled = (root: string): boolean => resolveBin(root) !== undefined
-
-/** Run the project's Prettier. Each file it would change is one formatting finding. */
-export const runPrettier = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
-  const bin = resolveBin(root)
-
-  if (!bin)
-    throw new EngineError('Prettier is not installed in this project. Add it with your package manager.', {
-      command: 'prettier'
-    })
-
-  const args = [write ? '--write' : '--list-different', '--ignore-unknown', '--no-error-on-unmatched-pattern']
-
-  args.push(...(files && files.length > 0 ? files : ['.']))
-
-  const result = await runNode(bin, args, root, 'prettier')
-
-  if (result.code > 1) {
-    throw new EngineError(result.stderr.trim() || `Prettier exited with code ${result.code}.`, {
-      command: result.command
-    })
-  }
-
-  const findings: Finding[] = write
-    ? []
-    : result.stdout
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(file => ({
-          file: toPosix(file),
-          line: 1,
-          column: 1,
-          engine: 'prettier' as const,
-          engineRule: 'format',
-          rule: 'pawl/format',
-          severity: 'error' as const,
-          message: 'File is not formatted.',
-          fixable: true
-        }))
-
-  return { findings, command: result.command.replace(' --ignore-unknown --no-error-on-unmatched-pattern', '') }
 }

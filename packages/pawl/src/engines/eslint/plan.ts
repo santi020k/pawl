@@ -1,21 +1,28 @@
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { IMPORTS_RULE, importRestrictions, SYNTAX_RULE, syntaxRestrictions } from '../../catalog/guards.ts'
 import { PACKS, type Pack } from '../../catalog/packs.ts'
 import { getRule, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../../catalog/runtimes.ts'
-import { effectiveRules, findProjectRoot, loadPolicy, overrideRules, resolveSpecifier } from '../../policy/load.ts'
+import { effectiveRules, findProjectRoot, loadPolicy, overrideRules } from '../../policy/load.ts'
 import { allTechnologies, detect } from '../../project/detect.ts'
 import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../../project/ignores.ts'
 import { toolset } from '../../project/toolset.ts'
-import { type Finding, type Policy, type Runtime } from '../../types.ts'
-import { toPosix } from '../../utils/fs.ts'
+import { type Policy, type Runtime } from '../../types.ts'
 import { isRecord } from '../../utils/json.ts'
 import { toList } from '../../utils/list.ts'
-import { type EngineRun, type RunOptions } from '../biome/config.ts'
-import { EngineError, readReport, runNode } from '../engine.ts'
 import { oxlintCovers } from '../oxlint/config.ts'
+import {
+  importFromProject,
+  importPlugin,
+  type Loaded,
+  needs,
+  pluginPackage,
+  pluginPreset,
+  presetOf,
+  presetRules,
+  type Rules,
+  type RuleValue,
+  TS_PREFIX
+} from './load.ts'
 
 /** An ESLint flat config object. Typed loosely so pawl does not depend on ESLint's types. */
 export type FlatConfig = Record<string, unknown>
@@ -40,8 +47,6 @@ const globalsFor = async (root: string, runtimes: readonly Runtime[]): Promise<R
 }
 
 const TS_FILES = ['**/*.{ts,mts,cts,tsx}']
-
-const TS_PREFIX = '@typescript-eslint'
 
 export interface EslintPlan {
   config: FlatConfig[]
@@ -71,114 +76,15 @@ export interface EslintPlanOptions {
   runtimes?: readonly Runtime[]
 }
 
-/** Plugins whose package name does not follow the eslint-plugin-<prefix> convention. */
-const PLUGIN_PACKAGES: Record<string, string> = {
-  [TS_PREFIX]: 'typescript-eslint',
-  vitest: '@vitest/eslint-plugin'
-}
-
-const pluginPackage = (prefix: string): string => {
-  const known = PLUGIN_PACKAGES[prefix] ?? PACKS.find(pack => pack.prefix === prefix)?.plugin
-
-  if (known) return known
-
-  return prefix.startsWith('@') ? `${prefix}/eslint-plugin` : `eslint-plugin-${prefix}`
-}
-
-interface Loaded {
-  module?: Record<string, unknown>
-  /** Why the package could not be used, when it is installed but fails to load. */
-  error?: string
-}
-
-/** Import a package the way the project itself would, not the way pawl would. */
-export const importFromProject = async (root: string, specifier: string): Promise<Loaded> => {
-  let file: string
-
-  try {
-    file = resolveSpecifier(specifier, join(root, 'package.json'))
-  } catch {
-    return {}
-  }
-
-  try {
-    const loaded = (await import(pathToFileURL(file).href)) as Record<string, unknown>
-
-    return { module: (loaded.default as Record<string, unknown> | undefined) ?? loaded }
-  } catch (error) {
-    return { error: (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? 'failed to load' }
-  }
-}
-
-/**
- * Import a pack's plugin. ESLint itself depends on @eslint/js, so a project that does not list
- * that package still has it: it is looked up from where ESLint is installed.
- */
-export const importPlugin = async (root: string, specifier: string): Promise<Loaded> => {
-  const loaded = await importFromProject(root, specifier)
-
-  if (loaded.module || loaded.error || specifier !== '@eslint/js') return loaded
-
-  try {
-    const eslintDir = dirname(resolveSpecifier('eslint/package.json', join(root, 'package.json')))
-
-    return await importFromProject(eslintDir, specifier)
-  } catch {
-    return loaded
-  }
-}
-
-/** What a missing or broken plugin needs, in words a person can act on. */
-const needs = (packageName: string, loaded: Loaded): string =>
-  loaded.error ? `${packageName}, which is installed but failed to load: ${loaded.error}` : packageName
-
 const splitRule = (name: string): string | undefined => {
   const slash = name.lastIndexOf('/')
 
   return slash === -1 ? undefined : name.slice(0, slash)
 }
 
-type RuleValue = unknown
-
-type Rules = Record<string, RuleValue>
-
-/** Read the rules out of a plugin preset: a rules object, a flat config, or a list of flat configs. */
-const presetRules = (value: unknown): Rules => {
-  if (Array.isArray(value)) return Object.assign({}, ...value.map(presetRules)) as Rules
-
-  if (!isRecord(value)) return {}
-
-  if (isRecord(value.rules)) return { ...value.rules }
-
-  const looksLikeRules = Object.values(value).every(
-    entry => ['string', 'number'].includes(typeof entry) || Array.isArray(entry)
-  )
-
-  return looksLikeRules ? { ...value } : {}
-}
-
-/** The rules a pack starts from: the part of the plugin's exports the pack points at. */
-export const packPreset = (pack: Pack, plugin: Record<string, unknown>): Rules => presetRules(presetOf(pack, plugin))
-
-const presetOf = (pack: Pack, plugin: Record<string, unknown>): unknown =>
-  (pack.preset ?? []).reduce<unknown>(
-    (value, key) => (isRecord(value) ? value[key] : undefined),
-    pack.preset ? plugin : undefined
-  )
-
 /** The policy's entry for a pack: its name, or its name and one of the plugin's own presets (`unicorn/recommended`). */
 const entryFor = (packs: readonly string[], pack: Pack): string | undefined =>
   packs.find(entry => entry === pack.name || entry.startsWith(`${pack.name}/`))
-
-/** The rules of one of a plugin's own presets, by name. Only the plugin's own rules: a preset may also switch core rules off. */
-export const pluginPreset = (plugin: Record<string, unknown>, name: string, prefix: string): Rules | undefined => {
-  const configs = isRecord(plugin.configs) ? plugin.configs : {}
-  const found = configs[name] ?? configs[`flat/${name}`]
-
-  if (found === undefined) return undefined
-
-  return Object.fromEntries(Object.entries(presetRules(found)).filter(([rule]) => rule.startsWith(`${prefix}/`)))
-}
 
 /** A pack is wanted when the policy names it, the project depends on what it is for, or ESLint is the linter. */
 const wants = (pack: Pack, options: EslintPlanOptions): 'named' | 'auto' | 'suggested' | undefined => {
@@ -556,77 +462,3 @@ export const eslintPlanFor = async (root: string, policy?: Policy): Promise<Esli
  */
 export const eslint = async ({ root }: EslintOptions = {}): Promise<FlatConfig[]> =>
   (await eslintPlanFor(root ?? findProjectRoot(process.cwd()))).config
-
-interface EslintMessage {
-  ruleId: string | null
-  severity: number
-  message: string
-  line?: number
-  column?: number
-  fix?: unknown
-}
-
-interface EslintResult {
-  filePath: string
-  messages: EslintMessage[]
-}
-
-const resolveBin = (root: string): string | undefined => {
-  try {
-    return join(dirname(createRequire(join(root, 'package.json')).resolve('eslint/package.json')), 'bin', 'eslint.js')
-  } catch {
-    return undefined
-  }
-}
-
-export const eslintInstalled = (root: string): boolean => resolveBin(root) !== undefined
-
-/** Run the project's ESLint and turn its report into findings. */
-export const runEslint = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
-  const bin = resolveBin(root)
-
-  if (!bin)
-    throw new EngineError('ESLint is not installed in this project. Add it with your package manager.', {
-      command: 'eslint'
-    })
-
-  const args = ['--format', 'json', '--no-warn-ignored', '--no-error-on-unmatched-pattern']
-
-  if (write) args.push('--fix')
-
-  args.push(...(files && files.length > 0 ? files : ['.']))
-
-  const result = await runNode(bin, args, root, 'eslint')
-  const results = result.code > 1 ? undefined : readReport<EslintResult[]>(result.stdout, '[')
-
-  if (!Array.isArray(results)) {
-    throw new EngineError(result.stderr.trim() || result.stdout.trim() || `ESLint exited with code ${result.code}.`, {
-      command: result.command
-    })
-  }
-
-  const findings: Finding[] = []
-
-  for (const { filePath, messages } of results) {
-    const file = toPosix(filePath.startsWith(root) ? filePath.slice(root.length + 1) : filePath)
-
-    for (const message of messages) {
-      findings.push({
-        file,
-        line: Math.max(1, message.line ?? 1),
-        column: Math.max(1, message.column ?? 1),
-        engine: 'eslint',
-        engineRule: message.ruleId ?? 'parse',
-        rule: message.ruleId ?? 'eslint:parse',
-        severity: message.severity === 2 ? 'error' : 'warn',
-        message: message.message,
-        fixable: message.fix !== undefined
-      })
-    }
-  }
-
-  return {
-    findings,
-    command: result.command.replace(' --format json --no-warn-ignored --no-error-on-unmatched-pattern', '')
-  }
-}

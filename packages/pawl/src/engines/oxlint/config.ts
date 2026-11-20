@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { IMPORTS_RULE, importRestrictions } from '../../catalog/guards.ts'
 import { getRule } from '../../catalog/rules.ts'
 import { extraGlobals, oxlintEnv } from '../../catalog/runtimes.ts'
@@ -8,15 +7,9 @@ import { effectiveRules, overrideRules, type RuleContext } from '../../policy/lo
 import { OXLINT_CONFIG_FILE } from '../../project/config-files.ts'
 import { allTechnologies, type Detection } from '../../project/detect.ts'
 import { configIgnores, toEngineGlob } from '../../project/ignores.ts'
-import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
-import { toPosix } from '../../utils/fs.ts'
-import { isRecord, readJson, readJsonc, sameJson, sortKeys } from '../../utils/json.ts'
-import { type EngineRun, type RunOptions } from '../biome/config.ts'
-import { EngineError, readReport, runNode } from '../engine.ts'
+import { type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
+import { isRecord, readJsonc, sameJson, sortKeys } from '../../utils/json.ts'
 import { OXLINT_RULES } from './rules.ts'
-
-/** Oxlint's own name back to the neutral one, for reading its report. */
-const NEUTRAL = new Map(Object.entries(OXLINT_RULES).map(([name, rule]) => [rule, name]))
 
 /** True when Oxlint enforces this rule of the standard. */
 export const oxlintCovers = (name: string): boolean => OXLINT_RULES[name] !== undefined
@@ -156,82 +149,4 @@ export const checkOxlintConfig = (root: string, policy: Policy, context?: Oxlint
       fix: 'Run "pawl sync".'
     }
   }
-}
-
-const resolveBin = (root: string): string | undefined => {
-  for (const from of [join(root, 'package.json'), import.meta.filename]) {
-    try {
-      const manifestPath = createRequire(from).resolve('oxlint/package.json')
-      const bin = readJson<{ bin?: string | Record<string, string> }>(manifestPath)?.bin
-      const entry = typeof bin === 'string' ? bin : bin?.oxlint
-
-      if (entry) return join(dirname(manifestPath), entry)
-    } catch {
-      // Try the next place.
-    }
-  }
-
-  return undefined
-}
-
-export const oxlintInstalled = (root: string): boolean => resolveBin(root) !== undefined
-
-interface OxlintDiagnostic {
-  message: string
-  code?: string
-  severity: string
-  filename?: string
-  labels?: Array<{ span?: { line?: number; column?: number } }>
-}
-
-/** Oxlint's rule name as it appears in a config: core rules bare, the rest as plugin/rule. */
-const oxlintName = (scope: string, rule: string): string =>
-  scope === 'eslint' ? rule : `${scope.replaceAll('_', '-')}/${rule}`
-
-const toFinding = (diagnostic: OxlintDiagnostic): Finding => {
-  // Oxlint reports a rule as "scope(rule)", such as "eslint(no-var)" or "typescript(no-explicit-any)".
-  const match = /^([\w-]+)\((.+)\)$/.exec(diagnostic.code ?? '')
-  const engineRule = match ? oxlintName(match[1] as string, match[2] as string) : (diagnostic.code ?? 'parse')
-  const span = diagnostic.labels?.[0]?.span
-
-  return {
-    file: toPosix(diagnostic.filename ?? ''),
-    line: Math.max(1, span?.line ?? 1),
-    column: Math.max(1, span?.column ?? 1),
-    engine: 'oxlint',
-    engineRule,
-    rule: NEUTRAL.get(engineRule) ?? `oxlint:${engineRule}`,
-    severity: diagnostic.severity === 'error' ? 'error' : 'warn',
-    message: diagnostic.message,
-    fixable: false
-  }
-}
-
-/** Run the project's Oxlint and turn its report into findings. */
-export const runOxlint = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
-  const bin = resolveBin(root)
-
-  if (!bin)
-    throw new EngineError('Oxlint is not installed in this project. Add oxlint with your package manager.', {
-      command: 'oxlint'
-    })
-
-  const args = ['--format', 'json', ...(write ? ['--fix'] : []), ...(files && files.length > 0 ? files : ['.'])]
-  const result = await runNode(bin, args, root, 'oxlint')
-
-  if (!result.stdout.includes('{')) {
-    throw new EngineError((result.stderr || result.stdout).trim() || `Oxlint exited with code ${result.code}.`, {
-      command: result.command
-    })
-  }
-
-  const report = readReport<{ diagnostics?: OxlintDiagnostic[] }>(result.stdout, '{')
-
-  if (!report || typeof report !== 'object') {
-    throw new EngineError(`Could not read Oxlint's report.\n${result.stderr.trim()}`.trim(), {
-      command: result.command
-    })
-  }
-
-  return { findings: (report.diagnostics ?? []).map(toFinding), command: result.command.replace(' --format json', '') }
 }

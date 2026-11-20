@@ -1,26 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { join } from 'node:path'
-import { guardOfMessage, importRestrictions, ruleFiles } from '../../catalog/guards.ts'
-import { GATED_TAGS, getRule, getRuleByBiome, isGated, type RuleTag, type Technology } from '../../catalog/rules.ts'
-import { extraGlobals, RUNTIMES } from '../../catalog/runtimes.ts'
+import { importRestrictions, ruleFiles } from '../../catalog/guards.ts'
+import { GATED_TAGS, getRule, isGated, type RuleTag, type Technology } from '../../catalog/rules.ts'
+import { extraGlobals } from '../../catalog/runtimes.ts'
 import { defaultPolicy, effectiveRules, overrideRules } from '../../policy/load.ts'
-import { BIOME_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
-import { type Detection, technologies as repoTechnologies } from '../../project/detect.ts'
 import { configIgnores, DEFAULT_IGNORES, toBiomeIgnore, toEngineGlob } from '../../project/ignores.ts'
-import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
-import { toPosix } from '../../utils/fs.ts'
-import {
-  isRecord,
-  type Json,
-  type JsonObject,
-  type JsonRecord,
-  readJsonc,
-  sameJson,
-  sortKeys
-} from '../../utils/json.ts'
-import { toList } from '../../utils/list.ts'
-import { EngineError, readReport, runNode } from '../engine.ts'
+import { type Level, type Policy, type Runtime } from '../../types.ts'
+import { isRecord, type Json, type JsonObject, sameJson, sortKeys } from '../../utils/json.ts'
 
 /** The Biome version this release of pawl is tested with. Kept in step with package.json by a test. */
 export const BIOME_VERSION = '2.6.8'
@@ -54,10 +38,6 @@ export interface BiomeContext {
   runtimes?: readonly Runtime[]
 }
 
-/** Biome reads the .gitignore when the policy wants it and there is a .gitignore or a git repo to read. */
-export const biomeVcs = (root: string, policy: Pick<Policy, 'gitignore'>): boolean =>
-  policy.gitignore && (existsSync(join(root, '.gitignore')) || existsSync(join(root, '.git')))
-
 /**
  * Biome's git settings. Turning `gitignore` off says so, so that a biome.json pawl wrote before
  * stops reading the .gitignore once it is synced.
@@ -68,22 +48,7 @@ const vcsConfig = (policy: Policy, vcs: boolean): JsonObject => {
   return policy.gitignore ? {} : { vcs: { useIgnoreFile: false } }
 }
 
-/** The Biome context for a project as it stands on disk. */
-export const biomeContextFor = (
-  root: string,
-  policy: Policy,
-  detection: Detection,
-  tools: { linter: string; formatter: string }
-): BiomeContext => ({
-  technologies: repoTechnologies(detection),
-  dependencies: detection.dependencies,
-  lint: tools.linter === 'biome',
-  format: tools.formatter === 'biome',
-  vcs: biomeVcs(root, policy),
-  runtimes: detection.runtimes
-})
-
-const BIOME_PREFIX = 'biome:'
+export const BIOME_PREFIX = 'biome:'
 
 /** Keep the gated technologies in one fixed order, so generated files do not churn. */
 const ordered = (technologies: readonly Technology[] = []): Technology[] =>
@@ -223,38 +188,6 @@ export const biomeConfig = (
   }
 }
 
-export interface RuleFileState {
-  /** Relative to the project root. */
-  file: string
-  content: string
-  status: 'ok' | 'missing' | 'stale'
-}
-
-/**
- * The files of pawl's own Biome rules, and whether each is in place.
- * A package with a Biome config of its own needs a copy: Biome looks for an inherited plugin
- * next to the config that inherits it, not next to the one that names it.
- */
-export const checkRuleFiles = (
-  root: string,
-  policy: Policy,
-  context: BiomeContext = {},
-  packageDirs: readonly string[] = []
-): RuleFileState[] => {
-  const files = context.lint === false ? [] : ruleFiles(policy, context.dependencies)
-
-  return ['', ...packageDirs].flatMap(dir =>
-    files.map(({ file, content }) => {
-      const relative = dir ? `${dir}/${file}` : file
-      const path = join(root, relative)
-      const current = existsSync(path) ? readFileSync(path, 'utf8') : undefined
-      const stale = current === content ? 'ok' : 'stale'
-
-      return { file: relative, content, status: current === undefined ? 'missing' : stale }
-    })
-  )
-}
-
 /**
  * Biome's own rule domain for each technology. Turning a domain on applies the rules Biome
  * recommends for it, so pawl covers a technology without listing every rule itself.
@@ -293,7 +226,7 @@ export const biomeTechConfig = (policy: Policy, technology: Technology): JsonObj
 }
 
 /** A rule set with options is one value: Biome does not merge half of it from a preset. */
-const isRuleValue = (value: Json | undefined): boolean => isRecord(value) && 'level' in value
+export const isRuleValue = (value: Json | undefined): boolean => isRecord(value) && 'level' in value
 
 /** The parts of `value` that differ from `base`. Arrays and rule values are compared whole. */
 const diff = (value: JsonObject, base: JsonObject): JsonObject => {
@@ -313,58 +246,6 @@ const diff = (value: JsonObject, base: JsonObject): JsonObject => {
 
   return out
 }
-
-/** True when everything in `expected` is present in `actual` with the same value. */
-const contains = (actual: Json | undefined, expected: Json): boolean => {
-  if (isRecord(expected) && !isRuleValue(expected)) {
-    return isRecord(actual) && Object.entries(expected).every(([key, entry]) => contains(actual[key], entry))
-  }
-
-  return sameJson(actual, expected)
-}
-
-/** The global names pawl writes for a runtime. Any other name in `javascript.globals` is the project's own. */
-const PAWL_GLOBALS = new Set(extraGlobals(RUNTIMES))
-
-const globalsOf = (config: JsonRecord): string[] => {
-  const list = isRecord(config.javascript) ? config.javascript.globals : undefined
-
-  return Array.isArray(list) ? list.filter((name): name is string => typeof name === 'string') : []
-}
-
-/** The runtime globals pawl wrote, sorted. */
-const ownedGlobals = (config: JsonRecord): string[] =>
-  globalsOf(config)
-    .filter(name => PAWL_GLOBALS.has(name))
-    .sort()
-
-const withoutGlobals = (config: JsonObject): JsonObject => {
-  if (!isRecord(config.javascript)) return config
-
-  const { globals: _globals, ...javascript } = config.javascript
-
-  return { ...config, javascript }
-}
-
-/**
- * Put the runtime globals of `expected` into a biome.json, keeping the names the project added
- * itself. A runtime the project no longer uses takes its names with it.
- */
-export const syncBiomeGlobals = (config: JsonRecord, expected: JsonRecord): JsonRecord => {
-  const globals = [...globalsOf(config).filter(name => !PAWL_GLOBALS.has(name)), ...globalsOf(expected)]
-  const javascript = isRecord(config.javascript) ? config.javascript : {}
-  const { globals: _globals, ...rest } = javascript
-  const next = globals.length > 0 ? { ...rest, globals } : rest
-
-  if (Object.keys(next).length > 0) return { ...config, javascript: next }
-
-  const { javascript: _javascript, ...withoutJavascript } = config
-
-  return withoutJavascript
-}
-
-/** Matches the published preset and, inside pawl's own repo, the preset file itself. */
-const PRESET_REFERENCE = /(?:^|\/)pawl\/biome$|(?:^|\/)pawl\.biome\.json$/
 
 /**
  * The biome.json a project should have: the presets, plus only what its policy changes.
@@ -394,65 +275,6 @@ export const biomeProjectConfig = (
   }
 }
 
-export type BiomeConfigStatus = 'ok' | 'missing' | 'stale' | 'foreign'
-
-export interface BiomeConfigCheck {
-  status: BiomeConfigStatus
-  file: string | undefined
-  /** How the file refers to the standard, when it does. */
-  preset?: string
-  issue?: SetupIssue
-}
-
-const extendsList = (config: JsonObject): Json[] => toList<Json>(config.extends)
-
-const findPreset = (config: JsonObject): string | undefined =>
-  extendsList(config).find((entry): entry is string => typeof entry === 'string' && PRESET_REFERENCE.test(entry))
-
-/** Compare the project's biome.json with what the policy calls for. */
-export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeContext = {}): BiomeConfigCheck => {
-  const file = firstExisting(root, BIOME_CONFIG_FILES)
-
-  if (!file) {
-    return {
-      status: 'missing',
-      file,
-      issue: { code: 'biome-config-missing', message: 'No biome.json found.', fix: 'Run "pawl init" or "pawl sync".' }
-    }
-  }
-
-  const { value } = readJsonc<JsonObject>(join(root, file))
-  const preset = value ? findPreset(value) : undefined
-
-  if (!value || !preset) {
-    return {
-      status: 'foreign',
-      file,
-      issue: {
-        code: 'biome-config-foreign',
-        message: `${file} does not extend the pawl standard, so Biome is running with its own settings.`,
-        fix: `Add "${BIOME_PRESET}" to "extends" in ${file}, or run "pawl sync".`
-      }
-    }
-  }
-
-  const { extends: expectedExtends, ...expected } = biomeProjectConfig(policy, context, preset)
-  const present = extendsList(value)
-  const extendsOk = (expectedExtends as Json[]).every(entry => present.includes(entry))
-  const globalsOk = sameJson(ownedGlobals(value), ownedGlobals(expected))
-
-  if (!extendsOk || !globalsOk || !contains(withoutGlobals(value), withoutGlobals(expected))) {
-    return {
-      status: 'stale',
-      file,
-      preset,
-      issue: { code: 'biome-config-stale', message: `${file} is out of date with the policy.`, fix: 'Run "pawl sync".' }
-    }
-  }
-
-  return { status: 'ok', file, preset }
-}
-
 /**
  * The biome.json of one package in a monorepo that uses a technology the rest of the repo does not.
  * It builds on the root config and adds that technology's rules for this package only.
@@ -470,173 +292,5 @@ export const biomePackageConfig = (
   return {
     root: false,
     extends: [`${up}${rootFile}`, ...ordered(technologies).map(technology => biomeTechPreset(technology, reference))]
-  }
-}
-
-export interface BiomePackageCheck {
-  dir: string
-  file: string
-  status: 'ok' | 'missing' | 'stale' | 'unreadable'
-  expected: JsonObject
-  /** The file's current content, when it could be read without losing comments. */
-  current?: JsonObject
-}
-
-/** Compare each package's biome.json with the technologies that package uses. */
-export const checkBiomePackages = (
-  root: string,
-  perPackage: Readonly<Record<string, readonly Technology[]>>,
-  rootFile = 'biome.json',
-  preset: string = BIOME_PRESET
-): BiomePackageCheck[] =>
-  Object.entries(perPackage).map(([dir, technologies]) => {
-    const expected = biomePackageConfig(dir, technologies, rootFile, preset)
-    const name = firstExisting(join(root, dir), BIOME_CONFIG_FILES)
-    const file = `${dir}/${name ?? 'biome.json'}`
-
-    if (!name) return { dir, file, status: 'missing', expected }
-
-    const { value, hasComments } = readJsonc<JsonObject>(join(root, file))
-
-    if (!value) return { dir, file, status: 'unreadable', expected }
-
-    const present = extendsList(value)
-    const ok = (expected.extends as Json[]).every(entry => present.includes(entry))
-
-    return { dir, file, status: ok ? 'ok' : 'stale', expected, ...(hasComments ? {} : { current: value }) }
-  })
-
-const resolveBin = (root: string): string => {
-  for (const from of [join(root, 'package.json'), import.meta.filename]) {
-    try {
-      return createRequire(from).resolve('@biomejs/biome/bin/biome')
-    } catch {
-      // Try the next place.
-    }
-  }
-
-  throw new EngineError(
-    `Biome is not installed in this project. Add @biomejs/biome@${BIOME_VERSION} with your package manager.`,
-    {
-      command: 'biome'
-    }
-  )
-}
-
-/** Biome is installed in the project, or beside pawl itself. */
-export const biomeInstalled = (root: string): boolean => {
-  try {
-    resolveBin(root)
-
-    return true
-  } catch {
-    return false
-  }
-}
-
-interface BiomeDiagnostic {
-  severity: string
-  message: string
-  category: string
-  location?: { path?: string; start?: { line: number; column: number } }
-}
-
-interface BiomeReport {
-  diagnostics: BiomeDiagnostic[]
-}
-
-const toFinding = (diagnostic: BiomeDiagnostic): Finding | undefined => {
-  if (diagnostic.severity !== 'error' && diagnostic.severity !== 'warning') return undefined
-
-  const file = toPosix(diagnostic.location?.path ?? '')
-  const line = Math.max(1, diagnostic.location?.start?.line ?? 1)
-  const column = Math.max(1, diagnostic.location?.start?.column ?? 1)
-  const severity = diagnostic.severity === 'error' ? 'error' : 'warn'
-  const base = { file, line, column, engine: 'biome' as const, severity, message: diagnostic.message.trim() } as const
-  const { category } = diagnostic
-
-  if (category === 'format') {
-    return { ...base, engineRule: 'format', rule: 'pawl/format', message: 'File is not formatted.', fixable: true }
-  }
-
-  if (category === 'assist/source/useSortedPackageJson') {
-    return {
-      ...base,
-      engineRule: category,
-      rule: 'pawl/sort-package-json',
-      message: 'The fields of package.json are not in the usual order.',
-      fixable: true
-    }
-  }
-
-  if (category.startsWith('assist/')) {
-    return {
-      ...base,
-      engineRule: category,
-      rule: 'pawl/organize-imports',
-      message: 'Imports are not sorted.',
-      fixable: true
-    }
-  }
-
-  if (category.startsWith('lint/')) {
-    const engineRule = category.slice('lint/'.length)
-
-    return {
-      ...base,
-      engineRule,
-      rule: getRuleByBiome(engineRule)?.name ?? `${BIOME_PREFIX}${engineRule}`,
-      fixable: false
-    }
-  }
-
-  // One of pawl's own rules, which Biome runs as a plugin and reports under one shared name.
-  const guard = category === 'plugin' ? guardOfMessage(base.message) : undefined
-
-  if (guard) return { ...base, engineRule: `pawl/${guard}`, rule: `pawl/${guard}`, fixable: false }
-
-  return { ...base, engineRule: category, rule: `${BIOME_PREFIX}${category}`, fixable: false }
-}
-
-export interface EngineRun {
-  findings: Finding[]
-  command: string
-}
-
-export interface RunOptions {
-  root: string
-  /** Files to check, relative to the root. Omit to check the whole project. */
-  files?: readonly string[]
-  /** Apply safe fixes and formatting. */
-  write?: boolean
-}
-
-/** Run Biome and turn its report into findings. */
-export const runBiome = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
-  const args = ['check', '--reporter=json', '--max-diagnostics=none', '--no-errors-on-unmatched', '--colors=off']
-
-  if (write) args.push('--write')
-
-  args.push(...(files && files.length > 0 ? files : ['.']))
-
-  const result = await runNode(resolveBin(root), args, root, 'biome')
-
-  if (!result.stdout.includes('{')) {
-    throw new EngineError(result.stderr.trim() || `Biome exited with code ${result.code} and no report.`, {
-      command: result.command
-    })
-  }
-
-  const report = readReport<BiomeReport>(result.stdout, '{')
-
-  if (!Array.isArray(report?.diagnostics)) {
-    throw new EngineError(`Could not read Biome's report.\n${result.stderr.trim()}`.trim(), { command: result.command })
-  }
-
-  const findings = report.diagnostics.map(toFinding).filter((finding): finding is Finding => finding !== undefined)
-
-  return {
-    findings,
-    command: result.command.replace(' --reporter=json --max-diagnostics=none --no-errors-on-unmatched --colors=off', '')
   }
 }

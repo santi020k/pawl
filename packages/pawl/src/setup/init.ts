@@ -4,18 +4,15 @@ import { getGuard } from '../catalog/guards.ts'
 import { getPack, PACKS, suggestedPacks } from '../catalog/packs.ts'
 import { BASELINE_FILE } from '../check/baseline.ts'
 import { BLOCKING, check } from '../check/check.ts'
+import { BIOME_PRESET, BIOME_VERSION, type BiomeContext, biomeProjectConfig } from '../engines/biome/config.ts'
+import { runBiome } from '../engines/biome/run.ts'
 import {
-  BIOME_PRESET,
-  BIOME_VERSION,
-  type BiomeContext,
   biomeContextFor,
-  biomeProjectConfig,
   checkBiomeConfig,
   checkBiomePackages,
   checkRuleFiles,
-  runBiome,
   syncBiomeGlobals
-} from '../engines/biome/config.ts'
+} from '../engines/biome/state.ts'
 import { checkOxlintConfig, mergeOxlintConfig, oxlintConfig, oxlintContextFor } from '../engines/oxlint/config.ts'
 import { OXLINT_VERSION } from '../engines/oxlint/rules.ts'
 import { checkPrettierConfig, prettierConfig } from '../engines/prettier/config.ts'

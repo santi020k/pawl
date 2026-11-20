@@ -9,9 +9,9 @@ import {
   biomePackageConfig,
   biomeProjectConfig,
   biomeTechConfig,
-  biomeTechPreset,
-  checkBiomeConfig
+  biomeTechPreset
 } from '../src/engines/biome/config.ts'
+import { checkBiomeConfig } from '../src/engines/biome/state.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'
 import { PACKAGE_ROOT, project } from './helpers.ts'
 

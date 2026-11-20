@@ -1,4 +1,25 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { type Finding } from '../types.ts'
+import { readJson } from '../utils/json.ts'
+
+/** What every engine run takes. */
+export interface RunOptions {
+  root: string
+  /** Files to check, relative to the root. Omit to check the whole project. */
+  files?: readonly string[]
+  /** Apply safe fixes and formatting. */
+  write?: boolean
+}
+
+/** What every engine run gives back. */
+export interface EngineRun {
+  findings: Finding[]
+  /** The command that ran, as a person would type it. */
+  command: string
+}
 
 export interface RunResult {
   code: number
@@ -8,8 +29,18 @@ export interface RunResult {
   command: string
 }
 
-/** Run a Node script and collect its output. Never rejects on a non-zero exit. */
-export const runNode = (script: string, args: readonly string[], cwd: string, label: string): Promise<RunResult> =>
+/**
+ * Run a Node script and collect its output. Never rejects on a non-zero exit.
+ * `shown` is what the command reports as having run: the arguments a person would type,
+ * without the flags pawl adds to read the output.
+ */
+export const runNode = (
+  script: string,
+  args: readonly string[],
+  cwd: string,
+  label: string,
+  shown: readonly string[] = args
+): Promise<RunResult> =>
   new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [script, ...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
     const stdout: Buffer[] = []
@@ -23,7 +54,7 @@ export const runNode = (script: string, args: readonly string[], cwd: string, la
         code: code ?? 1,
         stdout: Buffer.concat(stdout).toString('utf8'),
         stderr: Buffer.concat(stderr).toString('utf8'),
-        command: [label, ...args].join(' ')
+        command: [label, ...shown].join(' ')
       })
     })
   })
@@ -57,4 +88,66 @@ export class EngineError extends Error {
     this.name = 'EngineError'
     this.command = command
   }
+}
+
+/**
+ * An engine's JSON report, or an EngineError that says why there is none. `valid` checks the
+ * shape, so other JSON the engine or a plugin printed is not taken for the report.
+ */
+export const parseReport = <T>(
+  result: RunResult,
+  engine: string,
+  open: '{' | '[',
+  valid: (report: unknown) => report is T
+): T => {
+  const report = readReport<unknown>(result.stdout, open)
+
+  if (report !== undefined && valid(report)) return report
+
+  if (!result.stdout.includes(open)) {
+    throw new EngineError(
+      result.stderr.trim() || result.stdout.trim() || `${engine} exited with code ${result.code} and no report.`,
+      { command: result.command }
+    )
+  }
+
+  throw new EngineError(`Could not read ${engine}'s report.\n${result.stderr.trim()}`.trim(), {
+    command: result.command
+  })
+}
+
+/** The files to hand an engine: the ones asked for, or the whole project. */
+export const targets = (files: readonly string[] | undefined): string[] =>
+  files && files.length > 0 ? [...files] : ['.']
+
+export interface BinLookup {
+  /** The package that ships the bin, such as `@biomejs/biome`. */
+  packageName: string
+  /** The bin's name, when the package has several. */
+  bin: string
+  /** Where the bin is when the package does not say. */
+  fallback: string
+  /** Also look beside pawl itself, for an engine pawl can bring along. */
+  besidePawl?: boolean
+}
+
+/** The path of a tool's bin as the project would run it, or undefined when it is not installed. */
+export const resolveBin = (
+  root: string,
+  { packageName, bin, fallback, besidePawl = false }: BinLookup
+): string | undefined => {
+  for (const from of [join(root, 'package.json'), ...(besidePawl ? [import.meta.filename] : [])]) {
+    try {
+      const manifestPath = createRequire(from).resolve(`${packageName}/package.json`)
+      const field = readJson<{ bin?: string | Record<string, string> }>(manifestPath)?.bin
+      const entry = (typeof field === 'string' ? field : field?.[bin]) ?? fallback
+      const path = join(dirname(manifestPath), entry)
+
+      if (existsSync(path)) return path
+    } catch {
+      // Not installed there. Try the next place.
+    }
+  }
+
+  return undefined
 }

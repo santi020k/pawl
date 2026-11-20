@@ -1,23 +1,17 @@
 import { activeGuards } from '../catalog/guards.ts'
 import { getPack } from '../catalog/packs.ts'
-import { BASELINE_FILE, baselineUnreadable, readBaseline } from '../check/baseline.ts'
+import { readBaseline, unreadableBaseline } from '../check/baseline.ts'
 import { BIOME_VERSION } from '../engines/biome/config.ts'
-import { biomeInstalled } from '../engines/biome/run.ts'
-import { biomeContextFor, checkBiomeConfig } from '../engines/biome/state.ts'
 import { eslintPlanFor } from '../engines/eslint/plan.ts'
-import { eslintInstalled } from '../engines/eslint/run.ts'
-import { checkOxlintConfig, oxlintContextFor } from '../engines/oxlint/config.ts'
-import { oxlintInstalled } from '../engines/oxlint/run.ts'
-import { checkPrettierConfig } from '../engines/prettier/config.ts'
-import { prettierInstalled } from '../engines/prettier/run.ts'
-import { findConfigFile, loadPolicy } from '../policy/load.ts'
+import { activeEngines } from '../engines/registry.ts'
+import { findConfigFile, lockIssues } from '../policy/load.ts'
 import { OXLINT_CONFIG_FILE } from '../project/config-files.ts'
-import { describe, detect, filePacks } from '../project/detect.ts'
-import { toolset } from '../project/toolset.ts'
-import { type EngineName, type FormatterName, type Runtime } from '../types.ts'
+import { loadProject } from '../project/context.ts'
+import { describe, filePacks } from '../project/detect.ts'
+import { type EngineName, type FormatterName, type Runtime, type SetupIssue } from '../types.ts'
 import { installedVersion, satisfies } from '../utils/semver.ts'
 import { plural } from '../utils/text.ts'
-import { NODE_RANGE, PACKAGE_ROOT, PEER_RANGES, VERSION } from '../version.ts'
+import { NODE_RANGE, PACKAGE_ROOT, VERSION } from '../version.ts'
 
 /** One tool's installed version against the versions pawl works with. */
 export interface Compatibility {
@@ -29,7 +23,7 @@ export interface Compatibility {
   ok: boolean
 }
 
-interface EngineState {
+interface EngineReport {
   installed: boolean
   /** The config file, relative to the root. */
   config?: string
@@ -52,10 +46,10 @@ export interface DoctorReport {
   linter: EngineName
   formatter: FormatterName
   engines: {
-    biome?: EngineState
-    oxlint?: EngineState
-    prettier?: EngineState
-    eslint?: EngineState & {
+    biome?: EngineReport
+    oxlint?: EngineReport
+    prettier?: EngineReport
+    eslint?: EngineReport & {
       activePacks: string[]
       availablePacks: string[]
       notEnforced: Array<{ rule: string; needs: string }>
@@ -74,30 +68,29 @@ export interface DoctorReport {
 const LINTER_NAMES: Record<EngineName, string> = { biome: 'Biome', oxlint: 'Oxlint', eslint: 'ESLint' }
 
 /** Check one installed tool against the range pawl declares for it. */
-const compatibility = (root: string, name: string, wanted: string | undefined): Compatibility | undefined => {
+const compatibility = (
+  root: string,
+  name: string,
+  wanted: string | undefined,
+  besidePawl = false
+): Compatibility | undefined => {
   if (!wanted) return undefined
 
-  const installed = installedVersion(root, name, name === '@biomejs/biome' ? PACKAGE_ROOT : undefined)
+  const installed = installedVersion(root, name, besidePawl ? PACKAGE_ROOT : undefined)
 
   return { name, wanted, installed, ok: installed !== undefined && satisfies(installed, wanted) }
 }
 
+/** A setup problem as one line of the report. */
+const problem = (issue: SetupIssue): string => `${issue.message} ${issue.fix ?? ''}`.trim()
+
 /** Work out everything `pawl doctor` reports. Reads files only; runs no engine. */
 export const doctor = async (root: string): Promise<DoctorReport> => {
-  const policy = await loadPolicy(root)
-  const detection = detect(root, policy)
-  const tools = toolset(root, policy)
+  const project = await loadProject(root)
+  const { policy, detection, tools } = project
   const file = findConfigFile(root)
-  const problems: string[] = []
+  const problems = lockIssues(policy).map(problem)
   const engines: DoctorReport['engines'] = {}
-
-  for (const violation of policy.lockViolations) {
-    problems.push(
-      `"${violation.rule}" is locked at "${violation.kept}"; ${violation.source} tried to set "${violation.wanted}".`
-    )
-  }
-
-  const peers = PEER_RANGES
   const compat: Compatibility[] = []
   const push = (entry: Compatibility | undefined): void => {
     if (entry) compat.push(entry)
@@ -110,55 +103,27 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     ok: satisfies(process.versions.node, NODE_RANGE)
   })
 
-  if (tools.biome) {
-    const config = checkBiomeConfig(root, policy, biomeContextFor(root, policy, detection, tools))
-    const installed = biomeInstalled(root)
-
-    engines.biome = { installed, ...(config.file ? { config: config.file } : {}), status: config.status }
-
-    if (installed) {
-      push(compatibility(root, '@biomejs/biome', BIOME_VERSION))
-    } else {
-      problems.push(`Biome is not installed. Add @biomejs/biome@${BIOME_VERSION} to devDependencies.`)
-    }
-
-    if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())
-  }
-
-  if (tools.linter === 'oxlint') {
-    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
-    const installed = oxlintInstalled(root)
-
-    engines.oxlint = { installed, config: OXLINT_CONFIG_FILE, status: config.status }
-
-    if (installed) {
-      push(compatibility(root, 'oxlint', peers.oxlint))
-    } else {
-      problems.push('Oxlint is not installed. Add oxlint to devDependencies.')
-    }
-
-    if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())
-  }
-
-  if (tools.formatter === 'prettier') {
-    const config = checkPrettierConfig(root, policy)
-    const installed = prettierInstalled(root)
-
-    engines.prettier = { installed, ...(config.file ? { config: config.file } : {}), status: config.status }
-
-    if (installed) {
-      push(compatibility(root, 'prettier', peers.prettier))
-    } else {
-      problems.push('Prettier is not installed. Add prettier to devDependencies.')
-    }
-
-    if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())
-  }
-
   let activePacks: string[] = []
 
-  if (tools.eslint) {
-    const installed = eslintInstalled(root)
+  for (const engine of activeEngines(tools)) {
+    const state = engine.inspect(project)
+    const installed = engine.installed(root)
+
+    if (installed) push(compatibility(root, engine.packageName, engine.range, engine.name === 'biome'))
+    else problems.push(problem(engine.missing))
+
+    problems.push(...state.issues.map(problem))
+
+    if (engine.name !== 'eslint') {
+      engines[engine.name] = {
+        installed,
+        ...(state.config ? { config: state.config } : {}),
+        ...(state.status ? { status: state.status } : {})
+      }
+
+      continue
+    }
+
     const plan = await eslintPlanFor(root, policy)
 
     activePacks = plan.activePacks
@@ -167,12 +132,6 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
       activePacks: plan.activePacks,
       availablePacks: plan.availablePacks,
       notEnforced: plan.notEnforced
-    }
-
-    if (installed) {
-      push(compatibility(root, 'eslint', peers.eslint))
-    } else {
-      problems.push('ESLint is set up for this repo but not installed. Add eslint to devDependencies.')
     }
 
     // The plugin of each active pack, against the versions the pack was written for.
@@ -200,13 +159,9 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     (sum, rules) => sum + Object.values(rules).reduce((a, b) => a + b, 0),
     0
   )
-  const unreadable = baselineUnreadable(root)
+  const unreadable = unreadableBaseline(root)
 
-  if (unreadable) {
-    problems.push(
-      `${BASELINE_FILE} cannot be read. Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.`
-    )
-  }
+  if (unreadable) problems.push(problem(unreadable))
 
   const guards = activeGuards(detection.dependencies, policy.packs)
   const named = new Set([...policy.packs.map(entry => entry.split('/')[0] ?? entry), ...activePacks])

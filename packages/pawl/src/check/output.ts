@@ -1,7 +1,7 @@
 import { getRule } from '../catalog/rules.ts'
 import { type Finding } from '../types.ts'
 import { plural } from '../utils/text.ts'
-import { BLOCKING, type CheckResult, tooManyWarnings } from './check.ts'
+import { type CheckResult, isBlocked, tooManyWarnings } from './result.ts'
 
 export type OutputFormat = 'pretty' | 'agent' | 'json'
 
@@ -65,7 +65,7 @@ export const formatPretty = (
   const warnings = result.findings.length - errors
   const fixable = result.findings.filter(finding => finding.fixable).length
 
-  if (result.setup.some(issue => BLOCKING.includes(issue.code))) {
+  if (isBlocked(result.setup)) {
     lines.push(c.red('The check did not complete. Fix the setup problem above and run it again.'))
   } else if (result.nothingToCheck) {
     lines.push(c.dim('No files to check.'))

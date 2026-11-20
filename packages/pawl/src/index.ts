@@ -11,10 +11,12 @@ export { canonicalName, findRule, GATED_TAGS, getRule, RULES } from './catalog/r
 export { RUNTIMES } from './catalog/runtimes.ts'
 export type { Baseline, BaselineResult, Suppression } from './check/baseline.ts'
 export { applyBaseline, BASELINE_FILE, createBaseline, readBaseline, scanSuppressions } from './check/baseline.ts'
-export type { CheckOptions, CheckResult } from './check/check.ts'
-export { check, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check/check.ts'
+export type { CheckOptions } from './check/check.ts'
+export { check } from './check/check.ts'
 export type { OutputFormat } from './check/output.ts'
 export { format, formatAgent, formatJson, formatPretty } from './check/output.ts'
+export type { CheckResult } from './check/result.ts'
+export { EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check/result.ts'
 export type { BiomeContext } from './engines/biome/config.ts'
 export {
   BIOME_PRESET,

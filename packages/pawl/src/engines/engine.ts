@@ -2,7 +2,9 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { type Finding } from '../types.ts'
+import { type Project } from '../project/context.ts'
+import { type Toolset } from '../project/toolset.ts'
+import { type EngineName, type Finding, type SetupIssue } from '../types.ts'
 import { readJson } from '../utils/json.ts'
 
 /** What every engine run takes. */
@@ -12,6 +14,38 @@ export interface RunOptions {
   files?: readonly string[]
   /** Apply safe fixes and formatting. */
   write?: boolean
+}
+
+/** An engine's config files, as the check and the doctor report them. */
+export interface EngineState {
+  /** The config file pawl reads or writes for the engine, relative to the root. */
+  config?: string
+  /** How that file compares with the policy, such as `ok` or `stale`. */
+  status?: string
+  /** False while the engine cannot run, such as before its config file exists. */
+  runnable: boolean
+  /** What is wrong with the setup. A blocking one stops the check. */
+  issues: SetupIssue[]
+}
+
+/**
+ * One engine pawl drives. The check and the doctor go through this, so every engine is
+ * set up, checked for, run and reported the same way.
+ */
+export interface Engine {
+  name: EngineName | 'prettier'
+  /** The package that installs it. */
+  packageName: string
+  /** The versions pawl works with: the exact Biome it pins, or the peer range. */
+  range: string | undefined
+  /** It runs in a project with these tools. */
+  active: (tools: Toolset) => boolean
+  installed: (root: string) => boolean
+  /** The setup problem when the project runs the engine but has not installed it. */
+  missing: SetupIssue
+  /** Compare the engine's config files with what the policy calls for. */
+  inspect: (project: Project) => EngineState
+  run: (options: RunOptions) => Promise<EngineRun>
 }
 
 /** What every engine run gives back. */

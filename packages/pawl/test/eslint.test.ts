@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { check, exitCode } from '../src/check/check.ts'
+import { check } from '../src/check/check.ts'
+import { exitCode } from '../src/check/result.ts'
 import { readReport } from '../src/engines/engine.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/load.ts'

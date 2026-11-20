@@ -1,31 +1,24 @@
 import { join } from 'node:path'
-import { runBiome } from '../engines/biome/run.ts'
-import { biomeContextFor, checkBiomeConfig, checkBiomePackages, checkRuleFiles } from '../engines/biome/state.ts'
-import { EngineError, type EngineRun } from '../engines/engine.ts'
-import { eslintInstalled, runEslint } from '../engines/eslint/run.ts'
-import { checkOxlintConfig, oxlintContextFor } from '../engines/oxlint/config.ts'
-import { oxlintInstalled, runOxlint } from '../engines/oxlint/run.ts'
-import { checkPrettierConfig } from '../engines/prettier/config.ts'
-import { prettierInstalled, runPrettier } from '../engines/prettier/run.ts'
-import { loadPolicy } from '../policy/load.ts'
-import { detect, packageTechnologies } from '../project/detect.ts'
+import { type Engine, EngineError, type RunOptions } from '../engines/engine.ts'
+import { activeEngines } from '../engines/registry.ts'
+import { lockIssues } from '../policy/load.ts'
+import { loadProject } from '../project/context.ts'
 import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
 import { ignoreMatcher } from '../project/ignores.ts'
-import { toolset } from '../project/toolset.ts'
 import { checkDocker } from '../scans/docker.ts'
 import { checkMarkdown } from '../scans/markdown.ts'
 import { type EngineName, type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
 import {
   applyBaseline,
-  BASELINE_FILE,
-  baselineUnreadable,
   createBaseline,
   newSuppressions,
   readBaseline,
   scanSuppressions,
+  unreadableBaseline,
   writeBaseline
 } from './baseline.ts'
+import { type CheckResult, isBlocked } from './result.ts'
 
 export interface CheckOptions {
   root: string
@@ -48,58 +41,6 @@ export interface CheckOptions {
   maxWarnings?: number
 }
 
-export interface CheckResult {
-  /** Findings the baseline does not cover, sorted by file and position. */
-  findings: Finding[]
-  /** Findings hidden because the baseline allows them. */
-  baselined: number
-  /** Problems with the setup itself. */
-  setup: SetupIssue[]
-  engines: EngineName[]
-  /** The engine commands that ran, as a person would type them. */
-  commands: string[]
-  hasBaseline: boolean
-  canShrinkBaseline: boolean
-  /** True when there were no files to look at, such as `--changed` on a clean tree. */
-  nothingToCheck: boolean
-  /** More new warnings than this fail the check. Undefined means warnings never fail it. */
-  maxWarnings?: number
-}
-
-export const EXIT_OK = 0
-
-export const EXIT_FINDINGS = 1
-
-export const EXIT_SETUP = 2
-
-/** Setup problems that mean part of the check did not run at all. */
-export const BLOCKING: readonly SetupIssue['code'][] = [
-  'engine-failed',
-  'eslint-missing',
-  'prettier-missing',
-  'oxlint-missing',
-  'oxlint-config-missing',
-  'biome-config-missing',
-  'since-unresolved',
-  'baseline-unreadable'
-]
-
-/** True when the result has more new warnings than its limit allows. */
-export const tooManyWarnings = (result: CheckResult): boolean =>
-  result.maxWarnings !== undefined &&
-  result.findings.filter(finding => finding.severity === 'warn').length > result.maxWarnings
-
-/** Exit code for a result. Setup problems only fail the run in CI, where drift must not pass. */
-export const exitCode = (result: CheckResult, ci = false): number => {
-  if (result.setup.some(issue => BLOCKING.includes(issue.code))) return EXIT_SETUP
-
-  if (ci && result.setup.length > 0) return EXIT_SETUP
-
-  if (tooManyWarnings(result)) return EXIT_FINDINGS
-
-  return result.findings.some(finding => finding.severity === 'error') ? EXIT_FINDINGS : EXIT_OK
-}
-
 /** The lower of two warning limits, so a command line cannot loosen what the policy sets. */
 const lowerLimit = (...limits: (number | undefined)[]): number | undefined => {
   const given = limits.filter((limit): limit is number => limit !== undefined)
@@ -110,14 +51,15 @@ const lowerLimit = (...limits: (number | undefined)[]): number | undefined => {
 const byPosition = (a: Finding, b: Finding): number =>
   a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column || a.rule.localeCompare(b.rule)
 
+/** Run one engine. An engine that cannot run is a setup problem, so the other engines still report. */
 const runEngine = async (
-  name: EngineName | 'prettier',
-  run: () => Promise<EngineRun>,
+  engine: Engine,
+  options: RunOptions,
   setup: SetupIssue[],
   commands: string[]
 ): Promise<Finding[]> => {
   try {
-    const { findings, command } = await run()
+    const { findings, command } = await engine.run(options)
 
     commands.push(command)
 
@@ -125,7 +67,7 @@ const runEngine = async (
   } catch (error) {
     if (!(error instanceof EngineError)) throw error
 
-    setup.push({ code: 'engine-failed', message: `${name} could not run: ${error.message}` })
+    setup.push({ code: 'engine-failed', message: `${engine.name} could not run: ${error.message}` })
 
     return []
   }
@@ -181,8 +123,8 @@ const namedScope = (root: string, named: readonly string[]): Scope | undefined =
 
 /** Run every active engine, then pawl's own checks, and compare with the baseline. */
 export const check = async (options: CheckOptions): Promise<CheckResult> => {
-  const { root } = options
-  const policy = options.policy ?? (await loadPolicy(root))
+  const project = await loadProject(options.root, options.policy)
+  const { root, policy } = project
   const setup: SetupIssue[] = []
   const commands: string[] = []
   const engines: EngineName[] = []
@@ -194,112 +136,26 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   }
   const empty = scoped !== undefined && scoped.targets.length === 0
   // Without its baseline a check would report every old finding as new, so it does not run at all.
-  const broken = options.updateBaseline !== true && baselineUnreadable(root)
-  const idle = empty || broken
+  const unreadable = options.updateBaseline === true ? undefined : unreadableBaseline(root)
+  const idle = empty || unreadable !== undefined
 
-  if (broken) {
-    setup.push({
-      code: 'baseline-unreadable',
-      message: `${BASELINE_FILE} cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.`,
-      fix: 'Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.'
-    })
-  }
+  if (unreadable) setup.push(unreadable)
 
-  for (const violation of policy.lockViolations) {
-    setup.push({
-      code: 'locked-rule',
-      message: `"${violation.rule}" is locked at "${violation.kept}" by the policy this repo extends. ${violation.source} tried to set it to "${violation.wanted}".`,
-      fix: `Remove the "${violation.rule}" override from ${violation.source}.`
-    })
-  }
+  setup.push(...lockIssues(policy))
 
   const findings: Finding[] = []
-  const tools = toolset(root, policy)
-  const detection = detect(root, policy)
-  const scope = scoped ? { files: scoped.targets } : {}
   const own = scoped ? { files: scoped.files } : {}
-  const write = options.fix === true
+  const run: RunOptions = { root, ...(scoped ? { files: scoped.targets } : {}), write: options.fix === true }
 
-  if (tools.biome) {
-    engines.push('biome')
+  for (const engine of activeEngines(project.tools)) {
+    if (engine.name !== 'prettier') engines.push(engine.name)
 
-    const context = biomeContextFor(root, policy, detection, tools)
-    const config = checkBiomeConfig(root, policy, context)
+    const state = engine.inspect(project)
 
-    if (config.issue) setup.push(config.issue)
+    setup.push(...state.issues)
 
-    for (const state of checkBiomePackages(root, packageTechnologies(detection), config.file, config.preset)) {
-      if (state.status === 'ok') continue
-
-      setup.push({
-        code: 'biome-config-stale',
-        message: `${state.file} is ${state.status === 'missing' ? 'missing' : 'out of date'}, so the rules for what that package uses are not applied there.`,
-        fix: 'Run "pawl sync".'
-      })
-    }
-
-    const packageDirs = Object.keys(packageTechnologies(detection))
-    const rules = checkRuleFiles(root, policy, context, packageDirs).filter(state => state.status !== 'ok')
-
-    for (const state of rules) {
-      setup.push({
-        code: 'biome-config-stale',
-        message: `${state.file}, one of pawl's own rules for Biome, is ${state.status === 'missing' ? 'missing' : 'out of date'}.`,
-        fix: 'Run "pawl sync".'
-      })
-    }
-
-    if (!idle && config.status !== 'missing') {
-      findings.push(...(await runEngine('biome', () => runBiome({ root, ...scope, write }), setup, commands)))
-    }
-  }
-
-  if (tools.linter === 'oxlint') {
-    engines.push('oxlint')
-
-    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
-
-    if (config.issue) setup.push(config.issue)
-
-    if (!oxlintInstalled(root)) {
-      setup.push({
-        code: 'oxlint-missing',
-        message: 'This project lints with Oxlint, but Oxlint is not installed.',
-        fix: 'Add oxlint to devDependencies.'
-      })
-    } else if (!idle && config.status !== 'missing') {
-      findings.push(...(await runEngine('oxlint', () => runOxlint({ root, ...scope, write }), setup, commands)))
-    }
-  }
-
-  if (tools.eslint) {
-    engines.push('eslint')
-
-    if (!eslintInstalled(root)) {
-      setup.push({
-        code: 'eslint-missing',
-        message: 'This project is set up to run ESLint, but ESLint is not installed.',
-        fix: 'Add eslint to devDependencies.'
-      })
-    } else if (!idle) {
-      findings.push(...(await runEngine('eslint', () => runEslint({ root, ...scope, write }), setup, commands)))
-    }
-  }
-
-  if (tools.formatter === 'prettier') {
-    const config = checkPrettierConfig(root, policy)
-
-    if (config.issue) setup.push(config.issue)
-
-    if (!prettierInstalled(root)) {
-      setup.push({
-        code: 'prettier-missing',
-        message: 'This project formats with Prettier, but Prettier is not installed.',
-        fix: 'Add prettier to devDependencies.'
-      })
-    } else if (!idle) {
-      findings.push(...(await runEngine('prettier', () => runPrettier({ root, ...scope, write }), setup, commands)))
-    }
+    if (!engine.installed(root)) setup.push(engine.missing)
+    else if (!idle && state.runnable) findings.push(...(await runEngine(engine, run, setup, commands)))
   }
 
   // Pawl's own checks for the files no engine reads.
@@ -315,7 +171,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   if (options.updateBaseline) {
     // A check that did not complete knows only some of the findings. Recorded as the baseline,
     // they would make every finding it missed fail later as new, so the file is left as it is.
-    const complete = !setup.some(issue => BLOCKING.includes(issue.code))
+    const complete = !isBlocked(setup)
 
     if (complete) writeBaseline(root, createBaseline(kept, suppressions))
 

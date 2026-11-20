@@ -10,7 +10,8 @@ import {
   readBaseline,
   scanSuppressions
 } from '../src/check/baseline.ts'
-import { check, exitCode } from '../src/check/check.ts'
+import { check } from '../src/check/check.ts'
+import { exitCode } from '../src/check/result.ts'
 import { makeIgnore } from '../src/project/ignores.ts'
 import { type Finding } from '../src/types.ts'
 import { link, project, write } from './helpers.ts'

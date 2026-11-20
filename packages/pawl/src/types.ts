@@ -185,6 +185,7 @@ export interface SetupIssue {
     | 'biome-config-missing'
     | 'biome-config-stale'
     | 'biome-config-foreign'
+    | 'biome-missing'
     | 'eslint-missing'
     | 'oxlint-missing'
     | 'oxlint-config-missing'

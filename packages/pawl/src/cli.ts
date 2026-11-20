@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process'
 import { parseArgs } from 'node:util'
 import { defaultLevel, findRule } from './catalog/rules.ts'
 import { BASELINE_FILE } from './check/baseline.ts'
-import { BLOCKING, check, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check/check.ts'
+import { check } from './check/check.ts'
 import { format, type OutputFormat } from './check/output.ts'
+import { EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from './check/result.ts'
 import { confirm, isInteractive, select } from './cli/prompt.ts'
 import { biomeContextFor, checkBiomeConfig } from './engines/biome/state.ts'
 import { OXLINT_RULES } from './engines/oxlint/rules.ts'
@@ -437,7 +438,7 @@ const runInstall = (root: string, command: string): boolean => {
 const runBaseline = async (root: string): Promise<number> => {
   const result = await check({ root, updateBaseline: true })
 
-  if (result.setup.some(issue => BLOCKING.includes(issue.code))) {
+  if (isBlocked(result.setup)) {
     out(format(result, 'pretty', { color: colorEnabled() }))
     out(`${BASELINE_FILE} was not changed.`)
 

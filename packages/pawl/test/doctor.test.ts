@@ -2,10 +2,11 @@ import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
+import { check } from '../src/check/check.ts'
 import { BIOME_VERSION } from '../src/engines/biome/config.ts'
 import { type DoctorReport, doctor, formatDoctor } from '../src/report/doctor.ts'
 import { applyInit, formatWritten, planInit } from '../src/setup/init.ts'
-import { link, PACKAGE_ROOT, project } from './helpers.ts'
+import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 const ready = async (files: Record<string, string | object> = {}): Promise<string> => {
   const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' }, ...files })
@@ -49,9 +50,22 @@ describe('pawl doctor', () => {
 
     expect(report.baseline).toEqual({ missing: 'unreadable' })
     expect(report.problems).toEqual([
-      '.pawl/baseline.json cannot be read. Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.'
+      '.pawl/baseline.json cannot be read: it is not valid JSON, or not a baseline this version of pawl knows. Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.'
     ])
     expect(formatDoctor(report)).toContain('Baseline: none (unreadable)')
+  })
+
+  it('reports the same setup problems the check does, such as a package config pawl has not written yet', async () => {
+    const root = await ready({ 'pnpm-workspace.yaml': 'packages:\n  - "apps/*"\n' })
+
+    write(root, { 'apps/web/package.json': { name: 'web', dependencies: { react: '^19' } } })
+
+    const report = await doctor(root)
+    const result = await check({ root })
+    const stale = 'apps/web/biome.json is missing, so the rules for what that package uses are not applied there.'
+
+    expect(result.setup).toContainEqual({ code: 'biome-config-stale', message: stale, fix: 'Run "pawl sync".' })
+    expect(report.problems).toContain(`${stale} Run "pawl sync".`)
   })
 
   it('reports a Biome other than the one pawl pins, and an ESLint older than it supports', async () => {

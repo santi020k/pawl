@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { type CheckResult, exitCode } from '../src/check/check.ts'
 import { formatAgent, formatPretty } from '../src/check/output.ts'
+import { type CheckResult, exitCode } from '../src/check/result.ts'
 import { type Finding } from '../src/types.ts'
 
 const result = (findings: Finding[], extra: Partial<CheckResult> = {}): CheckResult => ({

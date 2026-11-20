@@ -5,7 +5,14 @@ import { pathToFileURL } from 'node:url'
 import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from '../catalog/rules.ts'
 import { ESLINT_CONFIG_FILES, hasAny, PAWL_CONFIG_FILES } from '../project/config-files.ts'
 import { literalBrackets } from '../project/ignores.ts'
-import { type Level, type Override, type Policy, type PolicyInput, type StyleOptions } from '../types.ts'
+import {
+  type Level,
+  type Override,
+  type Policy,
+  type PolicyInput,
+  type SetupIssue,
+  type StyleOptions
+} from '../types.ts'
 import { ancestors } from '../utils/fs.ts'
 import { isRecord } from '../utils/json.ts'
 import { toList } from '../utils/list.ts'
@@ -210,6 +217,14 @@ const mergeOverride = (
     biomeOptions: biomeOptionsOf(override.biomeOptions, `${source} (overrides)`)
   }
 }
+
+/** A setup problem for each time a layer tried to loosen a rule a policy it extends had locked. */
+export const lockIssues = (policy: Pick<Policy, 'lockViolations'>): SetupIssue[] =>
+  policy.lockViolations.map(violation => ({
+    code: 'locked-rule',
+    message: `"${violation.rule}" is locked at "${violation.kept}" by the policy this repo extends. ${violation.source} tried to set it to "${violation.wanted}".`,
+    fix: `Remove the "${violation.rule}" override from ${violation.source}.`
+  }))
 
 /** The policy with no config at all. */
 export const defaultPolicy = (): Policy => mergeLayers([])

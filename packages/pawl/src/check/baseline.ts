@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from '../project/files.ts'
-import { type Finding } from '../types.ts'
+import { type Finding, type SetupIssue } from '../types.ts'
 import { readJson, sortKeys, writeJson } from '../utils/json.ts'
 
 export const BASELINE_FILE = '.pawl/baseline.json'
@@ -56,6 +56,16 @@ export const readBaseline = (root: string): Baseline | undefined => {
  */
 export const baselineUnreadable = (root: string): boolean =>
   existsSync(join(root, BASELINE_FILE)) && readBaseline(root) === undefined
+
+/** The setup problem a baseline that is there but cannot be read is, or undefined when it is fine or absent. */
+export const unreadableBaseline = (root: string): SetupIssue | undefined =>
+  baselineUnreadable(root)
+    ? {
+        code: 'baseline-unreadable',
+        message: `${BASELINE_FILE} cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.`,
+        fix: 'Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.'
+      }
+    : undefined
 
 export const writeBaseline = (root: string, baseline: Baseline): void => writeJson(join(root, BASELINE_FILE), baseline)
 

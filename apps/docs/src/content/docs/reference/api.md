@@ -7,7 +7,7 @@ description: Everything the CLI does is exported from @santi020k/pawl.
 Everything the CLI does is exported, so other tools can build on it. The package is ESM and has no dependencies.
 
 :::caution[Early]
-The API may still change before the first release. The source of truth is [`src/index.ts`](https://github.com/santi020k/pawl/blob/main/packages/pawl/src/index.ts).
+The API may still change before 1.0. The source of truth is [`src/index.ts`](https://github.com/santi020k/pawl/blob/main/packages/pawl/src/index.ts).
 :::
 
 ## In config files
@@ -33,9 +33,10 @@ export default eslint({ root: import.meta.dirname })
 | Check    | `check`, `exitCode`, `EXIT_OK`, `EXIT_FINDINGS`, `EXIT_SETUP`                                                                                                              |
 | Setup    | `planInit`, `applyInit`, `planAdd`, `planPrettierConfig`, `recordBaseline`, `formatWritten`                                                                                |
 | Migrate  | `planMigrate`, `describeMigration`, `MIGRATION_REPORT`                                                                                                                     |
-| Detect   | `detect`, `describe`, `technologies`, `allTechnologies`, `packageTechnologies`, `needsEslint`, `usesReact`                                                                 |
-| Policy   | `definePolicy`, `loadPolicy`, `resolvePolicy`, `mergeLayers`, `effectiveRules`, `defaultPolicy`, `DEFAULT_STYLE`                                                           |
+| Detect   | `detect`, `describe`, `technologies`, `allTechnologies`, `packageTechnologies`, `needsEslint`, `usesReact`, `filePacks`, `DETECTABLE`, `RUNTIMES`                          |
+| Policy   | `definePolicy`, `loadPolicy`, `resolvePolicy`, `mergeLayers`, `effectiveRules`, `defaultPolicy`, `findProjectRoot`, `DEFAULT_STYLE`, `POLICY_KEYS`, `POLICY_SCHEMA`        |
 | Rules    | `RULES`, `getRule`, `findRule`, `canonicalName`, `GATED_TAGS`                                                                                                              |
+| Ignores  | `DEFAULT_IGNORES`, `ALWAYS_IGNORED`                                                                                                                                        |
 | Packs    | `PACKS`, `getPack`, `suggestedPacks`                                                                                                                                       |
 | Baseline | `createBaseline`, `readBaseline`, `applyBaseline`, `scanSuppressions`, `BASELINE_FILE`                                                                                     |
 | Output   | `format`, `formatPretty`, `formatAgent`, `formatJson`                                                                                                                      |

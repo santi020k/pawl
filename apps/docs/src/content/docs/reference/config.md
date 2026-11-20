@@ -56,7 +56,8 @@ After changing the policy, run `pawl sync` to rewrite the Biome, Oxlint and Pret
 | `style`          | Part of [the style](#style)                                     | See below |
 | `rules`          | `Record<string, 'off' \| 'warn' \| 'error'>`                    | `{}`      |
 | `options`        | `Record<string, unknown[]>`                                     | `{}`      |
-| `overrides`      | `{ files: string[], rules?, options? }[]`                       | `[]`      |
+| `biomeOptions`   | `Record<string, Record<string, unknown>>`                       | `{}`      |
+| `overrides`      | `{ files: string[], rules?, options?, biomeOptions? }[]`        | `[]`      |
 | `locked`         | `string[]`                                                      | `[]`      |
 | `ignore`         | `string[]`                                                      | `[]`      |
 | `gitignore`      | `boolean`                                                       | `true`    |
@@ -180,19 +181,19 @@ Skip what the root `.gitignore` lists, including its `!` lines, its character cl
 
 ### defaultIgnores
 
-Skip what no project wants checked: build output and caches (`dist`, `build`, `coverage`, `.turbo`, `.next`, `.open-next`, `.astro`, `.nuxt`, `.svelte-kit`, `.output`, `.vercel`, `.wrangler`), test reports (`playwright-report`, `test-results`), `*.tsbuildinfo`, lockfiles, the folders of AI coding tools (`.agent`, `.agents`, `.aider*`, `.claude`, `.clinerules`, `.codex`, `.copilot`, `.cursor`, `.gemini`, `.kiro`, `.opencode`, `.roo`, `.windsurf`) and generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`). `false` checks them. `node_modules`, `.git` and `.pawl` are always skipped.
+Skip what no project wants checked: build output and caches (`dist`, `build`, `coverage`, `.turbo`, `.next`, `.open-next`, `.astro`, `.nuxt`, `.svelte-kit`, `.output`, `.vercel`, `.wrangler`), test reports (`playwright-report`, `test-results`), `*.tsbuildinfo`, lockfiles, `.changeset`, the folders of AI coding tools (`.agent`, `.agents`, `.aider*`, `.claude`, `.clinerules`, `.codex`, `.copilot`, `.cursor`, `.gemini`, `.kiro`, `.opencode`, `.roo`, `.windsurf`) and generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`). `false` checks them. `node_modules`, `.git` and `.pawl` are always skipped.
 
 ### runtime
 
 Where the code runs, instead of what pawl detects. Each runtime brings its global variables:
 
-| Runtime   | Detected from                                                                    | Globals                                                |
-| --------- | -------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `node`    | Any project with a `package.json`                                                | Node's                                                 |
-| `browser` | A frontend framework, or no sign of any runtime                                  | The browser's                                          |
-| `bun`     | `bun-types`, `@types/bun` or `bunfig.toml`                                       | Node's and `Bun`                                       |
-| `deno`    | `deno.json` or `deno.jsonc`                                                      | The web platform's and `Deno`                          |
-| `worker`  | `wrangler`, `@cloudflare/workers-types`, or `wrangler.toml`, `.json` or `.jsonc` | A service worker's, `HTMLRewriter` and `WebSocketPair` |
+| Runtime   | Detected from                                                                                                       | Globals                                                |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `node`    | Any project, but a Deno project without a `package.json`                                                            | Node's                                                 |
+| `browser` | A frontend framework, or no sign of any runtime                                                                     | The browser's                                          |
+| `bun`     | `bun-types`, `@types/bun` or `bunfig.toml`                                                                          | Node's and `Bun`                                       |
+| `deno`    | `deno.json` or `deno.jsonc`                                                                                         | The web platform's and `Deno`                          |
+| `worker`  | `wrangler`, `@cloudflare/workers-types`, `@cloudflare/vitest-pool-workers`, or `wrangler.toml`, `.json` or `.jsonc` | A service worker's, `HTMLRewriter` and `WebSocketPair` |
 
 Biome knows the Node and browser globals by itself, so `biome.json` names only the rest in `javascript.globals`. Oxlint gets its own `env`, and ESLint the lists of the `globals` package when the project has it, else pawl's own.
 
@@ -211,7 +212,7 @@ The default standard comes first, then each `extends` entry, then the config fil
 | `maxWarnings`                            | The lower limit wins                                           |
 | `style`                                  | Keys merge; a later key wins                                   |
 | `rules`                                  | A later level wins, unless the rule is locked and it is looser |
-| `options`                                | A later entry replaces the earlier one for that rule           |
+| `options`, `biomeOptions`                | A later entry replaces the earlier one for that rule           |
 | `gitignore`, `defaultIgnores`, `runtime` | The later one wins                                             |
 | `detect`                                 | A later `true` or `false` wins; the exclusions add up          |
 | `packs`, `locked`, `ignore`, `overrides` | The lists add up                                               |

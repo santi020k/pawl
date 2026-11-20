@@ -53,6 +53,16 @@ description: Every pawl command and option.
 
 `--format json` prints the whole report as one document: the project, the policy, the tools, each tool's installed version against the versions pawl works with, the packs the files call for, and the problems. See [Troubleshooting](/guide/troubleshooting/#pawl-doctor).
 
+## Other options
+
+| Option            | Meaning             |
+| ----------------- | ------------------- |
+| `-y`              | The same as `--yes` |
+| `-h`, `--help`    | Show the help       |
+| `-v`, `--version` | Show the version    |
+
+`--dry-run` also works with `add` and `migrate`, `--yes` with `migrate`, and `--no-install` with `add`.
+
 ## Options for migrate
 
 `migrate` takes the options for `init`, and one of its own.

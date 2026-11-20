@@ -13,7 +13,7 @@ import { toolset } from '../tools.ts'
 import { type Finding, type Policy, type Runtime } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
 import { oxlintCovers } from './oxlint.ts'
-import { EngineError, readReport, runNode } from './run.ts'
+import { EngineError, readReport, runChunked, runNode } from './run.ts'
 
 /** An ESLint flat config object. Typed loosely so pawl does not depend on ESLint's types. */
 export type FlatConfig = Record<string, unknown>
@@ -591,43 +591,40 @@ export const runEslint = async ({ root, files, write = false }: RunOptions): Pro
       command: 'eslint'
     })
 
-  const args = ['--format', 'json', '--no-warn-ignored', '--no-error-on-unmatched-pattern']
+  const flags = ['--format', 'json', '--no-warn-ignored', '--no-error-on-unmatched-pattern']
 
-  if (write) args.push('--fix')
+  if (write) flags.push('--fix')
 
-  args.push(...(files && files.length > 0 ? files : ['.']))
+  return runChunked(files, write ? 'eslint --fix' : 'eslint', async targets => {
+    const result = await runNode(bin, [...flags, ...targets], root, 'eslint')
+    const results = result.code > 1 ? undefined : readReport<EslintResult[]>(result.stdout, '[')
 
-  const result = await runNode(bin, args, root, 'eslint')
-  const results = result.code > 1 ? undefined : readReport<EslintResult[]>(result.stdout, '[')
-
-  if (!Array.isArray(results)) {
-    throw new EngineError(result.stderr.trim() || result.stdout.trim() || `ESLint exited with code ${result.code}.`, {
-      command: result.command
-    })
-  }
-
-  const findings: Finding[] = []
-
-  for (const { filePath, messages } of results) {
-    const file = toPosix(filePath.startsWith(root) ? filePath.slice(root.length + 1) : filePath)
-
-    for (const message of messages) {
-      findings.push({
-        file,
-        line: Math.max(1, message.line ?? 1),
-        column: Math.max(1, message.column ?? 1),
-        engine: 'eslint',
-        engineRule: message.ruleId ?? 'parse',
-        rule: message.ruleId ?? 'eslint:parse',
-        severity: message.severity === 2 ? 'error' : 'warn',
-        message: message.message,
-        fixable: message.fix !== undefined
+    if (!Array.isArray(results)) {
+      throw new EngineError(result.stderr.trim() || result.stdout.trim() || `ESLint exited with code ${result.code}.`, {
+        command: result.command
       })
     }
-  }
 
-  return {
-    findings,
-    command: result.command.replace(' --format json --no-warn-ignored --no-error-on-unmatched-pattern', '')
-  }
+    const findings: Finding[] = []
+
+    for (const { filePath, messages } of results) {
+      const file = toPosix(filePath.startsWith(root) ? filePath.slice(root.length + 1) : filePath)
+
+      for (const message of messages) {
+        findings.push({
+          file,
+          line: Math.max(1, message.line ?? 1),
+          column: Math.max(1, message.column ?? 1),
+          engine: 'eslint',
+          engineRule: message.ruleId ?? 'parse',
+          rule: message.ruleId ?? 'eslint:parse',
+          severity: message.severity === 2 ? 'error' : 'warn',
+          message: message.message,
+          fixable: message.fix !== undefined
+        })
+      }
+    }
+
+    return findings
+  })
 }

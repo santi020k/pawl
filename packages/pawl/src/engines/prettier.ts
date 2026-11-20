@@ -5,7 +5,7 @@ import { readJson, readJsonc, toPosix } from '../fs-utils.ts'
 import { PRETTIER_CONFIG_FILES } from '../tools.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
-import { EngineError, runNode } from './run.ts'
+import { EngineError, runChunked, runNode } from './run.ts'
 
 /** The Prettier options that express the standard's style. */
 export const prettierConfig = (policy: Policy): Record<string, string | number | boolean> => {
@@ -91,35 +91,36 @@ export const runPrettier = async ({ root, files, write = false }: RunOptions): P
       command: 'prettier'
     })
 
-  const args = [write ? '--write' : '--list-different', '--ignore-unknown', '--no-error-on-unmatched-pattern']
+  const mode = write ? '--write' : '--list-different'
+  const flags = [mode, '--ignore-unknown', '--no-error-on-unmatched-pattern']
 
-  args.push(...(files && files.length > 0 ? files : ['.']))
+  return runChunked(files, `prettier ${mode}`, async targets => {
+    const result = await runNode(bin, [...flags, ...targets], root, 'prettier')
 
-  const result = await runNode(bin, args, root, 'prettier')
+    if (result.code > 1) {
+      throw new EngineError(result.stderr.trim() || `Prettier exited with code ${result.code}.`, {
+        command: result.command
+      })
+    }
 
-  if (result.code > 1) {
-    throw new EngineError(result.stderr.trim() || `Prettier exited with code ${result.code}.`, {
-      command: result.command
-    })
-  }
+    if (write) return []
 
-  const findings: Finding[] = write
-    ? []
-    : result.stdout
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(file => ({
+    return result.stdout
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(
+        (file): Finding => ({
           file: toPosix(file),
           line: 1,
           column: 1,
-          engine: 'prettier' as const,
+          engine: 'prettier',
           engineRule: 'format',
           rule: 'pawl/format',
-          severity: 'error' as const,
+          severity: 'error',
           message: 'File is not formatted.',
           fixable: true
-        }))
-
-  return { findings, command: result.command.replace(' --ignore-unknown --no-error-on-unmatched-pattern', '') }
+        })
+      )
+  })
 }

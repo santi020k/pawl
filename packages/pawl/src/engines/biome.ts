@@ -10,7 +10,7 @@ import { GATED_TAGS, getRule, getRuleByBiome, isGated, type RuleTag, type Techno
 import { extraGlobals, RUNTIMES } from '../runtime.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../types.ts'
 import { PACKAGE_NAME } from '../version.ts'
-import { EngineError, readReport, runNode } from './run.ts'
+import { EngineError, readReport, runChunked, runNode } from './run.ts'
 
 /** The Biome version this release of pawl is tested with. Kept in step with package.json by a test. */
 export const BIOME_VERSION = '2.6.8'
@@ -662,30 +662,28 @@ export interface RunOptions {
 
 /** Run Biome and turn its report into findings. */
 export const runBiome = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
-  const args = ['check', '--reporter=json', '--max-diagnostics=none', '--no-errors-on-unmatched', '--colors=off']
+  const bin = resolveBin(root)
+  const flags = ['check', '--reporter=json', '--max-diagnostics=none', '--no-errors-on-unmatched', '--colors=off']
 
-  if (write) args.push('--write')
+  if (write) flags.push('--write')
 
-  args.push(...(files && files.length > 0 ? files : ['.']))
+  return runChunked(files, write ? 'biome check --write' : 'biome check', async targets => {
+    const result = await runNode(bin, [...flags, ...targets], root, 'biome')
 
-  const result = await runNode(resolveBin(root), args, root, 'biome')
+    if (!result.stdout.includes('{')) {
+      throw new EngineError(result.stderr.trim() || `Biome exited with code ${result.code} and no report.`, {
+        command: result.command
+      })
+    }
 
-  if (!result.stdout.includes('{')) {
-    throw new EngineError(result.stderr.trim() || `Biome exited with code ${result.code} and no report.`, {
-      command: result.command
-    })
-  }
+    const report = readReport<BiomeReport>(result.stdout, '{')
 
-  const report = readReport<BiomeReport>(result.stdout, '{')
+    if (!Array.isArray(report?.diagnostics)) {
+      throw new EngineError(`Could not read Biome's report.\n${result.stderr.trim()}`.trim(), {
+        command: result.command
+      })
+    }
 
-  if (!Array.isArray(report?.diagnostics)) {
-    throw new EngineError(`Could not read Biome's report.\n${result.stderr.trim()}`.trim(), { command: result.command })
-  }
-
-  const findings = report.diagnostics.map(toFinding).filter((finding): finding is Finding => finding !== undefined)
-
-  return {
-    findings,
-    command: result.command.replace(' --reporter=json --max-diagnostics=none --no-errors-on-unmatched --colors=off', '')
-  }
+    return report.diagnostics.map(toFinding).filter((finding): finding is Finding => finding !== undefined)
+  })
 }

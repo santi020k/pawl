@@ -11,7 +11,7 @@ import { extraGlobals, oxlintEnv } from '../runtime.ts'
 import { type Finding, type Level, type Policy, type Runtime, type SetupIssue } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
 import { OXLINT_RULES } from './oxlint-rules.ts'
-import { EngineError, readReport, runNode } from './run.ts'
+import { EngineError, readReport, runChunked, runNode } from './run.ts'
 
 export const OXLINT_CONFIG_FILE = '.oxlintrc.json'
 
@@ -259,22 +259,25 @@ export const runOxlint = async ({ root, files, write = false }: RunOptions): Pro
       command: 'oxlint'
     })
 
-  const args = ['--format', 'json', ...(write ? ['--fix'] : []), ...(files && files.length > 0 ? files : ['.'])]
-  const result = await runNode(bin, args, root, 'oxlint')
+  const flags = ['--format', 'json', ...(write ? ['--fix'] : [])]
 
-  if (!result.stdout.includes('{')) {
-    throw new EngineError((result.stderr || result.stdout).trim() || `Oxlint exited with code ${result.code}.`, {
-      command: result.command
-    })
-  }
+  return runChunked(files, write ? 'oxlint --fix' : 'oxlint', async targets => {
+    const result = await runNode(bin, [...flags, ...targets], root, 'oxlint')
 
-  const report = readReport<{ diagnostics?: OxlintDiagnostic[] }>(result.stdout, '{')
+    if (!result.stdout.includes('{')) {
+      throw new EngineError((result.stderr || result.stdout).trim() || `Oxlint exited with code ${result.code}.`, {
+        command: result.command
+      })
+    }
 
-  if (!report || typeof report !== 'object') {
-    throw new EngineError(`Could not read Oxlint's report.\n${result.stderr.trim()}`.trim(), {
-      command: result.command
-    })
-  }
+    const report = readReport<{ diagnostics?: OxlintDiagnostic[] }>(result.stdout, '{')
 
-  return { findings: (report.diagnostics ?? []).map(toFinding), command: result.command.replace(' --format json', '') }
+    if (!report || typeof report !== 'object') {
+      throw new EngineError(`Could not read Oxlint's report.\n${result.stderr.trim()}`.trim(), {
+        command: result.command
+      })
+    }
+
+    return (report.diagnostics ?? []).map(toFinding)
+  })
 }

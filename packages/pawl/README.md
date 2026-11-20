@@ -194,10 +194,10 @@ So React rules apply in the React app and nowhere else. `pawl check` reports a p
 
 Pawl has no dependencies. Every tool is an optional peer, and `init` installs the ones you pick.
 
-| Job    | Choices           | Default on auto |
-| ------ | ----------------- | --------------- |
-| Lint   | Biome or ESLint   | Biome           |
-| Format | Biome or Prettier | Biome           |
+| Job    | Choices                 | Default on auto |
+| ------ | ----------------------- | --------------- |
+| Lint   | Biome, Oxlint or ESLint | Biome           |
+| Format | Biome or Prettier       | Biome           |
 
 ```sh
 pawl init                                      # ask, or use auto without a terminal
@@ -254,7 +254,7 @@ A guard is a set of checks for one library that needs no plugin. It switches on 
 
 | Guard                                          | On when the project uses                 | What it refuses                                                                                                               |
 | ---------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `ai-keys`                                      | Any AI SDK below                         | An API key written in the code, and `dangerouslyAllowBrowser: true`                                                           |
+| `ai-keys`                                      | Any AI SDK below, but AutoGen            | An API key written in the code, and `dangerouslyAllowBrowser: true`                                                           |
 | `ai-sdk`                                       | `ai`, `@ai-sdk/*`                        | Imports of package internals                                                                                                  |
 | `openai`, `anthropic`                          | `openai`, `@anthropic-ai/sdk`            | Imports of package internals                                                                                                  |
 | `openai-agents`                                | `@openai/agents`                         | Internals, and agents from the base OpenAI client                                                                             |

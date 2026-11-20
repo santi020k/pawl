@@ -5,6 +5,7 @@ import {
   applyBaseline,
   BASELINE_FILE,
   baselineUnreadable,
+  blankJsonStrings,
   createBaseline,
   newSuppressions,
   readBaseline,
@@ -123,6 +124,31 @@ describe('disable-comment ratchet', () => {
       'src/b.js:1 oxlint-disable',
       'src/b.js:2 oxlint-disable-line'
     ])
+  })
+
+  it('does not count a JSON string that shows a disable comment, but does count the comment after it', () => {
+    const comment = (open: string, text: string): string => `${open} ${text}`
+    const files = project({
+      '.vscode/snippets.json': [
+        '{',
+        `  "skip": { "body": "${comment('//', 'eslint-disable-next-line no-console')}" },`,
+        `  "escaped": "a \\" ${comment('/*', 'biome-ignore x */')}",`,
+        `  "url": "https://example.com/${comment('*', 'eslint-disable')}"`,
+        `}  ${comment('//', 'eslint-disable-line')}`,
+        ''
+      ].join('\n'),
+      'tsconfig.json': `{
+  ${comment('/*', 'biome-ignore lint: "quoted" */')}
+  "a": "${comment('//', '@ts-ignore')}"
+}
+`
+    })
+
+    expect(scanSuppressions(files, () => false).map(item => `${item.file}:${item.line} ${item.text}`)).toEqual([
+      '.vscode/snippets.json:5 eslint-disable-line',
+      'tsconfig.json:2 biome-ignore'
+    ])
+    expect(blankJsonStrings('{"a": "x\\"y", "b": 1}')).toBe('{" ": "    ", " ": 1}')
   })
 
   it('fails only files that gained a comment since the baseline', () => {

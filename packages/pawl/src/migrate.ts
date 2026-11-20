@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { allTechnologies, detect } from './detect.ts'
 import { eslintPlan, importFromProject, importPlugin, packPreset, pluginPreset } from './engines/eslint.ts'
 import { listFiles, readJson, readJsonc, writeText } from './fs-utils.ts'
-import { ALWAYS_IGNORED, DEFAULT_IGNORES, makeIgnore, WALK_SKIP } from './ignores.ts'
+import { ALWAYS_IGNORED, DEFAULT_IGNORES, literalBrackets, makeIgnore, WALK_SKIP } from './ignores.ts'
 import { ESLINT_CONFIG, type InitAction, policyFile } from './init.ts'
 import { getPack, PACKS, type Pack } from './packs.ts'
 import { DEFAULT_STYLE, effectiveRules, findConfigFile, resolvePolicy } from './policy.ts'
@@ -480,6 +480,87 @@ const legacyConfig = (root: string): string | undefined =>
   LEGACY_FILES.find(name => existsSync(join(root, name))) ??
   (readJson<{ eslintConfig?: unknown }>(join(root, 'package.json'))?.eslintConfig ? 'package.json' : undefined)
 
+/** How many patterns one ignore pattern of the old config may be listed out into. */
+const LISTED_LIMIT = 32
+
+/** A character as it is in a pawl glob, where `*`, `?`, brackets and the backslash are special. */
+const globLiteral = (char: string): string => char.replace(/[*?[\]\\]/, '\\$&')
+
+/**
+ * An ignore pattern of the old config with its character classes listed out, such as `*.min.[jc]s`
+ * as `*.min.js` and `*.min.cs`: in a pawl pattern brackets are the characters themselves. Undefined
+ * for a class that cannot be listed, such as `[!a]`, or one that would make too many patterns.
+ */
+const listClasses = (pattern: string): string[] | undefined => {
+  const open = pattern.search(/(?<!\\)\[/)
+
+  if (open === -1) return [pattern]
+
+  // The first character of a class may be `]` itself.
+  const close = pattern.indexOf(']', open + 2)
+
+  if (close === -1) return [pattern]
+
+  const body = pattern.slice(open + 1, close)
+
+  if (/^[!^]/.test(body) || body.includes('[:')) return undefined
+
+  const chars = new Set<string>()
+
+  for (let index = 0; index < body.length; index++) {
+    const low = body[index] === '\\' ? (body[++index] ?? '') : (body[index] as string)
+
+    if (body[index + 1] === '-' && index + 2 < body.length) {
+      const high = body[index + 2] as string
+
+      for (let code = low.charCodeAt(0); code <= high.charCodeAt(0) && chars.size <= LISTED_LIMIT; code++) {
+        chars.add(String.fromCharCode(code))
+      }
+
+      index += 2
+    } else chars.add(low)
+  }
+
+  const listed: string[] = []
+
+  for (const char of chars) {
+    const rest = listClasses(`${pattern.slice(0, open)}${globLiteral(char)}${pattern.slice(close + 1)}`)
+
+    if (!rest) return undefined
+
+    listed.push(...rest)
+  }
+
+  return listed.length <= LISTED_LIMIT ? listed : undefined
+}
+
+/**
+ * The ignore patterns of the old config as pawl reads them. A pattern with brackets that names
+ * paths in the project as they are, such as a route folder `app/[slug]`, stays as it is. Any other
+ * has its classes listed out, or is left out with a note when they cannot be.
+ */
+const policyIgnores = (root: string, patterns: readonly string[], notes: string[]): string[] => {
+  let files: string[] | undefined
+
+  return patterns.flatMap(pattern => {
+    if (!/(?<!\\)\[/.test(pattern)) return [pattern]
+
+    files ??= listFiles(root)
+
+    if (files.some(makeIgnore([literalBrackets(pattern)]))) return [pattern]
+
+    const listed = listClasses(pattern)
+
+    if (listed) return listed
+
+    notes.push(
+      `The ignore pattern "${pattern}" has a character class pawl cannot list out. Add the paths it skips to "ignore" in the policy.`
+    )
+
+    return []
+  })
+}
+
 /** The patterns of a legacy config's .eslintignore file. */
 const readLegacyIgnores = (root: string): string[] => {
   const file = join(root, '.eslintignore')
@@ -734,7 +815,8 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
       `Could not read the Prettier config in ${detection.tools.prettier}. Set "style" in the policy to match it, or "pawl fix" will format the code to the standard's style.`
     )
   }
-  const ignore = legacyName ? readLegacyIgnores(root) : await readIgnores(sourcePath)
+  const read = legacyName ? readLegacyIgnores(root) : await readIgnores(sourcePath)
+  const ignore = read && policyIgnores(root, read, notes)
   const policy: PolicyInput = {
     ...(namedPacks.length > 0 ? { packs: namedPacks } : {}),
     ...(Object.keys(style).length > 0 ? { style } : {}),

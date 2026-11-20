@@ -140,6 +140,24 @@ describe('pawl doctor, with Oxlint', () => {
 })
 
 describe('pawl doctor', () => {
+  it('names a pattern whose brackets match no file, but would as a character class', async () => {
+    const root = await ready({
+      'pawl.config.json': {
+        ignore: ['legacy/v[0-9]', 'src/app/[slug]', 'later/[id]'],
+        overrides: [{ files: ['**/*.min.[jc]s'], rules: { 'no-console': 'off' } }]
+      },
+      'legacy/v1/a.js': 'export const a = 1\n',
+      'src/app/[slug]/page.js': 'export const b = 1\n',
+      'public/app.min.js': 'export const c = 1\n'
+    })
+
+    // The route folder is there as it is written, and the pattern no file matches either way is left alone.
+    expect((await doctor(root)).problems).toEqual([
+      '"legacy/v[0-9]" in ignore matches no file: pawl reads brackets as the characters themselves. As a character class it would match legacy/v1/a.js, so list the paths it should match instead.',
+      '"**/*.min.[jc]s" in the files of an override matches no file: pawl reads brackets as the characters themselves. As a character class it would match public/app.min.js, so list the paths it should match instead.'
+    ])
+  })
+
   it('reports the setup, the tool versions and the packs the files call for', async () => {
     const report = await doctor(await ready({ 'README.md': '# fixture\n', '.github/workflows/ci.yml': 'on: push\n' }))
 

@@ -22,11 +22,13 @@ import {
   tsgolintInstalled
 } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled } from './engines/prettier.ts'
+import { listFiles } from './fs-utils.ts'
 import { activeGuards } from './guards.ts'
+import { makeIgnore } from './ignores.ts'
 import { getPack } from './packs.ts'
 import { findConfigFile, loadPolicy } from './policy.ts'
 import { toolset } from './tools.ts'
-import { type EngineName, type FormatterName, type Runtime } from './types.ts'
+import { type EngineName, type FormatterName, type Policy, type Runtime } from './types.ts'
 import { NODE_RANGE, PACKAGE_NAME, PACKAGE_ROOT, PEER_RANGES, VERSION } from './version.ts'
 
 /** One tool's installed version against the versions pawl works with. */
@@ -138,6 +140,38 @@ const eslintEnforces = (config: ReadonlyArray<{ rules?: Record<string, unknown> 
 }
 
 /** Work out everything `pawl doctor` reports. Reads files only; runs no engine. */
+/**
+ * A pattern of the policy whose brackets match no path as the characters themselves, but would match
+ * some as a character class, as in `legacy/v[0-9]`. Pawl reads brackets the first way, for route
+ * folders such as `app/[slug]`, so such a pattern skips nothing, and nothing else says so.
+ */
+const bracketProblems = (root: string, policy: Policy): string[] => {
+  const patterns = [
+    ...policy.ignore.map(pattern => ({ pattern, where: 'ignore' })),
+    ...policy.overrides.flatMap(override =>
+      override.files.map(pattern => ({ pattern, where: 'the files of an override' }))
+    )
+  ].filter(({ pattern }) => /\\[[\]]/.test(pattern))
+
+  if (patterns.length === 0) return []
+
+  const files = listFiles(root)
+
+  return patterns.flatMap(({ pattern, where }) => {
+    const written = pattern.replace(/\\([[\]])/g, '$1')
+
+    if (files.some(makeIgnore([pattern]))) return []
+
+    const example = files.find(makeIgnore([written]))
+
+    return example === undefined
+      ? []
+      : [
+          `"${written}" in ${where} matches no file: pawl reads brackets as the characters themselves. As a character class it would match ${example}, so list the paths it should match instead.`
+        ]
+  })
+}
+
 export const doctor = async (root: string): Promise<DoctorReport> => {
   const policy = await loadPolicy(root)
   const detection = detect(root, policy)
@@ -294,6 +328,8 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
       `${BASELINE_FILE} cannot be read. Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.`
     )
   }
+
+  problems.push(...bracketProblems(root, policy))
 
   const guards = activeGuards(detection.dependencies, policy.packs)
   const named = new Set([...policy.packs.map(entry => entry.split('/')[0] ?? entry), ...activePacks])

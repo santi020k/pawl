@@ -180,6 +180,37 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
     }
   })
 
+  it('lists out the character classes of the old ignores, and keeps a pattern that names a path with brackets', async () => {
+    const plan = await planMigrate({
+      root: fixture({
+        'eslint.config.js': `export default [{ ignores: ${JSON.stringify([
+          '**/*.min.[jc]s',
+          'legacy/v[1-3]/**',
+          'src/app/[slug]/**',
+          'x/[!a]b',
+          'y/[a-z][a-z]'
+        ])} }, { rules: { 'no-var': 'error' } }]\n`,
+        'src/app/[slug]/page.js': 'export const a = 1\n'
+      })
+    })
+
+    // Brackets in a pawl pattern are the characters themselves, as in the route folder.
+    expect(plan.policy.ignore).toEqual([
+      '**/*.min.js',
+      '**/*.min.cs',
+      'legacy/v1',
+      'legacy/v2',
+      'legacy/v3',
+      'src/app/[slug]'
+    ])
+    expect(plan.notes).toContain(
+      'The ignore pattern "x/[!a]b" has a character class pawl cannot list out. Add the paths it skips to "ignore" in the policy.'
+    )
+    expect(plan.notes).toContain(
+      'The ignore pattern "y/[a-z][a-z]" has a character class pawl cannot list out. Add the paths it skips to "ignore" in the policy.'
+    )
+  })
+
   it('says so when the Prettier config is one it cannot read', async () => {
     const plan = await planMigrate({ root: fixture({ 'prettier.config.js': 'export default { semi: false }\n' }) })
 

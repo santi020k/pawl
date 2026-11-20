@@ -173,7 +173,7 @@ Rules that later layers may tighten but never loosen. Pawl's own checks can be l
 
 Extra glob patterns to skip, on top of the defaults and the `.gitignore`. They apply at once, even before `pawl sync` has run. A pattern without a slash matches at any depth, as in `.gitignore`: `vendor` skips every folder named `vendor`, and `src/vendor` only that one.
 
-A pattern takes `**`, `*` and `?`. `[` and `]` are the characters themselves, here and in the `files` of an override, so the route folders of Next.js, SvelteKit and Astro are named as they are on disk: `src/app/[slug]`. Pawl escapes them for each engine. Prettier has no setting for them, so pawl gives them to it as negative patterns on its command line, and `pawl fix` does not rewrite a file pawl skips. A `!` pattern that takes a file back cannot be said that way: Prettier keeps skipping that file.
+A pattern takes `**`, `*` and `?`. `[` and `]` are the characters themselves, here and in the `files` of an override, so the route folders of Next.js, SvelteKit and Astro are named as they are on disk: `src/app/[slug]`. To match one of several characters, list the patterns: `**/*.min.js` and `**/*.min.cs`, not `**/*.min.[jc]s`. `pawl doctor` names a pattern whose brackets match no file but would as a character class. Pawl escapes them for each engine. Prettier has no setting for them, so pawl gives them to it as negative patterns on its command line, and `pawl fix` does not rewrite a file pawl skips. A `!` pattern that takes a file back cannot be said that way: Prettier keeps skipping that file.
 
 ### gitignore
 

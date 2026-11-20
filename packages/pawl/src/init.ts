@@ -772,6 +772,15 @@ export const planOxlintConfig = (root: string, policy: Policy, detection: Detect
   }
 }
 
+/**
+ * What to say about an .eslintrc file. ESLint 9 and later read flat config only, so the file's
+ * rules reach pawl through `pawl migrate` or not at all.
+ */
+const legacyNote = (file: string, replaced: boolean): string =>
+  replaced
+    ? `${file} is a legacy ESLint config, which ESLint no longer reads now that eslint.config.js is there. Its rules were not carried over: "pawl migrate" does that, before "pawl init" has run.`
+    : `${file} is a legacy ESLint config, which pawl does not run. Run "pawl migrate" in place of "pawl init" to carry its rules into the policy, or remove ESLint and the file when you are ready.`
+
 /** Work out everything `init` would do, without touching the disk. */
 export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const {
@@ -803,10 +812,10 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const kept: EngineName | undefined = (tools.oxlint && 'oxlint') || (tools.eslint && 'eslint') || undefined
   const linter: EngineName = options.engine ?? (keep && kept ? kept : 'biome')
   const formatter: FormatterName = options.formatter ?? (keep && tools.prettier ? 'prettier' : 'biome')
+  // An .eslintrc file. ESLint reads flat config only, so pawl cannot run this one as it is.
+  const legacyEslint = tools.eslint !== undefined && !hasFlatEslint
   const wantsEslint =
-    linter === 'eslint' ||
-    requestedPacks.length > 0 ||
-    (mode !== 'biome' && (tools.eslint !== undefined || needsEslint(detection)))
+    linter === 'eslint' || requestedPacks.length > 0 || (mode !== 'biome' && (hasFlatEslint || needsEslint(detection)))
   const engines: EngineName[] = [
     ...(linter === 'eslint' ? [] : [linter]),
     ...(wantsEslint ? (['eslint'] as const) : [])
@@ -876,24 +885,24 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     notes.push(`Biome now formats the code. You can remove Prettier and ${tools.prettier} when you are ready.`)
 
   if (wantsEslint) {
-    if (!tools.eslint) {
+    if (!hasFlatEslint) {
       push({
         path: 'eslint.config.js',
         kind: 'create',
         summary: linter === 'eslint' ? 'the pawl standard for ESLint' : 'ESLint for what Biome does not cover',
         apply: () => writeText(join(root, 'eslint.config.js'), ESLINT_CONFIG)
       })
-    } else if (hasFlatEslint && readFileSync(join(root, tools.eslint), 'utf8').includes(PACKAGE_NAME)) {
+
+      if (legacyEslint) notes.push(legacyNote(tools.eslint as string, true))
+    } else if (tools.eslint && readFileSync(join(root, tools.eslint), 'utf8').includes(PACKAGE_NAME)) {
       // The ESLint config is already built from the policy.
-    } else if (hasFlatEslint) {
+    } else {
       notes.push(
         `Your ${tools.eslint} is unchanged. To put ESLint under the pawl standard and its packs, export eslint() from ${PACKAGE_NAME} in it.`
       )
-    } else {
-      notes.push(
-        `${tools.eslint} is a legacy ESLint config. Pawl works with flat config (eslint.config.js) and left it alone.`
-      )
     }
+  } else if (legacyEslint) {
+    notes.push(legacyNote(tools.eslint as string, false))
   } else if (tools.eslint) {
     notes.push(`Pawl no longer runs ESLint here. You can remove ESLint and ${tools.eslint} when you are ready.`)
   }
@@ -1089,21 +1098,23 @@ export const planAdd = async (root: string, names: readonly string[], install = 
     )
   }
 
+  const hasFlatEslint = ESLINT_CONFIG_FILES.some(name => existsSync(join(root, name)))
+
   if (!needsEslint) {
     // Nothing to set up.
-  } else if (!detection.tools.eslint) {
+  } else if (hasFlatEslint) {
+    notes.push(
+      `Packs apply through eslint() from ${PACKAGE_NAME}. Make sure your ${detection.tools.eslint} exports it or spreads it.`
+    )
+  } else {
     actions.push({
       path: 'eslint.config.js',
       kind: 'create',
       summary: 'ESLint for the packs',
       apply: () => writeText(join(root, 'eslint.config.js'), ESLINT_CONFIG)
     })
-  } else if (ESLINT_CONFIG_FILES.some(name => existsSync(join(root, name)))) {
-    notes.push(
-      `Packs apply through eslint() from ${PACKAGE_NAME}. Make sure your ${detection.tools.eslint} exports it or spreads it.`
-    )
-  } else {
-    notes.push(`${detection.tools.eslint} is a legacy ESLint config. Packs need flat config (eslint.config.js).`)
+
+    if (detection.tools.eslint) notes.push(legacyNote(detection.tools.eslint, true))
   }
 
   const named = names.filter(

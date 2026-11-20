@@ -39,4 +39,6 @@ Then it runs `init`, which installs the tools and records the baseline.
 | `--keep-config` | Write the policy and leave the ESLint config file alone |
 | `--yes`         | Do not ask before writing                               |
 
+`pawl init` does not read an ESLint config: with an `.eslintrc` it says so and points here, because migrating is the only way that file's rules reach the policy. Run `pawl migrate` first, in place of `init`.
+
 A legacy `.eslintrc` works too, as long as the project has ESLint 8 or 9. Pawl writes a new `eslint.config.js` and leaves the old file for you to delete. ESLint 10 no longer reads `.eslintrc`: convert it with `npx @eslint/migrate-config` first.

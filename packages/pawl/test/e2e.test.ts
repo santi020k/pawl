@@ -208,6 +208,54 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     })
   })
 
+  it('does not count a legacy .eslintrc as ESLint running, and points to migrate', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module', devDependencies: { eslint: '^9.0.0' } },
+      '.eslintrc.json': { rules: { 'no-console': 'off' } }
+    })
+    const plan = await planInit({ root, install: false, editor: false })
+
+    // ESLint reads flat config only, so with an .eslintrc alone Biome is the one linter.
+    expect(plan.engines).toEqual(['biome'])
+    expect(plan.actions.map(action => action.path)).toEqual(['biome.json', 'package.json'])
+    expect(plan.notes).toContain(
+      '.eslintrc.json is a legacy ESLint config, which pawl does not run. Run "pawl migrate" in place of "pawl init" to carry its rules into the policy, or remove ESLint and the file when you are ready.'
+    )
+  })
+
+  it.runIf(existsSync(join(PACKAGE_ROOT, 'dist/index.js')))(
+    'writes a flat config when the repo keeps ESLint and only has a legacy .eslintrc',
+    async () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        '.eslintrc.json': { rules: { 'no-console': 'off' } },
+        'src/a.js': 'debugger\n'
+      })
+
+      link(root, { eslint: true })
+
+      const plan = await planInit({ root, mode: 'keep', install: false, editor: false })
+
+      expect(plan.engines).toEqual(['eslint'])
+      expect(plan.actions.map(action => action.path)).toEqual([
+        'pawl.config.ts',
+        'biome.json',
+        'eslint.config.js',
+        'package.json'
+      ])
+      expect(plan.notes.join(' ')).toContain(
+        '.eslintrc.json is a legacy ESLint config, which ESLint no longer reads now that eslint.config.js is there.'
+      )
+      applyInit(plan)
+
+      // Without the flat config, ESLint would stop with "couldn't find an eslint.config file".
+      const result = await check({ root })
+
+      expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+      expect(result.findings.map(finding => finding.rule)).toContain('no-debugger')
+    }
+  )
+
   it('adds ESLint next to Biome for frameworks Biome does not fully lint, and sets up CI and agents on request', async () => {
     const root = project({
       'package.json': {

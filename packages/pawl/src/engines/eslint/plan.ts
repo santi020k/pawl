@@ -3,10 +3,10 @@ import { PACKS, type Pack } from '../../catalog/packs.ts'
 import { getRule, notFor, scopedRule, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
-import { findProjectRoot, loadPolicy } from '../../policy/load.ts'
-import { allTechnologies, detect } from '../../project/detect.ts'
+import { findProjectRoot } from '../../policy/load.ts'
+import { loadProject } from '../../project/context.ts'
+import { allTechnologies } from '../../project/detect.ts'
 import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../../project/ignores.ts'
-import { toolset } from '../../project/toolset.ts'
 import { type Policy, type Runtime } from '../../types.ts'
 import { isRecord } from '../../utils/json.ts'
 import { toList } from '../../utils/list.ts'
@@ -100,40 +100,47 @@ const wants = (pack: Pack, options: EslintPlanOptions): 'named' | 'auto' | 'sugg
   return pack.when.some(name => (options.dependencies ?? []).includes(name)) ? 'suggested' : undefined
 }
 
-/** Work out the ESLint configuration for a policy, and what it cannot cover. */
-export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan> => {
-  const { root, policy, biomeActive, typescript, technologies = [] } = options
+/** A pack that is on and has a block of its own in the config. */
+interface PackBlock {
+  pack: Pack
+  plugin: Record<string, unknown>
+  /** The rules that came from the plugin's own preset, which the installed plugin is sure to have. */
+  fromPlugin: Set<string>
+}
+
+/** What the plan is built from and into, phase by phase. */
+interface Build {
+  options: EslintPlanOptions
   /** The fast linter already enforces this rule, so ESLint leaves it alone. */
-  const covered = (name: string): boolean =>
-    (biomeActive && getRule(name)?.biome !== undefined) ||
-    (options.oxlintActive === true && oxlintCovers(getRule(name)?.name ?? name))
-  const coveredByBiome: string[] = []
-  const notEnforced: EslintPlan['notEnforced'] = []
-  const activePacks: string[] = []
-  const availablePacks: string[] = []
-  const plugins = new Map<string, Loaded>()
-  const coreRules: Rules = {}
-  const pluginRules: Rules = {}
-  const tsRules: Rules = {}
+  covered: (name: string) => boolean
+  /** typescript-eslint, when the project has TypeScript. Its files need the parser even with no rule on. */
+  ts: Loaded
+  /** Every plugin loaded for a catalog rule, by its rule prefix. */
+  plugins: Map<string, Loaded>
+  coreRules: Rules
+  pluginRules: Rules
+  tsRules: Rules
   /** The rules of each active pack, by pack name. */
-  const packRules = new Map<string, Rules>()
-  /** The policy's options, less the two rules the guards build themselves. */
-  const remainingOptions: Record<string, unknown[]> = { ...policy.options }
-  const packBlocks: Array<{ pack: Pack; plugin: Record<string, unknown>; fromPlugin: Set<string> }> = []
-  let needsTypes = false
+  packRules: Map<string, Rules>
+  packBlocks: PackBlock[]
+  needsTypes: boolean
+  coveredByBiome: string[]
+  notEnforced: EslintPlan['notEnforced']
+  activePacks: string[]
+  availablePacks: string[]
+}
 
-  // TypeScript files need the typescript-eslint parser even when no TypeScript rule is on.
-  const loadedTs = typescript ? await importFromProject(root, 'typescript-eslint') : {}
-  const tseslint = loadedTs.module
-
-  if (typescript) plugins.set(TS_PREFIX, loadedTs)
+/** Load the plugin of every pack the project wants, and start each pack from its preset. */
+const loadPacks = async (build: Build): Promise<void> => {
+  const { options, ts, notEnforced, availablePacks, activePacks, coreRules, tsRules, packRules, packBlocks } = build
+  const { root, policy } = options
 
   for (const pack of PACKS) {
     const reason = wants(pack, options)
 
     if (!reason) continue
 
-    const loaded = pack.name === 'typescript' ? loadedTs : await importPlugin(root, pack.plugin)
+    const loaded = pack.name === 'typescript' ? ts : await importPlugin(root, pack.plugin)
 
     if (!loaded.module) {
       if (reason === 'suggested' && !loaded.error) availablePacks.push(pack.name)
@@ -164,8 +171,15 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
       packBlocks.push({ pack, plugin: loaded.module, fromPlugin: new Set(Object.keys(preset)) })
     }
 
-    needsTypes ||= pack.typeAware === true
+    build.needsTypes ||= pack.typeAware === true
   }
+}
+
+/** Give each catalog rule to the block that runs it: the base, TypeScript, a pack, or a plugin of its own. */
+const placeRules = async (build: Build): Promise<void> => {
+  const { options, covered, ts, plugins, coreRules, pluginRules, tsRules, packRules, packBlocks } = build
+  const { coveredByBiome, notEnforced } = build
+  const { root, policy, biomeActive, typescript, technologies = [] } = options
 
   for (const [name, level] of effectiveRules(policy, { typescript, technologies })) {
     // Names another engine runs, and pawl's own rules, are not ESLint's to run.
@@ -203,7 +217,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
       // In TypeScript files the typescript-eslint twin of a core rule replaces it.
       const twin = def?.aliases?.find(alias => alias.startsWith(`${TS_PREFIX}/`))
 
-      if (twin && tseslint && level !== 'off') {
+      if (twin && ts.module && level !== 'off') {
         tsRules[eslintName] = 'off'
         tsRules[twin] = value
       }
@@ -233,13 +247,17 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
 
     if (prefix === TS_PREFIX) {
       tsRules[eslintName] = value
-      needsTypes ||= def?.typeAware === true
+      build.needsTypes ||= def?.typeAware === true
     } else {
       pluginRules[eslintName] = value
     }
   }
+}
 
-  // Guards: imports and code patterns to stay away from, for the libraries the project uses.
+/** The guards: imports and code patterns to stay away from, for the libraries the project uses. */
+const applyGuards = ({ options, coreRules, coveredByBiome }: Build): void => {
+  const { policy, biomeActive } = options
+
   const imports = importRestrictions(policy, options.dependencies)
   // Biome runs the guards' code patterns as pawl's own rules, so ESLint keeps only the project's.
   const syntax = syntaxRestrictions(policy, options.dependencies, { guards: !biomeActive })
@@ -251,8 +269,14 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
   } else if (imports) coreRules[IMPORTS_RULE] = [imports.level, imports.eslint]
 
   if (syntax) coreRules[SYNTAX_RULE] = [syntax.level, ...syntax.options]
+}
 
-  // Options the policy sets for rules whose level comes from a pack or a preset.
+/** Options the policy sets for rules whose level comes from a pack or a preset. */
+const applyOptions = ({ options, coreRules, pluginRules, tsRules, packRules }: Build): void => {
+  const { policy } = options
+  const remainingOptions: Record<string, unknown[]> = { ...policy.options }
+
+  // The two rules the guards build themselves take their options there.
   for (const name of [IMPORTS_RULE, SYNTAX_RULE]) delete remainingOptions[name]
 
   for (const rules of [coreRules, pluginRules, tsRules, ...packRules.values()]) {
@@ -263,12 +287,19 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
       if (current !== undefined && severity !== 'off' && severity !== 0) rules[name] = [severity, ...ruleOptions]
     }
   }
+}
+
+/** The ignores, the base block for scripts and the TypeScript block. */
+const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
+  const { options, ts, plugins, coreRules, pluginRules, tsRules, notEnforced } = build
+  const { root, policy, typescript } = options
 
   // The defaults, the root .gitignore and the policy's own patterns, in that order, as pawl reads them.
   const ignores = [
     ...new Set([...ALWAYS_IGNORED.map(dir => `**/${dir}/**`), ...allIgnores(root, policy).flatMap(toEslintIgnores)])
   ]
   const config: FlatConfig[] = [{ name: 'pawl/ignores', ignores }]
+  const tseslint = ts.module
   const otherPlugins = Object.fromEntries(
     [...plugins].flatMap(([prefix, loaded]) => (prefix !== TS_PREFIX && loaded.module ? [[prefix, loaded.module]] : []))
   )
@@ -293,14 +324,21 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
       files: TS_FILES,
       languageOptions: {
         parser: tseslint.parser,
-        parserOptions: needsTypes ? { projectService: true, tsconfigRootDir: root } : {}
+        parserOptions: build.needsTypes ? { projectService: true, tsconfigRootDir: root } : {}
       },
       plugins: { [TS_PREFIX]: tseslint.plugin },
       rules: tsRules
     })
   } else if (typescript && !notEnforced.some(item => item.rule === 'The TypeScript pack')) {
-    notEnforced.push({ rule: 'TypeScript files', needs: needs('typescript-eslint', loadedTs) })
+    notEnforced.push({ rule: 'TypeScript files', needs: needs('typescript-eslint', ts) })
   }
+
+  return config
+}
+
+/** One block per active pack, with the rules the installed plugin has. */
+const packConfigs = ({ covered, packRules, packBlocks, notEnforced }: Build): FlatConfig[] => {
+  const config: FlatConfig[] = []
 
   for (const { pack, plugin, fromPlugin } of packBlocks) {
     const rules = packRules.get(pack.name) ?? {}
@@ -351,7 +389,15 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     }
   }
 
-  // Overrides go last, so they win over the base rules and the packs for the files they name.
+  return config
+}
+
+/** The policy's overrides. They go last, so they win over the base rules and the packs for the files they name. */
+const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
+  const { options, covered, ts, plugins, packBlocks, notEnforced } = build
+  const { root, policy, typescript, technologies = [] } = options
+  const config: FlatConfig[] = []
+  const tseslint = ts.module
   const loadedPlugins = new Map<string, unknown>([
     ...[...plugins].flatMap(([prefix, loaded]): [string, unknown][] =>
       loaded.module ? [[prefix, prefix === TS_PREFIX ? tseslint?.plugin : loaded.module]] : []
@@ -422,6 +468,40 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     }
   }
 
+  return config
+}
+
+/** Work out the ESLint configuration for a policy, and what it cannot cover. */
+export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan> => {
+  const { root, biomeActive, typescript } = options
+  const ts: Loaded = typescript ? await importFromProject(root, 'typescript-eslint') : {}
+  const build: Build = {
+    options,
+    covered: name =>
+      (biomeActive && getRule(name)?.biome !== undefined) ||
+      (options.oxlintActive === true && oxlintCovers(getRule(name)?.name ?? name)),
+    ts,
+    plugins: new Map(typescript ? [[TS_PREFIX, ts]] : []),
+    coreRules: {},
+    pluginRules: {},
+    tsRules: {},
+    packRules: new Map(),
+    packBlocks: [],
+    needsTypes: false,
+    coveredByBiome: [],
+    notEnforced: [],
+    activePacks: [],
+    availablePacks: []
+  }
+
+  await loadPacks(build)
+  await placeRules(build)
+  applyGuards(build)
+  applyOptions(build)
+
+  const config = [...(await baseConfigs(build)), ...packConfigs(build), ...(await overrideConfigs(build))]
+  const { coveredByBiome, notEnforced, activePacks, availablePacks } = build
+
   return { config, coveredByBiome, notEnforced, activePacks, availablePacks }
 }
 
@@ -436,14 +516,13 @@ export interface EslintOptions {
 
 /** The plan for a project as it stands on disk. */
 export const eslintPlanFor = async (root: string, policy?: Policy): Promise<EslintPlan> => {
-  const resolved = policy ?? (await loadPolicy(root))
-  const detection = detect(root, resolved)
+  const { policy: resolved, detection, tools } = await loadProject(root, policy)
 
   return eslintPlan({
     root,
     policy: resolved,
-    biomeActive: toolset(root, resolved).linter === 'biome',
-    oxlintActive: toolset(root, resolved).linter === 'oxlint',
+    biomeActive: tools.linter === 'biome',
+    oxlintActive: tools.linter === 'oxlint',
     typescript: detection.typescript,
     // One ESLint config covers the whole repo, so it takes every technology in it.
     technologies: allTechnologies(detection),

@@ -14,7 +14,7 @@ catalog:
   "@santi020k/commitprompt": ^1.1.0
   "@santi020k/lumen-astro": ^5.2.0
   "@santi020k/og": ^1.2.1
-  "@types/node": ^22.18.0
+  "@types/node": ^26.6.6
   astro: ^7.4.0
   cspell: ^10.5.1
   eslint: ^10.15.0

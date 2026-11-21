@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { describeMigration, MIGRATION_REPORT, planMigrate } from '../src/setup/migrate.ts'
+import { describeMigration, MIGRATION_REPORT, planMigrate } from '../src/setup/migrate/plan.ts'
 import { applyPlan } from '../src/setup/plan.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
 

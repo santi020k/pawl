@@ -1,7 +1,7 @@
 /** `pawl migrate`: turn an ESLint config into a policy, then run `init`. */
 
 import { EXIT_OK } from '../../check/result.ts'
-import { describeMigration, planMigrate } from '../../setup/migrate.ts'
+import { describeMigration, planMigrate } from '../../setup/migrate/plan.ts'
 import { applyPlan } from '../../setup/plan.ts'
 import { type Flags, packList } from '../args.ts'
 import { endDryRun, out, printNotes } from '../io.ts'

@@ -767,7 +767,7 @@ export const planOxlintConfig = (
   detection: Detection,
   adding: readonly string[] = []
 ): InitAction | undefined => {
-  const context = oxlintContextFor({ ...detection, dependencies: [...detection.dependencies, ...adding] }, root)
+  const context = oxlintContextFor({ ...detection, dependencies: [...detection.dependencies, ...adding] }, root, adding)
   const state = checkOxlintConfig(root, policy, context)
   const path = join(root, OXLINT_CONFIG_FILE)
 

@@ -62,13 +62,35 @@ export interface OxlintContext extends RuleContext {
   typeAware?: boolean
 }
 
-/** The Oxlint context for a project. One Oxlint config covers the whole repo, so it takes every technology in it. */
-export const oxlintContextFor = (detection: Detection, root?: string): OxlintContext => ({
+/**
+ * True when the root package.json has oxlint-tsgolint in its dependencies or devDependencies. Oxlint
+ * runs at the root and looks for tsgolint from there, so a workspace package's copy, or a peer that
+ * nothing installs, does not count.
+ */
+export const rootDeclaresTsgolint = (root: string): boolean => {
+  const manifest = readJson<{ dependencies?: object; devDependencies?: object }>(join(root, 'package.json'))
+
+  return TYPE_AWARE_PACKAGE in { ...manifest?.dependencies, ...manifest?.devDependencies }
+}
+
+/**
+ * The Oxlint context for a project. One Oxlint config covers the whole repo, so it takes every
+ * technology in it. `adding` is what `pawl init` is about to add to the root package.json.
+ */
+export const oxlintContextFor = (
+  detection: Detection,
+  root?: string,
+  adding: readonly string[] = []
+): OxlintContext => ({
   typescript: true,
   technologies: allTechnologies(detection),
   dependencies: detection.dependencies,
   runtimes: detection.runtimes,
-  typeAware: detection.dependencies.includes(TYPE_AWARE_PACKAGE) || (root !== undefined && tsgolintInstalled(root))
+  typeAware:
+    adding.includes(TYPE_AWARE_PACKAGE) ||
+    (root === undefined
+      ? detection.dependencies.includes(TYPE_AWARE_PACKAGE)
+      : rootDeclaresTsgolint(root) || tsgolintInstalled(root))
 })
 
 /** Oxlint's name for a rule of the standard, or undefined when Oxlint does not have it. */

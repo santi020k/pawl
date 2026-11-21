@@ -18,6 +18,7 @@ import {
   oxlintContextFor,
   oxlintGaps,
   oxlintInstalled,
+  rootDeclaresTsgolint,
   TYPE_AWARE_PACKAGE,
   tsgolintInstalled
 } from './engines/oxlint.ts'
@@ -300,9 +301,18 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
 
     engines.oxlint.notEnforced = wanted
 
+    // A workspace package's copy, or an optional peer, is one Oxlint at the root cannot run.
+    const elsewhere = detection.dependencies.includes(TYPE_AWARE_PACKAGE) && !rootDeclaresTsgolint(root)
+
     for (const [needs, rules] of groupByNeed(wanted)) {
-      if (needs !== NO_OXLINT_EQUIVALENT)
-        problems.push(`Not enforced by Oxlint: ${nameRules(rules)} (install ${needs}).`)
+      if (needs === NO_OXLINT_EQUIVALENT) continue
+
+      const add =
+        needs === TYPE_AWARE_PACKAGE && elsewhere
+          ? `add ${needs} to the devDependencies of the root package.json`
+          : `install ${needs}`
+
+      problems.push(`Not enforced by Oxlint: ${nameRules(rules)} (${add}).`)
     }
   }
 

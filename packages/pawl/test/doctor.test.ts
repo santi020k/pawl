@@ -120,6 +120,19 @@ describe('pawl doctor, with Oxlint', () => {
     ])
   })
 
+  it('asks for tsgolint at the root when only a workspace package declares it, and does not stop the check', async () => {
+    const root = await oxlintProject({
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'packages/a/package.json': { name: 'a', devDependencies: { 'oxlint-tsgolint': '*' } }
+    })
+    const report = await doctor(root)
+
+    expect(report.problems).toEqual([
+      'Not enforced by Oxlint: @typescript-eslint/await-thenable, @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated and 6 more (add oxlint-tsgolint to the devDependencies of the root package.json).'
+    ])
+    expect((await check({ root })).setup.map(issue => issue.code)).not.toContain('tsgolint-missing')
+  })
+
   it('says to install the dependencies when init added tsgolint and the install has not run', async () => {
     const root = project({
       'package.json': { name: 'fixture', private: true, type: 'module' },

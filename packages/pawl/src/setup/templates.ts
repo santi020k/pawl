@@ -1,9 +1,9 @@
+/** The files and settings pawl writes into a project, as text it can compare and update. */
+
 import { type PackageManager } from '../project/detect.ts'
 import { type PolicyInput } from '../types.ts'
 import { isRecord, type JsonRecord } from '../utils/json.ts'
 import { PACKAGE_NAME } from '../version.ts'
-
-/** The files and settings pawl writes into a project, as text it can compare and update. */
 
 /** The ESLint config pawl writes. The root is the config file's folder, wherever ESLint is started from. */
 export const ESLINT_CONFIG = `import { eslint } from '${PACKAGE_NAME}'

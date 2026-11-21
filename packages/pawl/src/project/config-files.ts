@@ -1,10 +1,10 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-
 /**
  * The config file names of every tool pawl drives or looks for. Each list is in the order the
  * tool itself searches, so the first file that exists is the one the tool reads.
  */
+
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 /** A pawl policy. */
 export const PAWL_CONFIG_FILES = [

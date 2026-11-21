@@ -1,3 +1,5 @@
+/** Bringing each engine's config file in line with the policy, for `init` and `sync`. */
+
 import { join } from 'node:path'
 import { BIOME_PRESET, type BiomeContext, biomeProjectConfig } from '../engines/biome/config.ts'
 import {
@@ -17,8 +19,6 @@ import { writeText } from '../utils/fs.ts'
 import { type JsonRecord, mergeDeep, readJsonc, writeJson } from '../utils/json.ts'
 import { toList } from '../utils/list.ts'
 import { type SetupAction } from './plan.ts'
-
-/** Bringing each engine's config file in line with the policy, for `init` and `sync`. */
 
 /** Join two `extends` lists, keeping the order and dropping repeats. */
 const mergeExtends = (first: unknown, second: unknown): unknown[] => [...new Set([...toList(first), ...toList(second)])]

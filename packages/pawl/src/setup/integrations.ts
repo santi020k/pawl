@@ -1,3 +1,5 @@
+/** What pawl adds around the engines: scripts, task runners, editors, coding agents and Git hooks. */
+
 import { chmodSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { firstExisting, LEFTHOOK_CONFIG_FILES } from '../project/config-files.ts'
@@ -16,8 +18,6 @@ import {
   PRETTIER_EDITOR_SETTINGS,
   workflowFile
 } from './templates.ts'
-
-/** What pawl adds around the engines: scripts, task runners, editors, coding agents and Git hooks. */
 
 /** Add the check and fix scripts, and, when pawl is not running the install, the packages to install. */
 export const planScripts = (root: string, notes: string[], packages: readonly string[]): SetupAction | undefined => {

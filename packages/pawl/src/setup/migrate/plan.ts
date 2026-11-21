@@ -1,27 +1,37 @@
-import { existsSync, readFileSync, renameSync } from 'node:fs'
+import { readFileSync, renameSync } from 'node:fs'
 import { extname, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { getPack, PACKS, type Pack } from '../../catalog/packs.ts'
+import { getPack, PACKS } from '../../catalog/packs.ts'
 import { getRule, type RuleDef } from '../../catalog/rules.ts'
-import { importFromProject, importPlugin, packPreset, pluginPreset } from '../../engines/eslint/load.ts'
+import { importFromProject } from '../../engines/eslint/load.ts'
 import { eslintPlan } from '../../engines/eslint/plan.ts'
-import { effectiveRules } from '../../policy/levels.ts'
+import { effectiveRules, type RuleContext } from '../../policy/levels.ts'
 import { findConfigFile, resolvePolicy } from '../../policy/load.ts'
-import { DEFAULT_STYLE } from '../../policy/merge.ts'
-import { ESLINT_CONFIG_FILES, ESLINT_LEGACY_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
-import { allTechnologies, detect } from '../../project/detect.ts'
-import { listFiles } from '../../project/files.ts'
-import { ALWAYS_IGNORED, DEFAULT_IGNORES, WALK_SKIP } from '../../project/ignores.ts'
-import { type Level, type PolicyInput, type StyleOptions } from '../../types.ts'
+import { ESLINT_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
+import { allTechnologies, type Detection, detect } from '../../project/detect.ts'
+import { type Level, type PolicyInput } from '../../types.ts'
 import { writeText } from '../../utils/fs.ts'
-import { readJson, sameJson } from '../../utils/json.ts'
+import { sameJson } from '../../utils/json.ts'
 import { plural } from '../../utils/text.ts'
 import { PACKAGE_NAME } from '../../version.ts'
 import { type SetupAction } from '../plan.ts'
 import { ESLINT_CONFIG, policyFile } from '../templates.ts'
-
-/** Patterns pawl skips by default, so a migrated config need not list them. */
-const COVERED = new Set([...ALWAYS_IGNORED, ...DEFAULT_IGNORES])
+import {
+  type CoreRules,
+  type EslintClass,
+  IMPORT_SORTING,
+  legacyConfig,
+  on,
+  packFit,
+  pickSamples,
+  rank,
+  readIgnores,
+  readLegacyIgnores,
+  resolveSide,
+  type Side,
+  splitName
+} from './read.ts'
+import { reportFile } from './report.ts'
+import { styleFrom } from './style.ts'
 
 /** Where the full account of a migration is written. */
 export const MIGRATION_REPORT = '.pawl/migration.md'
@@ -67,319 +77,6 @@ export interface MigratePlan {
   notEnforced: Array<{ rule: string; needs: string }>
 }
 
-interface Resolved {
-  level: Level
-  options: unknown[]
-}
-
-type RuleMap = Map<string, Resolved>
-
-interface EslintConfig {
-  rules?: Record<string, unknown>
-  plugins?: Record<string, { rules?: Record<string, { meta?: { type?: string } }> }>
-}
-
-interface EslintApi {
-  calculateConfigForFile: (file: string) => Promise<EslintConfig | undefined>
-}
-
-type EslintClass = new (options: Record<string, unknown>) => EslintApi
-
-const LEVELS: readonly Level[] = ['off', 'warn', 'error']
-
-const rank = (level: Level): number => LEVELS.indexOf(level)
-
-const toLevel = (value: unknown): Level => {
-  const severity = Array.isArray(value) ? (value[0] as unknown) : value
-
-  if (severity === 2 || severity === 'error') return 'error'
-
-  return severity === 1 || severity === 'warn' ? 'warn' : 'off'
-}
-
-/** One sample per kind of file, so rules that only apply to tests or to data files are seen too. */
-const SAMPLE_KINDS: ReadonlyArray<{ test: RegExp; fallback?: string }> = [
-  { test: /(?<!\.d)\.(ts|mts|cts)$/, fallback: 'src/index.ts' },
-  { test: /\.tsx$/ },
-  { test: /\.(js|mjs|cjs)$/, fallback: 'src/index.js' },
-  { test: /\.jsx$/ },
-  { test: /\.(test|spec)\.[cm]?[jt]sx?$/ },
-  { test: /\.vue$/ },
-  { test: /\.svelte$/ },
-  { test: /\.astro$/ },
-  { test: /\.json$/ },
-  { test: /\.ya?ml$/ },
-  { test: /\.md$/ },
-  { test: /\.toml$/ },
-  { test: /\.html$/ }
-]
-
-const TEST_FILE = /\.(test|spec)\.|(^|\/)__tests__\//
-
-const CONFIG_FILE = /(^|\/)[^/]*\.config\.[cm]?[jt]s$/
-
-const SAMPLE_TRIES = 5
-
-/** Formatting plugins, whose every rule is the formatter's job. */
-const FORMAT_PREFIXES = /^(@stylistic(\/[a-z]+)?|style|prettier)$/
-
-/** Plugins for template languages. The formatter does not replace their layout rules. */
-const TEMPLATE_PREFIXES = new Set(['vue', 'svelte', 'astro', 'html', '@html-eslint'])
-
-const IMPORT_SORTING = new Set([
-  'sort-imports',
-  'import/order',
-  'import-x/order',
-  'simple-import-sort/imports',
-  'simple-import-sort/exports'
-])
-
-/** ESLint's own formatting rules, for versions of ESLint that no longer ship them. */
-const CORE_FORMATTING = new Set([
-  'array-bracket-spacing',
-  'arrow-parens',
-  'arrow-spacing',
-  'block-spacing',
-  'brace-style',
-  'comma-dangle',
-  'comma-spacing',
-  'comma-style',
-  'eol-last',
-  'func-call-spacing',
-  'indent',
-  'jsx-quotes',
-  'key-spacing',
-  'keyword-spacing',
-  'linebreak-style',
-  'max-len',
-  'no-extra-semi',
-  'no-mixed-spaces-and-tabs',
-  'no-multi-spaces',
-  'no-multiple-empty-lines',
-  'no-trailing-spaces',
-  'object-curly-spacing',
-  'padded-blocks',
-  'quote-props',
-  'quotes',
-  'semi',
-  'semi-spacing',
-  'space-before-blocks',
-  'space-before-function-paren',
-  'space-in-parens',
-  'space-infix-ops'
-])
-
-const splitName = (name: string): { prefix: string; short: string } => {
-  const slash = name.lastIndexOf('/')
-
-  return slash === -1 ? { prefix: '', short: name } : { prefix: name.slice(0, slash), short: name.slice(slash + 1) }
-}
-
-type CoreRules = Map<string, { meta?: { type?: string } }> | undefined
-
-/** Whether a rule only arranges code, which is the formatter's job once pawl is in place. */
-const isFormatting = (name: string, config: EslintConfig, core: CoreRules): boolean => {
-  const { prefix, short } = splitName(name)
-
-  if (FORMAT_PREFIXES.test(prefix)) return true
-
-  if (TEMPLATE_PREFIXES.has(prefix)) return false
-
-  if (prefix === '') return core?.get(name)?.meta?.type === 'layout' || CORE_FORMATTING.has(name)
-
-  return config.plugins?.[prefix]?.rules?.[short]?.meta?.type === 'layout'
-}
-
-const pickSamples = (root: string, typescript: boolean): string[][] => {
-  const files = listFiles(root).filter(file => !file.split('/').some(part => WALK_SKIP.has(part)))
-  // Source files first: they carry the rules that matter most.
-  const ordered = [...files.filter(file => file.startsWith('src/')), ...files.filter(file => !file.startsWith('src/'))]
-  const groups: string[][] = []
-
-  for (const [index, kind] of SAMPLE_KINDS.entries()) {
-    const isTestKind = index === 4
-    const found = ordered
-      .filter(file => kind.test.test(file) && (isTestKind || !TEST_FILE.test(file)) && !CONFIG_FILE.test(file))
-      .slice(0, SAMPLE_TRIES)
-    const wanted = kind.fallback !== undefined && (typescript || !kind.fallback.endsWith('.ts'))
-
-    if (found.length > 0) groups.push(found)
-    else if (wanted && kind.fallback !== undefined) groups.push([kind.fallback])
-  }
-
-  return groups
-}
-
-interface Side {
-  rules: RuleMap
-  formatting: RuleMap
-  samples: string[]
-}
-
-/** Resolve the rules of one ESLint setup for each sample, keeping the strictest level seen for each rule. */
-const resolveSide = async (eslint: EslintApi, groups: readonly string[][], core: CoreRules): Promise<Side> => {
-  const side: Side = { rules: new Map(), formatting: new Map(), samples: [] }
-
-  for (const group of groups) {
-    for (const file of group) {
-      const config = await eslint.calculateConfigForFile(file)
-
-      if (!config?.rules) continue
-
-      side.samples.push(file)
-
-      for (const [name, value] of Object.entries(config.rules)) {
-        const target = isFormatting(name, config, core) ? side.formatting : side.rules
-        const level = toLevel(value)
-        const seen = target.get(name)
-
-        if (!seen || rank(level) > rank(seen.level))
-          target.set(name, { level, options: Array.isArray(value) ? value.slice(1) : [] })
-      }
-
-      break
-    }
-  }
-
-  return side
-}
-
-const on = (map: RuleMap): string[] => [...map].flatMap(([name, { level }]) => (level === 'off' ? [] : [name]))
-
-const first = (rules: RuleMap, short: string): Resolved | undefined =>
-  [...rules].find(([name, { level }]) => level !== 'off' && splitName(name).short === short)?.[1]
-
-interface PrettierOptions {
-  singleQuote?: boolean
-  semi?: boolean
-  tabWidth?: number
-  useTabs?: boolean
-  printWidth?: number
-  trailingComma?: string
-  arrowParens?: string
-}
-
-const readPrettier = (root: string): PrettierOptions | undefined =>
-  readJson<PrettierOptions>(join(root, '.prettierrc')) ??
-  readJson<PrettierOptions>(join(root, '.prettierrc.json')) ??
-  readJson<{ prettier?: PrettierOptions }>(join(root, 'package.json'))?.prettier
-
-const indentOf = (value: unknown): StyleOptions['indent'] | undefined => {
-  if (value === 'tab') return 'tab'
-
-  return value === 2 || value === 4 ? value : undefined
-}
-
-const commasOf = (value: unknown): StyleOptions['trailingCommas'] | undefined => {
-  const setting = typeof value === 'object' && value !== null ? (value as { arrays?: unknown }).arrays : value
-
-  if (typeof setting !== 'string') return undefined
-
-  return setting === 'never' || setting === 'none' ? 'none' : 'all'
-}
-
-/** Read the formatting style out of the old formatting rules, then out of a Prettier config when there is one. */
-const styleFrom = (root: string, formatting: RuleMap): Partial<StyleOptions> => {
-  const style: { [Key in keyof StyleOptions]?: StyleOptions[Key] | undefined } = {}
-  const option = (short: string): unknown => first(formatting, short)?.options[0]
-  const quotes = option('quotes')
-  const semi = first(formatting, 'semi')
-  const maxLen = option('max-len')
-  const arrow = option('arrow-parens')
-  const prettier = readPrettier(root)
-
-  if (quotes === 'single' || quotes === 'double') style.quotes = quotes
-
-  if (semi) style.semicolons = semi.options[0] !== 'never'
-
-  style.indent = indentOf(option('indent'))
-  style.trailingCommas = commasOf(option('comma-dangle'))
-  style.lineWidth = typeof maxLen === 'number' ? maxLen : (maxLen as { code?: number } | undefined)?.code
-
-  if (arrow === 'as-needed' || arrow === 'always') style.arrowParens = arrow
-
-  if (prettier) {
-    if (prettier.singleQuote !== undefined) style.quotes = prettier.singleQuote ? 'single' : 'double'
-
-    if (prettier.semi !== undefined) style.semicolons = prettier.semi
-
-    if (prettier.useTabs) style.indent = 'tab'
-    else style.indent = indentOf(prettier.tabWidth) ?? style.indent
-
-    style.trailingCommas = commasOf(prettier.trailingComma) ?? style.trailingCommas
-    style.lineWidth = prettier.printWidth ?? style.lineWidth
-
-    if (prettier.arrowParens === 'always') style.arrowParens = 'always'
-    else if (prettier.arrowParens === 'avoid') style.arrowParens = 'as-needed'
-  }
-
-  // Only what differs from the standard is worth writing down.
-  return Object.fromEntries(
-    Object.entries(style).filter(
-      ([key, value]) => value !== undefined && value !== DEFAULT_STYLE[key as keyof StyleOptions]
-    )
-  ) as Partial<StyleOptions>
-}
-
-/** The folders the old config skips everywhere, read from its global `ignores`. */
-const readIgnores = async (file: string): Promise<string[] | undefined> => {
-  if (!/\.[cm]?js$/.test(file)) return undefined
-
-  try {
-    const loaded = (await import(pathToFileURL(file).href)) as { default?: unknown }
-    const entries = await loaded.default
-
-    if (!Array.isArray(entries)) return undefined
-
-    const patterns = (entries as Record<string, unknown>[])
-      .filter(
-        entry => Array.isArray(entry.ignores) && Object.keys(entry).every(key => key === 'ignores' || key === 'name')
-      )
-      .flatMap(entry => entry.ignores as unknown[])
-      .filter((pattern): pattern is string => typeof pattern === 'string' && !pattern.startsWith('!'))
-
-    return [
-      ...new Set(
-        patterns
-          .map(pattern => pattern.replace(/\/\*\*(\/\*)?$/, '').replace(/\/$/, ''))
-          .filter(pattern => pattern.length > 0 && !COVERED.has(pattern.replace(/^\*\*\//, '')))
-      )
-    ]
-  } catch {
-    return undefined
-  }
-}
-
-/** How many rules of a preset the old config has to share, at the same level, to count as following it. */
-const PRESET_MATCHES = 20
-
-/**
- * How the old config relates to a pack whose plugin it uses: the pack as it is (`plain`), the pack
- * started from the plugin's own recommended preset (`recommended`), or not at all (`none`).
- */
-const packFit = async (root: string, pack: Pack, rules: RuleMap): Promise<'plain' | 'recommended' | 'none'> => {
-  // A base pack brings a whole preset with it. A few rules of its plugin do not call for that.
-  const isBase = pack.auto !== undefined
-
-  if (pack.preset && !isBase) return 'plain'
-
-  const plugin = (await importPlugin(root, pack.plugin)).module
-
-  if (!plugin) return isBase ? 'none' : 'plain'
-
-  const preset = pack.preset ? packPreset(pack, plugin) : pluginPreset(plugin, 'recommended', pack.prefix)
-  const matches = Object.entries(preset ?? {}).filter(([name, value]) => {
-    const level = toLevel(value)
-
-    return level !== 'off' && rules.get(name)?.level === level
-  })
-  const follows = matches.length >= PRESET_MATCHES
-
-  if (isBase) return follows ? 'plain' : 'none'
-
-  return follows ? 'recommended' : 'plain'
-}
-
 const TS_TWIN = '@typescript-eslint/'
 
 /** The catalog rule a name stands for. The typescript-eslint twin of a core rule stands for that rule. */
@@ -389,88 +86,17 @@ const catalogRule = (name: string): RuleDef | undefined =>
 /** Options worth carrying: more than the empty defaults ESLint fills in. */
 const hasOptions = (options: unknown[]): boolean => !['[]', '[{}]'].includes(JSON.stringify(options))
 
-/** The legacy ESLint config of a project: an .eslintrc file, or `eslintConfig` in package.json. */
-const legacyConfig = (root: string): string | undefined =>
-  firstExisting(root, ESLINT_LEGACY_CONFIG_FILES) ??
-  (readJson<{ eslintConfig?: unknown }>(join(root, 'package.json'))?.eslintConfig ? 'package.json' : undefined)
-
-/** The patterns of a legacy config's .eslintignore file. */
-const readLegacyIgnores = (root: string): string[] => {
-  const file = join(root, '.eslintignore')
-
-  if (!existsSync(file)) return []
-
-  return readFileSync(file, 'utf8')
-    .split(/\r?\n/)
-    .map(line => line.trim().replace(/^\//, '').replace(/\/$/, ''))
-    .filter(line => line.length > 0 && !line.startsWith('#') && !line.startsWith('!') && !COVERED.has(line))
-}
-
 const NEW_EXTENSION: Record<string, string> = { '.cjs': '.mjs', '.cts': '.mts' }
 
-const reportFile = (plan: Omit<MigratePlan, 'actions'>, backup: string | undefined): string => {
-  const list = (items: readonly string[]): string =>
-    items.length > 0 ? items.map(item => `- \`${item}\``).join('\n') : 'None.'
-  const lines = [
-    '# Migration to pawl',
-    '',
-    `Read from \`${plan.source}\`, comparing ${plural(plan.samples.length, 'file')}: ${plan.samples.map(file => `\`${file}\``).join(', ')}.`,
-    ...(backup
-      ? ['', `The old config is kept as \`${backup}\`. Delete it, and this file, when you are happy with the result.`]
-      : []),
-    '',
-    '## Summary',
-    '',
-    `- ${plural(plan.total, 'rule')} on in the old config.`,
-    `- ${plan.same} already at the same level in the pawl standard and its packs.`,
-    `- ${plan.changed.length} carried into the policy because the old level differs.`,
-    `- ${plan.formatting.length} formatting rules, now done by the formatter.`,
-    `- ${plan.importSorting.length} import ordering rules, now done by import sorting.`,
-    `- ${plan.added.length} rules the pawl standard and its packs add. Their existing findings go into the baseline.`,
-    '',
-    '## Levels kept from the old config',
-    '',
-    'These are in `rules` in the policy file. Delete a line to take the standard level.',
-    '',
-    ...(plan.changed.length > 0
-      ? [
-          '| Rule | Standard | Kept |',
-          '| --- | --- | --- |',
-          ...plan.changed.map(change => `| \`${change.rule}\` | ${change.standard} | ${change.kept} |`)
-        ]
-      : ['None.']),
-    '',
-    '## Options Biome does not take',
-    '',
-    'The policy carries the options of these rules for ESLint and Oxlint. Where Biome is the linter, it enforces them with its own options.',
-    '',
-    list(plan.biomeOptions),
-    '',
-    '## Rules that cannot run yet',
-    '',
-    ...(plan.notEnforced.length > 0
-      ? plan.notEnforced.map(item => `- \`${item.rule}\` needs ${item.needs}`)
-      : ['None.']),
-    '',
-    '## Replaced by the formatter',
-    '',
-    list(plan.formatting),
-    '',
-    '## Replaced by import sorting',
-    '',
-    list(plan.importSorting),
-    '',
-    '## Added by the standard',
-    '',
-    list(plan.added),
-    ''
-  ]
-
-  return lines.join('\n')
+/** The ESLint config to migrate from: a flat config, else a legacy one. */
+interface Source {
+  name: string
+  path: string
+  /** Set when the config is a legacy .eslintrc. */
+  legacy: string | undefined
 }
 
-/** Read an existing ESLint flat config and work out the pawl policy that keeps its rules. */
-export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions): Promise<MigratePlan> => {
+const findSource = (root: string): Source => {
   const flatName = firstExisting(root, ESLINT_CONFIG_FILES)
   const legacyName = flatName ? undefined : legacyConfig(root)
   const sourceName = flatName ?? legacyName
@@ -487,6 +113,20 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
   if (existing)
     throw new Error(`${existing.slice(root.length + 1)} already exists. Move it away to migrate from ${sourceName}.`)
 
+  return { name: sourceName, path: sourcePath, legacy: legacyName }
+}
+
+/** The project's ESLint, with the classes that read each kind of config. */
+interface EslintClasses {
+  /** Reads the config being migrated. */
+  Reader: EslintClass
+  /** Reads a flat config, for what pawl would hand ESLint. */
+  Flat: EslintClass | undefined
+  core: CoreRules
+  major: number
+}
+
+const loadEslint = async (root: string, { name: sourceName, legacy: legacyName }: Source): Promise<EslintClasses> => {
   const { module: eslintModule, error } = await importFromProject(root, 'eslint')
   const Eslint = eslintModule?.ESLint as EslintClass | undefined
 
@@ -509,42 +149,50 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
   }
 
   const Reader = (legacyName ? Legacy : Eslint) as EslintClass
-  const detection = detect(root)
-  const context = {
+
+  return { Reader, Flat, core, major }
+}
+
+/** What the migration compares in: the project, its ESLint, and the old config as ESLint resolved it. */
+interface Migration {
+  root: string
+  detection: Detection
+  context: RuleContext
+  eslint: EslintClasses
+  old: Side
+  policyPath: string
+}
+
+/** Resolve what pawl would hand ESLint for a policy, were ESLint the only linter. */
+const pawlSide = async (
+  { root, detection, context, eslint, old, policyPath }: Migration,
+  input: PolicyInput
+): Promise<{ side: Side; notEnforced: MigratePlan['notEnforced'] }> => {
+  const plan = await eslintPlan({
+    root,
+    policy: await resolvePolicy(input, policyPath),
+    biomeActive: false,
     typescript: detection.typescript,
-    technologies: allTechnologies(detection),
+    ...context,
     dependencies: detection.dependencies
+  })
+
+  if (!eslint.Flat) throw new Error(`ESLint ${eslint.major} cannot load a flat config`)
+
+  const flat = new eslint.Flat({ cwd: root, overrideConfigFile: true, overrideConfig: plan.config })
+
+  return {
+    side: await resolveSide(
+      flat,
+      old.samples.map(file => [file]),
+      eslint.core
+    ),
+    notEnforced: plan.notEnforced
   }
-  const groups = pickSamples(root, detection.typescript)
-  const old = await resolveSide(new Reader({ cwd: root }), groups, core)
+}
 
-  if (old.samples.length === 0) throw new Error(`${sourceName} does not apply to any file pawl could find.`)
-
-  const notes: string[] = []
-  const policyPath = join(root, 'pawl.config.ts')
-  /** Resolve what pawl would hand ESLint for a policy, were ESLint the only linter. */
-  const pawlSide = async (input: PolicyInput): Promise<{ side: Side; notEnforced: MigratePlan['notEnforced'] }> => {
-    const plan = await eslintPlan({
-      root,
-      policy: await resolvePolicy(input, policyPath),
-      biomeActive: false,
-      ...context,
-      dependencies: detection.dependencies
-    })
-    if (!Flat) throw new Error(`ESLint ${major} cannot load a flat config`)
-
-    const eslint = new Flat({ cwd: root, overrideConfigFile: true, overrideConfig: plan.config })
-
-    return {
-      side: await resolveSide(
-        eslint,
-        old.samples.map(file => [file]),
-        core
-      ),
-      notEnforced: plan.notEnforced
-    }
-  }
-
+/** A pack for every plugin the old config turns rules on from, and the ones the policy has to name. */
+const choosePacks = async ({ root, detection, old }: Migration): Promise<{ packs: string[]; namedPacks: string[] }> => {
   // Packs: one for every plugin the old config has rules on from.
   const prefixes = new Set(on(old.rules).map(name => splitName(name).prefix))
   const packs: string[] = []
@@ -563,19 +211,19 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
     if (entry !== pack.name || !pack.when.some(name => detection.dependencies.includes(name))) namedPacks.push(entry)
   }
 
-  let standard: Side = { rules: new Map(), formatting: new Map(), samples: [] }
-  let comparable = true
+  return { packs, namedPacks }
+}
 
-  try {
-    standard = (await pawlSide({ packs })).side
-  } catch (cause) {
-    comparable = false
-    notes.push(
-      `Could not resolve the pawl standard through ESLint (${(cause as Error).message.split('\n')[0]}). Every plugin rule that is on was carried over as is.`
-    )
-  }
+interface Levels {
+  rules: Record<string, Level>
+  changed: RuleChange[]
+  importSorting: string[]
+  added: string[]
+  same: number
+}
 
-  const effective = effectiveRules(await resolvePolicy({ packs }, policyPath), context)
+/** The rule levels the policy carries over: the ones that differ from the standard. */
+const compareLevels = (old: Side, standard: Side, comparable: boolean, effective: Map<string, Level>): Levels => {
   const rules: Record<string, Level> = {}
   const changed: RuleChange[] = []
   const importSorting: string[] = []
@@ -634,29 +282,23 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
 
   changed.sort((a, b) => a.rule.localeCompare(b.rule))
 
-  const style = styleFrom(root, old.formatting)
-  const ignore = legacyName ? readLegacyIgnores(root) : await readIgnores(sourcePath)
-  const policy: PolicyInput = {
-    ...(namedPacks.length > 0 ? { packs: namedPacks } : {}),
-    ...(Object.keys(style).length > 0 ? { style } : {}),
-    ...(ignore && ignore.length > 0 ? { ignore } : {}),
-    ...(changed.length > 0
-      ? { rules: Object.fromEntries(Object.entries(rules).sort(([a], [b]) => a.localeCompare(b))) }
-      : {})
-  }
+  return { rules, changed, importSorting: importSorting.sort(), added, same }
+}
 
-  if (ignore === undefined)
-    notes.push(
-      `Could not read the ignore patterns of ${sourceName}. Add the folders to skip to "ignore" in the policy.`
-    )
-
-  // With the levels settled, see which rules cannot run and which options differ from what pawl would set.
+/** With the levels settled, the rules that cannot run and the options that differ from what pawl would set. */
+const compareOptions = async (
+  migration: Migration,
+  policy: PolicyInput,
+  packs: readonly string[],
+  rules: Record<string, Level>
+): Promise<{ options: Record<string, unknown[]>; biomeOptions: string[]; notEnforced: MigratePlan['notEnforced'] }> => {
+  const { old } = migration
   const options: Record<string, unknown[]> = {}
   const biomeOptions: string[] = []
   let notEnforced: MigratePlan['notEnforced'] = []
 
   try {
-    const final = await pawlSide({ ...policy, packs })
+    const final = await pawlSide(migration, { ...policy, packs: [...packs] })
 
     // Only what the migration brought in: the standard's own gaps are for "pawl doctor" to report.
     const packTitles = new Set(packs.map(entry => `The ${getPack(entry)?.title} pack`))
@@ -679,45 +321,23 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
     // The first attempt already left a note.
   }
 
-  if (Object.keys(options).length > 0)
-    policy.options = Object.fromEntries(Object.entries(options).sort(([a], [b]) => a.localeCompare(b)))
+  return { options, biomeOptions: biomeOptions.sort(), notEnforced }
+}
 
-  const formatting = on(old.formatting).sort()
-  const total = on(old.rules).length + formatting.length
+/** The ESLint config pawl writes in place of the old one, keeping a backup, or a note when it keeps the old one. */
+const planEslintFile = (
+  root: string,
+  source: Source,
+  major: number,
+  keepConfig: boolean,
+  notes: string[]
+): { actions: SetupAction[]; backup: string | undefined } => {
+  const { name: sourceName, path: sourcePath, legacy: legacyName } = source
   const extension = extname(sourceName)
   // A legacy config is not read by a flat-config ESLint, so it can stay where it is.
   const backup = keepConfig || legacyName ? undefined : `eslint.config.before-pawl${extension}`
   const target = legacyName ? 'eslint.config.js' : `eslint.config${NEW_EXTENSION[extension] ?? extension}`
-  const summary = {
-    source: sourceName,
-    samples: old.samples,
-    policy,
-    notes,
-    total,
-    same,
-    changed,
-    added,
-    formatting,
-    importSorting: importSorting.sort(),
-    packs,
-    biomeOptions: biomeOptions.sort(),
-    notEnforced
-  }
-  const carried = [
-    changed.length > 0 ? plural(changed.length, 'rule level') : '',
-    policy.options ? `options for ${plural(Object.keys(policy.options).length, 'rule')}` : '',
-    namedPacks.length > 0 ? plural(namedPacks.length, 'pack') : '',
-    Object.keys(style).length > 0 ? 'style' : '',
-    ignore && ignore.length > 0 ? 'ignores' : ''
-  ].filter(Boolean)
-  const actions: SetupAction[] = [
-    {
-      path: 'pawl.config.ts',
-      kind: 'create',
-      summary: carried.length > 0 ? carried.join(', ') : 'the standard as is',
-      apply: () => writeText(policyPath, policyFile(policy))
-    }
-  ]
+  const actions: SetupAction[] = []
 
   if (legacyName && !keepConfig) {
     actions.push({
@@ -743,12 +363,101 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
     notes.push(`${sourceName} is unchanged. Export eslint() from ${PACKAGE_NAME} in it to put ESLint under the policy.`)
   }
 
-  actions.push({
-    path: MIGRATION_REPORT,
-    kind: 'create',
-    summary: 'what was carried over and what was not',
-    apply: () => writeText(join(root, MIGRATION_REPORT), reportFile(summary, backup))
-  })
+  return { actions, backup }
+}
+
+/** Read an existing ESLint flat config and work out the pawl policy that keeps its rules. */
+export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions): Promise<MigratePlan> => {
+  const source = findSource(root)
+  const eslint = await loadEslint(root, source)
+  const detection = detect(root)
+  const context: RuleContext = {
+    typescript: detection.typescript,
+    technologies: allTechnologies(detection),
+    dependencies: detection.dependencies
+  }
+  const old = await resolveSide(new eslint.Reader({ cwd: root }), pickSamples(root, detection.typescript), eslint.core)
+
+  if (old.samples.length === 0) throw new Error(`${source.name} does not apply to any file pawl could find.`)
+
+  const notes: string[] = []
+  const policyPath = join(root, 'pawl.config.ts')
+  const migration: Migration = { root, detection, context, eslint, old, policyPath }
+  const { packs, namedPacks } = await choosePacks(migration)
+  let standard: Side = { rules: new Map(), formatting: new Map(), samples: [] }
+  let comparable = true
+
+  try {
+    standard = (await pawlSide(migration, { packs })).side
+  } catch (cause) {
+    comparable = false
+    notes.push(
+      `Could not resolve the pawl standard through ESLint (${(cause as Error).message.split('\n')[0]}). Every plugin rule that is on was carried over as is.`
+    )
+  }
+
+  const effective = effectiveRules(await resolvePolicy({ packs }, policyPath), context)
+  const { rules, changed, importSorting, added, same } = compareLevels(old, standard, comparable, effective)
+  const style = styleFrom(root, old.formatting)
+  const ignore = source.legacy ? readLegacyIgnores(root) : await readIgnores(source.path)
+  const policy: PolicyInput = {
+    ...(namedPacks.length > 0 ? { packs: namedPacks } : {}),
+    ...(Object.keys(style).length > 0 ? { style } : {}),
+    ...(ignore && ignore.length > 0 ? { ignore } : {}),
+    ...(changed.length > 0
+      ? { rules: Object.fromEntries(Object.entries(rules).sort(([a], [b]) => a.localeCompare(b))) }
+      : {})
+  }
+
+  if (ignore === undefined)
+    notes.push(
+      `Could not read the ignore patterns of ${source.name}. Add the folders to skip to "ignore" in the policy.`
+    )
+
+  const { options, biomeOptions, notEnforced } = await compareOptions(migration, policy, packs, rules)
+
+  if (Object.keys(options).length > 0)
+    policy.options = Object.fromEntries(Object.entries(options).sort(([a], [b]) => a.localeCompare(b)))
+
+  const formatting = on(old.formatting).sort()
+  const summary = {
+    source: source.name,
+    samples: old.samples,
+    policy,
+    notes,
+    total: on(old.rules).length + formatting.length,
+    same,
+    changed,
+    added,
+    formatting,
+    importSorting,
+    packs,
+    biomeOptions,
+    notEnforced
+  }
+  const carried = [
+    changed.length > 0 ? plural(changed.length, 'rule level') : '',
+    policy.options ? `options for ${plural(Object.keys(policy.options).length, 'rule')}` : '',
+    namedPacks.length > 0 ? plural(namedPacks.length, 'pack') : '',
+    Object.keys(style).length > 0 ? 'style' : '',
+    ignore && ignore.length > 0 ? 'ignores' : ''
+  ].filter(Boolean)
+  const eslintFile = planEslintFile(root, source, eslint.major, keepConfig, notes)
+  const actions: SetupAction[] = [
+    {
+      path: 'pawl.config.ts',
+      kind: 'create',
+      summary: carried.length > 0 ? carried.join(', ') : 'the standard as is',
+      apply: () => writeText(policyPath, policyFile(policy))
+    },
+    ...eslintFile.actions,
+    {
+      path: MIGRATION_REPORT,
+      kind: 'create',
+      summary: 'what was carried over and what was not',
+      apply: () => writeText(join(root, MIGRATION_REPORT), reportFile(summary, eslintFile.backup))
+    }
+  ]
 
   if (biomeOptions.length > 0)
     notes.push(
@@ -759,34 +468,4 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
     notes.push(`${plural(notEnforced.length, 'rule or pack')} cannot run yet. See ${MIGRATION_REPORT}.`)
 
   return { ...summary, actions }
-}
-
-/** The lines `pawl migrate` prints before it asks to go ahead. */
-export const describeMigration = (plan: MigratePlan): string[] => {
-  const stricter = plan.changed.filter(change => rank(change.kept) > rank(change.standard)).length
-  const rows: [number, string][] = [
-    [plan.total, 'rules on in the old config'],
-    [plan.same, 'already at the same level in the pawl standard and its packs'],
-    [
-      plan.changed.length,
-      `kept at the old level (${stricter} stricter than the standard, ${plan.changed.length - stricter} looser)`
-    ],
-    [plan.formatting.length, 'formatting rules, now done by the formatter'],
-    [plan.importSorting.length, 'import ordering rules, now done by import sorting'],
-    [plan.added.length, 'rules the standard adds (their existing findings go to the baseline)']
-  ]
-  const width = Math.max(...rows.map(([count]) => String(count).length))
-  const style = Object.entries(plan.policy.style ?? {}).map(([key, value]) => `${key}: ${String(value)}`)
-
-  return [
-    `Read   ${plan.source} (${plural(plan.samples.length, 'sample file')})`,
-    '',
-    ...rows.map(([count, text]) => `  ${String(count).padStart(width)}  ${text}`),
-    '',
-    ...(plan.packs.length > 0 ? [`Packs  ${plan.packs.join(', ')}`] : []),
-    ...(style.length > 0 ? [`Style  ${style.join(', ')}`] : []),
-    ...plan.actions.map(
-      action => `${action.kind === 'create' ? 'Write ' : 'Update'} ${action.path}  (${action.summary})`
-    )
-  ]
 }

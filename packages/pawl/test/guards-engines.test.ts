@@ -13,6 +13,8 @@ interface Case {
   bad: string
   lines: number[]
   fine: string
+  /** For an opt-in guard, the packs the policy names. */
+  packs?: string[]
 }
 
 const CASES: Case[] = [
@@ -33,11 +35,8 @@ export const i = z.union([
   z.literal('x'),
   z.literal('it\\'s'),
 ])
-export const j = z.string().describe('Name')
-export const k = z.string().min(1).describe('Name')
-export const l = z.array(z.string()).max(3).optional().describe('List')
 `,
-    lines: [3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 17],
+    lines: [3, 4, 5, 6, 7, 8, 9, 10, 11],
     fine: `import { z } from 'zod'
 
 export const a = z.string().nullish()
@@ -57,6 +56,23 @@ export const n = z.union([z.literal('a'), z.literal(\`b\`)])
 export const o = z.union([z.literal('a'), z.literal('b'), ...extra])
 export const p = z.union([z.literal('a'), z.literal('b')], { error: 'No' })
 export const q = z.union(options)
+// Zod 3 and the AI SDK's tool schemas write .describe(), which the opt-in zod-meta guard refuses.
+export const r = z.string().describe('Name')
+`
+  },
+  {
+    guard: 'zod-meta',
+    dependency: 'zod',
+    packs: ['zod-meta'],
+    bad: `import { z } from 'zod'
+
+export const j = z.string().describe('Name')
+export const k = z.string().min(1).describe('Name')
+export const l = z.array(z.string()).max(3).optional().describe('List')
+`,
+    lines: [3, 4, 5],
+    fine: `import { z } from 'zod'
+
 export const r = z.string().meta({ description: 'Name' })
 export const s = z.string().describe
 test.describe('suite', () => {})
@@ -219,11 +235,12 @@ describe('library guards, run by the real ESLint', () => {
 })
 
 describe('library guards, run by the real Biome', { timeout: 60_000 }, () => {
-  for (const { guard: name, dependency, bad, lines, fine } of CASES) {
+  for (const { guard: name, dependency, bad, lines, fine, packs } of CASES) {
     it(`${name}: the GritQL patterns catch the same lines as ESLint, and nothing in the fine code`, async () => {
       const guard = guardNamed(name)
       const root = project({
         'package.json': { name: 'fixture', type: 'module', dependencies: { [dependency]: '*' } },
+        ...(packs ? { 'pawl.config.json': { packs } } : {}),
         'src/bad.js': bad,
         'src/fine.js': fine
       })

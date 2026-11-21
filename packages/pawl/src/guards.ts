@@ -390,13 +390,21 @@ export const GUARDS: readonly Guard[] = [
           ":not(:has(ArrayExpression.arguments > :not(CallExpression[callee.object.name='z'][callee.property.name='literal'][arguments.length=1][arguments.0.value=type(string)])))",
         message: 'Write z.enum([...]) instead of z.union() of string z.literal() values.',
         grit: GRIT.literalUnion
-      },
-      ...DESCRIBE_DEPTHS.map(depth => ({
-        selector: `CallExpression[callee.computed=false][callee.property.name='describe']${`[callee.object${'.callee.object'.repeat(depth)}.name='z']`}`,
-        message: "Write .meta({ description: '...' }) instead of .describe('...') in a Zod schema.",
-        grit: GRIT[`describe${depth}` as 'describe1']
-      }))
+      }
     ]
+  },
+  {
+    // `.meta()` came with Zod 4, while Zod 3 and the AI SDK's tool schemas write `.describe()`,
+    // which Zod 4 still reads. So the project switches this one on, as `pawl add zod-meta`.
+    name: 'zod-meta',
+    title: 'Zod metadata',
+    when: [],
+    optIn: true,
+    syntax: DESCRIBE_DEPTHS.map(depth => ({
+      selector: `CallExpression[callee.computed=false][callee.property.name='describe']${`[callee.object${'.callee.object'.repeat(depth)}.name='z']`}`,
+      message: "Write .meta({ description: '...' }) instead of .describe('...') in a Zod 4 schema.",
+      grit: GRIT[`describe${depth}` as 'describe1']
+    }))
   },
   {
     name: 'testing-library',

@@ -201,7 +201,7 @@ These need no engine and no plugin. The guards switch on when the project depend
 | `testing-library/prefer-screen-queries`       | `pawl/testing-library` guard                            | error |
 | `zod/prefer-enum-over-literal-union`          | `pawl/zod` guard                                        | error |
 | `zod/prefer-loose-object`                     | `pawl/zod` guard                                        | error |
-| `zod/prefer-meta`                             | `pawl/zod` guard                                        | error |
+| `zod/prefer-meta`                             | `pawl/zod-meta` guard, opt-in                           | error |
 | `zod/prefer-meta-last`                        | `pawl/zod` guard                                        | error |
 | `zod/prefer-nullish`                          | `pawl/zod` guard                                        | error |
 | `zod/prefer-strict-object`                    | `pawl/zod` guard                                        | error |

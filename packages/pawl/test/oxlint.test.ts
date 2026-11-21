@@ -311,6 +311,22 @@ describe('the rules that need type information', { timeout: 120_000 }, () => {
     expect(await packages(javascript)).not.toContain('oxlint-tsgolint')
   })
 
+  it('stop the check as a setup problem when tsgolint cannot read the tsconfig', async () => {
+    const root = await fixture(true)
+
+    write(root, { 'tsconfig.json': { extends: './missing.json', compilerOptions: { strict: true } } })
+
+    const result = await check({ root, files: ['src/a.ts'] })
+    const failed = result.setup.find(issue => issue.code === 'engine-failed')
+
+    expect(failed?.message).toContain(
+      'Oxlint could not read tsconfig.json, so the rules that need type information did not run.'
+    )
+    expect(failed?.message).toContain('missing.json')
+    expect(result.findings.map(finding => finding.rule)).not.toContain('oxlint:typescript/tsconfig-error')
+    expect(exitCode(result)).toBe(2)
+  })
+
   it('stop the check as a setup problem when tsgolint is declared but not installed', async () => {
     const root = await fixture(false, true)
     const config = JSON.parse(readFileSync(join(root, '.oxlintrc.json'), 'utf8')) as { options?: unknown }

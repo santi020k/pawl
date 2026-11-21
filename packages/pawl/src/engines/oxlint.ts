@@ -327,8 +327,12 @@ interface OxlintDiagnostic {
   code?: string
   severity: string
   filename?: string
+  help?: string
   labels?: Array<{ span?: { line?: number; column?: number } }>
 }
+
+/** The diagnostic Oxlint gives when tsgolint cannot read the project's tsconfig. */
+const TSCONFIG_ERROR = 'typescript(tsconfig-error)'
 
 /** Oxlint's rule name as it appears in a config: core rules bare, the rest as plugin/rule. */
 const oxlintName = (scope: string, rule: string): string =>
@@ -381,6 +385,21 @@ export const runOxlint = async ({ root, files, write = false }: RunOptions): Pro
       })
     }
 
-    return (report.diagnostics ?? []).map(toFinding)
+    const diagnostics = report.diagnostics ?? []
+    const tsconfig = diagnostics.find(diagnostic => diagnostic.code === TSCONFIG_ERROR)
+
+    // tsgolint reports a tsconfig it cannot read as one diagnostic and then runs none of the rules
+    // that need type information, so the check did not run in full.
+    if (tsconfig) {
+      throw new EngineError(
+        [
+          `Oxlint could not read ${tsconfig.filename ?? 'the tsconfig'}, so the rules that need type information did not run.`,
+          [tsconfig.message, tsconfig.help].filter(Boolean).join(': ')
+        ].join('\n'),
+        { command: result.command }
+      )
+    }
+
+    return diagnostics.map(toFinding)
   })
 }

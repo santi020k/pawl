@@ -255,12 +255,20 @@ describe('the rules that need type information', { timeout: 120_000 }, () => {
     const config = JSON.parse(readFileSync(join(root, '.oxlintrc.json'), 'utf8')) as {
       options?: unknown
       rules: Record<string, unknown>
+      overrides?: { files: string[]; rules?: Record<string, unknown> }[]
     }
 
     expect(config.options).toEqual({ typeAware: true })
-    expect(config.rules['typescript/no-floating-promises']).toBe('error')
+    // For TypeScript files only, as in ESLint.
+    expect(config.rules['typescript/no-floating-promises']).toBe('off')
+    expect(config.overrides).toContainEqual({
+      files: ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'],
+      rules: expect.objectContaining({ 'typescript/no-floating-promises': 'error' })
+    })
 
-    const result = await check({ root, files: ['src/a.ts'] })
+    write(root, { 'src/b.js': 'async function load() {}\n\nload()\n\nexport const b = 1\n' })
+
+    const result = await check({ root, files: ['src/a.ts', 'src/b.js'] })
     const floating = result.findings.filter(finding => finding.rule === FLOATING)
 
     expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])

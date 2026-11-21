@@ -129,6 +129,9 @@ const COMPONENT_GLOBALS: Partial<Record<Technology, { files: string[]; globals: 
   astro: { files: ['**/*.astro'], globals: ['Astro', 'Fragment'] }
 }
 
+/** The TypeScript files, which the rules that need type information are for. */
+const TYPESCRIPT_FILES = ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts']
+
 /** The overrides the standard itself brings, ahead of the policy's own: the globals of the component files in use. */
 const standardOverrides = (technologies: readonly Technology[] = []): Record<string, unknown>[] =>
   technologies.flatMap(technology => {
@@ -164,7 +167,15 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
     return rules
   }
   const baseOptions = (name: string): unknown[] | undefined => policy.options[name] ?? getRule(name)?.options?.eslint
-  const rules = toRules(effectiveRules(policy, context), baseOptions)
+  const all = toRules(effectiveRules(policy, context), baseOptions)
+  // As in ESLint, the rules that need type information are for TypeScript files only: tsgolint
+  // would check a JavaScript file too, with the types it can infer. They are off for the rest,
+  // since Oxlint has some of them, such as no-floating-promises, on by itself.
+  const typed = new Set(Object.values(OXLINT_TYPE_AWARE_RULES))
+  const rules = Object.fromEntries(Object.entries(all).map(([rule, value]) => [rule, typed.has(rule) ? 'off' : value]))
+  const typeAware = Object.fromEntries(
+    Object.entries(all).filter(([rule, value]) => typed.has(rule) && value !== 'off')
+  )
   const restricted = importRestrictions(policy, context?.dependencies)
 
   if (restricted) rules[IMPORTS_RULE] = [restricted.level, restricted.eslint]
@@ -179,7 +190,11 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
       ? [{ files: override.files.map(toEngineGlob), rules: sortKeys(overridden) }]
       : []
   })
-  const overrides = [...standardOverrides(context?.technologies), ...own]
+  const overrides = [
+    ...standardOverrides(context?.technologies),
+    ...(Object.keys(typeAware).length > 0 ? [{ files: TYPESCRIPT_FILES, rules: sortKeys(typeAware) }] : []),
+    ...own
+  ]
   const runtimes = context?.runtimes ?? ['node', 'browser']
   const globals = extraGlobals(runtimes)
 

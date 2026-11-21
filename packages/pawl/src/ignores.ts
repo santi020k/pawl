@@ -160,6 +160,21 @@ const REGEXP_SPECIAL = /[.*+?^${}()|[\]\\/-]/g
 
 const literal = (text: string): string => text.replace(REGEXP_SPECIAL, '\\$&')
 
+/**
+ * A pattern with braces, such as `*.{js,ts}` or `{apps,tools}/*`, as the patterns it stands for, as a
+ * shell, minimatch or EditorConfig reads them. Groups do not nest, and `\{` is a brace itself.
+ */
+export const expandBraces = (pattern: string): string[] => {
+  const group = /(?<!\\)\{([^{}]*,[^{}]*)\}/.exec(pattern)
+
+  if (!group) return [pattern]
+
+  const before = pattern.slice(0, group.index)
+  const after = pattern.slice(group.index + group[0].length)
+
+  return (group[1] ?? '').split(',').flatMap(choice => expandBraces(`${before}${choice}${after}`))
+}
+
 /** The POSIX classes git knows inside brackets, such as `[[:digit:]]`, in the ASCII range git reads. */
 const POSIX_CLASSES: Readonly<Record<string, string>> = {
   alnum: 'a-zA-Z0-9',

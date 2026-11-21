@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { getDockerRule } from './docker.ts'
 import { ancestors, toList } from './fs-utils.ts'
 import { GUARDS, getGuard } from './guards.ts'
-import { literalBrackets } from './ignores.ts'
+import { expandBraces, literalBrackets } from './ignores.ts'
 import { getMarkdownRule } from './markdown.ts'
 import { getPack, PACKS } from './packs.ts'
 import { canonicalName, defaultLevel, getRule, isGated, RULES, type Technology } from './rules.ts'
@@ -108,7 +108,7 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
       if (!policy.locked.includes(name)) policy.locked.push(name)
     }
 
-    for (const pattern of (input.ignore ?? []).map(literalBrackets)) {
+    for (const pattern of (input.ignore ?? []).flatMap(expandBraces).map(literalBrackets)) {
       if (!policy.ignore.includes(pattern)) policy.ignore.push(pattern)
     }
 
@@ -224,7 +224,7 @@ const mergeOverride = (
   )
 
   return {
-    files: override.files.map(literalBrackets),
+    files: override.files.flatMap(expandBraces).map(literalBrackets),
     rules,
     options,
     biomeOptions: biomeOptionsOf(override.biomeOptions, `${source} (overrides)`)

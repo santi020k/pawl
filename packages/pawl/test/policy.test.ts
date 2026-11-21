@@ -208,6 +208,21 @@ describe('the values of a policy', () => {
     expect(await refused({ packs: ['de-morgen'] })).toMatch(/, de-morgan\.$/)
   })
 
+  it('read braces in a pattern as a glob does, so every engine gets the same patterns', () => {
+    const policy = mergeLayers([
+      {
+        source: 'repo',
+        input: {
+          ignore: ['tools/*.{gen,auto}.js', 'src/app/[slug]', 'notes\\{1\\}.md'],
+          overrides: [{ files: ['**/*.{test,spec}.ts'], rules: { 'no-console': 'off' } }]
+        }
+      }
+    ])
+
+    expect(policy.ignore).toEqual(['tools/*.gen.js', 'tools/*.auto.js', 'src/app/\\[slug\\]', 'notes\\{1\\}.md'])
+    expect(policy.overrides[0]?.files).toEqual(['**/*.test.ts', '**/*.spec.ts'])
+  })
+
   it('count an option set to undefined in a JS policy as not set, as the merge does', async () => {
     const root = project({
       'pawl.config.mjs': [

@@ -140,13 +140,12 @@ const eslintEnforces = (config: ReadonlyArray<{ rules?: Record<string, unknown> 
   return names
 }
 
-/** Work out everything `pawl doctor` reports. Reads files only; runs no engine. */
 /**
  * A pattern of the policy whose brackets match no path as the characters themselves, but would match
  * some as a character class, as in `legacy/v[0-9]`. Pawl reads brackets the first way, for route
  * folders such as `app/[slug]`, so such a pattern skips nothing, and nothing else says so.
  */
-const bracketProblems = (root: string, policy: Policy): string[] => {
+const globProblems = (root: string, policy: Policy): string[] => {
   const patterns = [
     ...policy.ignore.map(pattern => ({ pattern, where: 'ignore' })),
     ...policy.overrides.flatMap(override =>
@@ -173,6 +172,7 @@ const bracketProblems = (root: string, policy: Policy): string[] => {
   })
 }
 
+/** Work out everything `pawl doctor` reports. Reads files only; runs no engine. */
 export const doctor = async (root: string): Promise<DoctorReport> => {
   const policy = await loadPolicy(root)
   const detection = detect(root, policy)
@@ -339,7 +339,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     )
   }
 
-  problems.push(...bracketProblems(root, policy))
+  problems.push(...globProblems(root, policy))
 
   const guards = activeGuards(detection.dependencies, policy.packs)
   const named = new Set([...policy.packs.map(entry => entry.split('/')[0] ?? entry), ...activePacks])

@@ -194,7 +194,11 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
           'legacy/v[1-3]/**',
           'src/app/[slug]/**',
           'x/[!a]b',
-          'y/[a-z][a-z]'
+          'y/[a-z][a-z]',
+          '**/*.{gen,auto}.ts',
+          '@(a|b)/**',
+          'z/[z-a]/**',
+          'src/+(a|b).js'
         ])} }, { rules: { 'no-var': 'error' } }]\n`,
         'src/app/[slug]/page.js': 'export const a = 1\n'
       })
@@ -207,14 +211,18 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
       'legacy/v1',
       'legacy/v2',
       'legacy/v3',
-      'src/app/[slug]'
+      'src/app/[slug]',
+      // Braces are read as a glob reads them, so they stay.
+      '**/*.{gen,auto}.ts',
+      'a',
+      'b'
     ])
-    expect(plan.notes).toContain(
-      'The ignore pattern "x/[!a]b" has a character class pawl cannot list out. Add the paths it skips to "ignore" in the policy.'
-    )
-    expect(plan.notes).toContain(
-      'The ignore pattern "y/[a-z][a-z]" has a character class pawl cannot list out. Add the paths it skips to "ignore" in the policy.'
-    )
+
+    for (const pattern of ['x/[!a]b', 'y/[a-z][a-z]', 'z/[z-a]', 'src/+(a|b).js']) {
+      expect(plan.notes).toContain(
+        `The ignore pattern "${pattern}" has a part pawl cannot list out, such as a character class or an extglob. Add the paths it skips to "ignore" in the policy.`
+      )
+    }
   })
 
   it('keeps a line width the policy can hold, when the old one is wider than Biome formats to', async () => {

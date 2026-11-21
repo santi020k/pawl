@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { allTechnologies, detect } from './detect.ts'
 import { eslintPlan, importFromProject, importPlugin, packPreset, pluginPreset } from './engines/eslint.ts'
 import { listFiles, readJson, readJsonc, writeText } from './fs-utils.ts'
-import { ALWAYS_IGNORED, DEFAULT_IGNORES, literalBrackets, makeIgnore, WALK_SKIP } from './ignores.ts'
+import { ALWAYS_IGNORED, DEFAULT_IGNORES, expandBraces, literalBrackets, makeIgnore, WALK_SKIP } from './ignores.ts'
 import { ESLINT_CONFIG, type InitAction, policyFile } from './init.ts'
 import { getPack, PACKS, type Pack } from './packs.ts'
 import { DEFAULT_STYLE, effectiveRules, findConfigFile, resolvePolicy } from './policy.ts'
@@ -266,18 +266,6 @@ const readPrettier = (root: string): PrettierOptions | undefined =>
 /** The widest line Biome formats to. */
 const WIDEST_LINE = 320
 
-/** A section name of .editorconfig with braces, such as `*.{js,ts}`, as the globs it stands for. */
-const editorconfigGlobs = (section: string): string[] => {
-  const group = /\{([^{}]*)\}/.exec(section)
-
-  if (!group) return [section]
-
-  const rest = (choice: string): string[] =>
-    editorconfigGlobs(`${section.slice(0, group.index)}${choice}${section.slice(group.index + group[0].length)}`)
-
-  return (group[1] ?? '').split(',').flatMap(rest)
-}
-
 /**
  * The options Prettier takes from the root .editorconfig for the project's scripts, as Prettier's CLI
  * reads them for an option its own config leaves out. Later sections win, as in EditorConfig.
@@ -303,7 +291,7 @@ export const readEditorconfig = (root: string): PrettierOptions => {
     const section = /^\[(.*)\]$/.exec(line)
 
     if (section) {
-      const matches = makeIgnore(editorconfigGlobs(section[1] ?? ''))
+      const matches = makeIgnore(expandBraces(section[1] ?? ''))
 
       applies = scripts.some(matches)
     } else if (applies) {
@@ -534,6 +522,9 @@ const listClasses = (pattern: string): string[] | undefined => {
     } else chars.add(low)
   }
 
+  // A range written backwards, such as `[z-a]`, lists nothing.
+  if (chars.size === 0) return undefined
+
   const listed: string[] = []
 
   for (const char of chars) {
@@ -552,22 +543,64 @@ const listClasses = (pattern: string): string[] | undefined => {
  * paths in the project as they are, such as a route folder `app/[slug]`, stays as it is. Any other
  * has its classes listed out, or is left out with a note when they cannot be.
  */
+/** `@(a|b)` in a minimatch pattern, which stands for `a` or `b`. */
+const EXTGLOB_ONE = /(?<!\\)@\(([^()]*)\)/
+
+/** The other extglobs, such as `!(a)` or `+(a)`, which no list of names can stand for. */
+const EXTGLOB_OTHER = /(?<!\\)[!*+?]\([^()]*\)/
+
+/** An extglob `@(a|b)` as the patterns it stands for, or undefined for one no list can say. */
+const listExtglobs = (pattern: string): string[] | undefined => {
+  if (EXTGLOB_OTHER.test(pattern)) return undefined
+
+  const group = EXTGLOB_ONE.exec(pattern)
+
+  if (!group) return [pattern]
+
+  const before = pattern.slice(0, group.index)
+  const after = pattern.slice(group.index + group[0].length)
+  const listed: string[] = []
+
+  for (const choice of (group[1] ?? '').split('|')) {
+    const rest = listExtglobs(`${before}${choice}${after}`)
+
+    if (!rest) return undefined
+
+    listed.push(...rest)
+  }
+
+  return listed
+}
+
+/** What a pawl pattern reads as the characters themselves: brackets and extglobs. */
+const NOT_LITERAL = /(?<!\\)\[|(?<!\\)[@!*+?]\(/
+
+/**
+ * The ignore patterns of the old config as pawl reads them. A pattern with brackets that names
+ * paths in the project as they are, such as a route folder `app/[slug]`, stays as it is. Any other
+ * has its extglobs and classes listed out, or is left out with a note when they cannot be.
+ */
 const policyIgnores = (root: string, patterns: readonly string[], notes: string[]): string[] => {
   let files: string[] | undefined
 
   return patterns.flatMap(pattern => {
-    if (!/(?<!\\)\[/.test(pattern)) return [pattern]
+    if (!NOT_LITERAL.test(pattern)) return [pattern]
 
     files ??= listFiles(root)
 
     if (files.some(makeIgnore([literalBrackets(pattern)]))) return [pattern]
 
-    const listed = listClasses(pattern)
+    const extglobs = listExtglobs(pattern)
+    const listed = extglobs?.map(listClasses)
 
-    if (listed) return listed
+    if (listed?.every(item => item !== undefined)) {
+      const all = listed.flat()
+
+      if (all.length <= LISTED_LIMIT) return all
+    }
 
     notes.push(
-      `The ignore pattern "${pattern}" has a character class pawl cannot list out. Add the paths it skips to "ignore" in the policy.`
+      `The ignore pattern "${pattern}" has a part pawl cannot list out, such as a character class or an extglob. Add the paths it skips to "ignore" in the policy.`
     )
 
     return []

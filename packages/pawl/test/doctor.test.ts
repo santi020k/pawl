@@ -156,12 +156,14 @@ describe('pawl doctor', () => {
   it('names a pattern whose brackets match no file, but would as a character class', async () => {
     const root = await ready({
       'pawl.config.json': {
-        ignore: ['legacy/v[0-9]', 'src/app/[slug]', 'later/[id]'],
+        // Braces are read as a glob reads them, so they need no note.
+        ignore: ['legacy/v[0-9]', 'src/app/[slug]', 'later/[id]', 'tools/*.{gen,auto}.js'],
         overrides: [{ files: ['**/*.min.[jc]s'], rules: { 'no-console': 'off' } }]
       },
       'legacy/v1/a.js': 'export const a = 1\n',
       'src/app/[slug]/page.js': 'export const b = 1\n',
-      'public/app.min.js': 'export const c = 1\n'
+      'public/app.min.js': 'export const c = 1\n',
+      'tools/a.gen.js': 'export const d = 1\n'
     })
 
     // The route folder is there as it is written, and the pattern no file matches either way is left alone.

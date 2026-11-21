@@ -1,7 +1,7 @@
 import { type Dirent, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isGitRepo, readJson, toPosix } from './fs-utils.ts'
-import { makeIgnore, WALK_SKIP } from './ignores.ts'
+import { expandBraces, makeIgnore, WALK_SKIP } from './ignores.ts'
 import { GATED_TAGS, type Technology } from './rules.ts'
 import { type Detectable, type Framework, type Policy, type Runtime } from './types.ts'
 
@@ -402,18 +402,6 @@ const segmentMatcher = (segment: string): ((name: string) => boolean) => {
     // A class pnpm's glob cannot read either, such as a range written backwards.
     return () => false
   }
-}
-
-/** A pattern with braces, such as `{apps,tools}/*`, as the patterns it stands for. */
-const expandBraces = (pattern: string): string[] => {
-  const group = /\{([^{}]*)\}/.exec(pattern)
-
-  if (!group) return [pattern]
-
-  const before = pattern.slice(0, group.index)
-  const after = pattern.slice(group.index + group[0].length)
-
-  return (group[1] ?? '').split(',').flatMap(choice => expandBraces(`${before}${choice}${after}`))
 }
 
 /** The package folders a workspace pattern names: `packages/*`, `plugins/plugin-*`, `apps/**` or a plain path. */

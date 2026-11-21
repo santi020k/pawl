@@ -466,10 +466,24 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'explain', 'biome:style/noDefaultExport').stdout).toContain(
         'Read more:   https://biomejs.dev/linter/rules/no-default-export/'
       )
-      expect(run(root, 'explain', 'oxlint:jsx-a11y/alt-text').stdout).toContain(
-        'Read more:   https://oxc.rs/docs/guide/usage/linter/rules/jsx_a11y/alt-text.html'
+      expect(run(root, 'explain', 'oxlint:react-perf/jsx-no-new-object-as-prop').stdout).toContain(
+        'Read more:   https://oxc.rs/docs/guide/usage/linter/rules/react_perf/jsx-no-new-object-as-prop.html'
       )
-      expect(run(root, 'explain', 'oxlint:no-debugger').stdout).toContain('rules/eslint/no-debugger.html')
+      expect(run(root, 'explain', 'oxlint:jsx-a11y/alt-text').stdout).toMatch(/^jsx-a11y\/alt-text\n/)
+      expect(run(root, 'explain', 'oxlint:unicorn/no-unknown-rule').stdout).toContain(
+        'rules/unicorn/no-unknown-rule.html'
+      )
+      // The names the output prints for a rule of the catalog lead to that rule.
+      for (const name of [
+        'oxlint:typescript/no-floating-promises',
+        'typescript/no-floating-promises',
+        'eslint:@typescript-eslint/no-floating-promises'
+      ]) {
+        expect(run(root, 'explain', name).stdout, name).toMatch(/^@typescript-eslint\/no-floating-promises\n/)
+      }
+
+      expect(run(root, 'explain', 'oxlint:no-debugger').stdout).toMatch(/^no-debugger\n/)
+      expect(run(root, 'explain', 'biome:suspicious/noDebugger').stdout).toMatch(/^no-debugger\n/)
     })
 
     test('names the values a choice takes when it gets one it does not know', () => {

@@ -7,6 +7,7 @@ import { describe, detect } from './detect.ts'
 import { getDockerRule } from './docker.ts'
 import { doctor, formatDoctor } from './doctor.ts'
 import { biomeContextFor, checkBiomeConfig } from './engines/biome.ts'
+import { oxlintCatalogName } from './engines/oxlint.ts'
 import { OXLINT_RULES, OXLINT_TYPE_AWARE_RULES } from './engines/oxlint-rules.ts'
 import { activeGuards, type Guard, getGuard, guardLevel } from './guards.ts'
 import {
@@ -458,7 +459,14 @@ const runBaseline = async (root: string): Promise<number> => {
 const runExplain = async (root: string, query: string | undefined): Promise<number> => {
   if (!query) throw new UsageError('Which rule? For example: pawl explain no-console')
 
-  const def = findRule(query)
+  // The names the output prints for a rule of the catalog, such as `oxlint:typescript/no-floating-promises`
+  // in the agent format or `typescript/no-floating-promises` in the pretty one, lead to that rule.
+  const bare = /^(?:oxlint|biome|eslint):(.+)$/.exec(query)?.[1]
+  const fromOxlint = oxlintCatalogName(bare ?? query)
+  const def =
+    findRule(query) ??
+    (bare === undefined ? undefined : findRule(bare)) ??
+    (fromOxlint === undefined ? undefined : findRule(fromOxlint))
   const docker = getDockerRule(query) ?? getDockerRule(`pawl/${query}`)
   const markdown = getMarkdownRule(query) ?? getMarkdownRule(`pawl/${query}`)
   const own = docker ?? markdown

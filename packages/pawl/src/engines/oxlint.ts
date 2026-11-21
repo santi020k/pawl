@@ -20,6 +20,9 @@ const NEUTRAL = new Map(
   [...Object.entries(OXLINT_RULES), ...Object.entries(OXLINT_TYPE_AWARE_RULES)].map(([name, rule]) => [rule, name])
 )
 
+/** The rule of the standard an Oxlint rule enforces, such as `no-floating-promises` for `typescript/no-floating-promises`. */
+export const oxlintCatalogName = (engineRule: string): string | undefined => NEUTRAL.get(engineRule)
+
 /**
  * True when Oxlint enforces this rule of the standard. A rule that needs type information counts
  * only when `typeAware` says oxlint-tsgolint is there to run it.

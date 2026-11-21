@@ -309,6 +309,29 @@ describe('the files the real Prettier is given', { timeout: 60_000 }, () => {
     ])
   })
 
+  it('include a file the policy takes back with "!", by name', async () => {
+    const root = fixture()
+
+    write(root, {
+      'pawl.config.json': {
+        engine: 'eslint',
+        formatter: 'prettier',
+        ignore: ['generated', '!generated/keep.js', 'src/legacy/*.js']
+      },
+      'generated/keep.js': 'export const   k = {a:1}\n'
+    })
+
+    const ignore = configIgnores(await loadPolicy(root))
+
+    expect(unformatted(await runPrettier({ root, ignore }))).toEqual([
+      'generated/keep.js',
+      'src/legacy/keep.ts',
+      'src/s.js'
+    ])
+    expect(unformatted(await runPrettier({ root, ignore, files: ['src'] }))).toEqual(['src/legacy/keep.ts', 'src/s.js'])
+    expect(unformatted(await runPrettier({ root, ignore, files: ['generated'] }))).toEqual(['generated/keep.js'])
+  })
+
   it('pass over a skipped file that is named, without an error', async () => {
     const result = await check({ root: fixture(), files: ['generated/g.js', '.changeset/c.md', 'src/s.js'] })
 

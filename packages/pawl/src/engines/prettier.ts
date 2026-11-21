@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { readJson, readJsonc, toPosix } from '../fs-utils.ts'
-import { toEslintIgnores } from '../ignores.ts'
+import { listFiles, readJson, readJsonc, toPosix } from '../fs-utils.ts'
+import { makeIgnore, toEslintIgnores } from '../ignores.ts'
 import { PRETTIER_CONFIG_FILES } from '../tools.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
@@ -157,40 +157,17 @@ export const parsePrettierErrors = (stderr: string, targets: readonly string[]):
  * Prettier's form of the patterns pawl skips: negative patterns on its command line, which it
  * applies to the folders it walks and to the files it is given. Prettier has no config for them,
  * and reads only .gitignore and .prettierignore by itself. A `!` pattern that takes a file back
- * cannot be said this way, so Prettier keeps skipping that file.
+ * cannot be said this way: takenBack finds those files, for a run of their own.
  */
 export const prettierExclusions = (ignore: readonly string[]): string[] =>
   ignore
     .filter(pattern => !pattern.startsWith('!'))
     .flatMap(pattern => toEslintIgnores(pattern).map(glob => `!${glob}`))
 
-export const runPrettier = async ({
-  root,
-  files,
-  write = false,
-  ignore = [],
-  gitignore = true
-}: RunOptions & { ignore?: readonly string[]; gitignore?: boolean }): Promise<EngineRun> => {
-  const bin = resolveBin(root)
-
-  if (!bin)
-    throw new EngineError('Prettier is not installed in this project. Add it with your package manager.', {
-      command: 'prettier'
-    })
-
-  const mode = write ? '--write' : '--list-different'
-  // With --no-error-on-unmatched-pattern, a file named and skipped is passed over in silence.
-  const flags = [
-    mode,
-    '--ignore-unknown',
-    '--no-error-on-unmatched-pattern',
-    // Prettier reads .gitignore and .prettierignore by default. A policy that does not follow the
-    // .gitignore names the other file alone.
-    ...(gitignore ? [] : ['--ignore-path', '.prettierignore']),
-    ...prettierExclusions(ignore)
-  ]
-
-  return runChunked(files, `prettier ${mode}`, async targets => {
+/** One Prettier run over some targets, read into findings. */
+const runWith =
+  (root: string, bin: string, flags: readonly string[], write: boolean) =>
+  async (targets: readonly string[]): Promise<Finding[]> => {
     const result = await runNode(bin, [...flags, ...targets], root, 'prettier')
 
     // A warning is about a config Prettier could still use, such as an unknown option, and the run
@@ -236,5 +213,59 @@ export const runPrettier = async ({
       )
 
     return [...unparsed, ...unformatted]
-  })
+  }
+
+/**
+ * The files a `!` pattern of the policy takes back that the negative patterns still skip, within
+ * the files or folders the run is for. Prettier is given them by name, in a run without those
+ * patterns, so a file pawl checks is never left out.
+ */
+const takenBack = (root: string, ignore: readonly string[], targets: readonly string[] | undefined): string[] => {
+  if (!ignore.some(pattern => pattern.startsWith('!'))) return []
+
+  const skippedByPrettier = makeIgnore(ignore.filter(pattern => !pattern.startsWith('!')))
+  const skippedByPawl = makeIgnore(ignore)
+  const named = (targets ?? []).map(target => target.replace(/\/+$/, ''))
+  const within = (file: string): boolean =>
+    named.length === 0 || named.some(target => target === '.' || file === target || file.startsWith(`${target}/`))
+
+  return listFiles(root).filter(file => within(file) && skippedByPrettier(file) && !skippedByPawl(file))
+}
+
+export const runPrettier = async ({
+  root,
+  files,
+  write = false,
+  ignore = [],
+  gitignore = true
+}: RunOptions & { ignore?: readonly string[]; gitignore?: boolean }): Promise<EngineRun> => {
+  const bin = resolveBin(root)
+
+  if (!bin)
+    throw new EngineError('Prettier is not installed in this project. Add it with your package manager.', {
+      command: 'prettier'
+    })
+
+  const mode = write ? '--write' : '--list-different'
+  // With --no-error-on-unmatched-pattern, a file named and skipped is passed over in silence.
+  const base = [
+    mode,
+    '--ignore-unknown',
+    '--no-error-on-unmatched-pattern',
+    // Prettier reads .gitignore and .prettierignore by default. A policy that does not follow the
+    // .gitignore names the other file alone.
+    ...(gitignore ? [] : ['--ignore-path', '.prettierignore'])
+  ]
+  const back = takenBack(root, ignore, files)
+  const main = await runChunked(
+    files,
+    `prettier ${mode}`,
+    runWith(root, bin, [...base, ...prettierExclusions(ignore)], write)
+  )
+
+  if (back.length === 0) return main
+
+  const again = await runChunked(back, `prettier ${mode}`, runWith(root, bin, base, write))
+
+  return { findings: [...main.findings, ...again.findings], command: main.command }
 }

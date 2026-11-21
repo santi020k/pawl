@@ -1,5 +1,5 @@
 import { importRestrictions, ruleFiles } from '../../catalog/guards.ts'
-import { GATED_TAGS, getRule, isGated, type RuleTag, type Technology } from '../../catalog/rules.ts'
+import { GATED_TAGS, getRule, isGated, type RuleTag, scopedRule, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { defaultPolicy } from '../../policy/merge.ts'
@@ -49,8 +49,6 @@ const vcsConfig = (policy: Policy, vcs: boolean): JsonObject => {
   return policy.gitignore ? {} : { vcs: { useIgnoreFile: false } }
 }
 
-export const BIOME_PREFIX = 'biome:'
-
 /** Keep the gated technologies in one fixed order, so generated files do not churn. */
 const ordered = (technologies: readonly Technology[] = []): Technology[] =>
   GATED_TAGS.filter(technology => technologies.includes(technology))
@@ -85,8 +83,9 @@ const biomeEntry = (
   include: (tag: RuleTag) => boolean,
   optionsFor: OptionsFor
 ): [string, Json] | undefined => {
-  const def = name.startsWith(BIOME_PREFIX) ? undefined : getRule(name)
-  const biomeRule = name.startsWith(BIOME_PREFIX) ? name.slice(BIOME_PREFIX.length) : def?.biome
+  const scoped = scopedRule(name, 'biome')
+  const def = scoped === undefined ? getRule(name) : undefined
+  const biomeRule = scoped ?? def?.biome
 
   if (!biomeRule || (def && !include(def.tag))) return undefined
 

@@ -1,4 +1,4 @@
-import { canonicalName, defaultLevel, getRule } from '../catalog/rules.ts'
+import { canonicalName, defaultLevel, getRule, scopedRule } from '../catalog/rules.ts'
 import { literalBrackets } from '../project/ignores.ts'
 import {
   type Level,
@@ -122,8 +122,6 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
   return policy
 }
 
-const BIOME_ONLY = 'biome:'
-
 /**
  * Options for Biome by canonical rule name. Biome refuses options for a rule it does not have,
  * so a name without a Biome rule is refused here, where the message can say which policy named it.
@@ -143,7 +141,7 @@ const biomeOptionsOf = (
       )
     }
 
-    if (!name.startsWith(BIOME_ONLY) && !getRule(name)?.biome) {
+    if (scopedRule(name, 'biome') === undefined && !getRule(name)?.biome) {
       throw new Error(
         `${source} gives Biome options to "${given}", which Biome does not enforce. Use \`options\` for ESLint and Oxlint, or name Biome's rule as biome:group/name.`
       )
@@ -160,7 +158,7 @@ const requireLevels = (policy: Policy): void => {
   const named = [policy.biomeOptions, ...policy.overrides.map(override => override.biomeOptions)].flatMap(Object.keys)
   const leveled = (name: string): boolean =>
     name in policy.rules || policy.overrides.some(override => name in override.rules && name in override.biomeOptions)
-  const missing = [...new Set(named)].filter(name => name.startsWith(BIOME_ONLY) && !leveled(name))
+  const missing = [...new Set(named)].filter(name => scopedRule(name, 'biome') !== undefined && !leveled(name))
 
   if (missing.length > 0) {
     throw new Error(

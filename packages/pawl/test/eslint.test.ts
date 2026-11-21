@@ -23,6 +23,17 @@ const withPlugins = (): string =>
   })
 
 describe('eslintPlan', () => {
+  it('leaves a rule named for another engine to that engine', async () => {
+    const policy = mergeLayers([
+      { input: { rules: { 'oxlint:no-foo': 'error', 'biome:style/useBlockStatements': 'error' } }, source: 'test' }
+    ])
+    const plan = await eslintPlan({ root: withPlugins(), policy, biomeActive: false, typescript: false })
+    const base = block(plan.config, 'pawl/base') as { rules: Record<string, unknown> }
+
+    expect(Object.keys(base.rules).filter(name => name.includes(':'))).toEqual([])
+    expect(plan.notEnforced.filter(({ rule, needs }) => `${rule} ${needs}`.includes(':'))).toEqual([])
+  })
+
   it('takes every rule when ESLint is the only engine', async () => {
     const plan = await eslintPlan({
       root: withPlugins(),

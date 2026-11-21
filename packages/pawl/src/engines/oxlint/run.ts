@@ -1,3 +1,4 @@
+import { scopedName } from '../../catalog/rules.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
@@ -36,7 +37,7 @@ const toFinding = (diagnostic: OxlintDiagnostic): Finding => {
     column: Math.max(1, span?.column ?? 1),
     engine: 'oxlint',
     engineRule,
-    rule: NEUTRAL.get(engineRule) ?? `oxlint:${engineRule}`,
+    rule: NEUTRAL.get(engineRule) ?? scopedName('oxlint', engineRule),
     severity: diagnostic.severity === 'error' ? 'error' : 'warn',
     message: diagnostic.message,
     fixable: false

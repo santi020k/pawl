@@ -1,6 +1,6 @@
 import { IMPORTS_RULE, importRestrictions, SYNTAX_RULE, syntaxRestrictions } from '../../catalog/guards.ts'
 import { PACKS, type Pack } from '../../catalog/packs.ts'
-import { getRule, type Technology } from '../../catalog/rules.ts'
+import { getRule, notFor, scopedRule, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { findProjectRoot, loadPolicy } from '../../policy/load.ts'
@@ -168,7 +168,8 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
   }
 
   for (const [name, level] of effectiveRules(policy, { typescript, technologies })) {
-    if (name.startsWith('biome:') || name.startsWith('pawl/')) continue
+    // Names another engine runs, and pawl's own rules, are not ESLint's to run.
+    if (notFor(name, 'eslint')) continue
 
     const def = getRule(name)
 
@@ -178,7 +179,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
       continue
     }
 
-    const eslintName = name.startsWith('eslint:') ? name.slice('eslint:'.length) : name
+    const eslintName = scopedRule(name, 'eslint') ?? name
     const ruleOptions = policy.options[name] ?? def?.options?.eslint
     const value: RuleValue = level !== 'off' && ruleOptions ? [level, ...ruleOptions] : level
     const prefix = splitRule(eslintName)
@@ -364,10 +365,10 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     const entries = overrideRules(override, { typescript, technologies }, policy)
 
     for (const [name, level] of entries) {
-      if (name.startsWith('biome:') || name.startsWith('oxlint:') || name.startsWith('pawl/') || covered(name)) continue
+      if (notFor(name, 'eslint') || covered(name)) continue
 
       const def = getRule(name)
-      const eslintName = name.startsWith('eslint:') ? name.slice('eslint:'.length) : name
+      const eslintName = scopedRule(name, 'eslint') ?? name
       const ruleOptions = override.options[name] ?? policy.options[name] ?? def?.options?.eslint
       const value: RuleValue = level !== 'off' && ruleOptions ? [level, ...ruleOptions] : level
       const prefix = splitRule(eslintName)

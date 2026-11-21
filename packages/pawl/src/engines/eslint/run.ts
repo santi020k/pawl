@@ -1,3 +1,4 @@
+import { scopedName } from '../../catalog/rules.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { EngineError, type EngineRun, parseReport, type RunOptions, resolveBin, runNode, targets } from '../engine.ts'
@@ -57,7 +58,7 @@ export const runEslint = async ({ root, files, write = false }: RunOptions): Pro
         column: Math.max(1, message.column ?? 1),
         engine: 'eslint',
         engineRule: message.ruleId ?? 'parse',
-        rule: message.ruleId ?? 'eslint:parse',
+        rule: message.ruleId ?? scopedName('eslint', 'parse'),
         severity: message.severity === 2 ? 'error' : 'warn',
         message: message.message,
         fixable: message.fix !== undefined

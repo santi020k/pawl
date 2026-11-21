@@ -1125,6 +1125,25 @@ export const getRule = (name: string): RuleDef | undefined => BY_NAME.get(name)
 
 export const getRuleByBiome = (biomeRule: string): RuleDef | undefined => BY_BIOME.get(biomeRule)
 
+/** The engines a policy can name a rule for directly, outside the catalog. */
+export type ScopedEngine = 'biome' | 'oxlint' | 'eslint'
+
+const SCOPED: readonly ScopedEngine[] = ['biome', 'oxlint', 'eslint']
+
+/**
+ * The name a policy and a finding use for a rule only one engine has, such as
+ * `biome:style/useBlockStatements` or `oxlint:unicorn/no-null`.
+ */
+export const scopedName = (engine: ScopedEngine, rule: string): string => `${engine}:${rule}`
+
+/** The engine's own rule a scoped name stands for, or undefined when the name is not for that engine. */
+export const scopedRule = (name: string, engine: ScopedEngine): string | undefined =>
+  name.startsWith(`${engine}:`) ? name.slice(engine.length + 1) : undefined
+
+/** True for a name another engine runs, or one of pawl's own rules, which `engine` must leave alone. */
+export const notFor = (name: string, engine: ScopedEngine): boolean =>
+  name.startsWith('pawl/') || SCOPED.some(other => other !== engine && scopedRule(name, other) !== undefined)
+
 /** The name the catalog files a rule under. Names it does not know are returned as they are. */
 export const canonicalName = (name: string): string => BY_NAME.get(name)?.name ?? name
 

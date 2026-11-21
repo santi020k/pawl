@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { IMPORTS_RULE, importRestrictions } from '../../catalog/guards.ts'
-import { getRule } from '../../catalog/rules.ts'
+import { getRule, scopedRule } from '../../catalog/rules.ts'
 import { extraGlobals, oxlintEnv } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules, type RuleContext } from '../../policy/levels.ts'
 import { OXLINT_CONFIG_FILE } from '../../project/config-files.ts'
@@ -28,8 +28,7 @@ export const oxlintContextFor = (detection: Detection): OxlintContext => ({
 })
 
 /** Oxlint's name for a rule of the standard, or undefined when Oxlint does not have it. */
-const oxlintRule = (name: string): string | undefined =>
-  name.startsWith('oxlint:') ? name.slice('oxlint:'.length) : OXLINT_RULES[name]
+const oxlintRule = (name: string): string | undefined => scopedRule(name, 'oxlint') ?? OXLINT_RULES[name]
 
 /**
  * The Oxlint configuration for a policy. Oxlint refuses a rule it does not know, so only the

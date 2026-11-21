@@ -1,10 +1,10 @@
 import { guardOfMessage } from '../../catalog/guards.ts'
-import { getRuleByBiome } from '../../catalog/rules.ts'
+import { getRuleByBiome, scopedName } from '../../catalog/rules.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
 import { EngineError, type EngineRun, parseReport, type RunOptions, resolveBin, runNode, targets } from '../engine.ts'
-import { BIOME_PREFIX, BIOME_VERSION } from './config.ts'
+import { BIOME_VERSION } from './config.ts'
 
 const BIN = { packageName: '@biomejs/biome', bin: 'biome', fallback: 'bin/biome', besidePawl: true }
 
@@ -62,7 +62,7 @@ const toFinding = (diagnostic: BiomeDiagnostic): Finding | undefined => {
     return {
       ...base,
       engineRule,
-      rule: getRuleByBiome(engineRule)?.name ?? `${BIOME_PREFIX}${engineRule}`,
+      rule: getRuleByBiome(engineRule)?.name ?? scopedName('biome', engineRule),
       fixable: false
     }
   }
@@ -72,7 +72,7 @@ const toFinding = (diagnostic: BiomeDiagnostic): Finding | undefined => {
 
   if (guard) return { ...base, engineRule: `pawl/${guard}`, rule: `pawl/${guard}`, fixable: false }
 
-  return { ...base, engineRule: category, rule: `${BIOME_PREFIX}${category}`, fixable: false }
+  return { ...base, engineRule: category, rule: scopedName('biome', category), fixable: false }
 }
 
 const isReport = (value: unknown): value is BiomeReport => isRecord(value) && Array.isArray(value.diagnostics)

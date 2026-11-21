@@ -1,7 +1,7 @@
-import { loadPolicy } from '../policy/load.ts'
+import { type Detection, detect } from '../project/detect.ts'
+import { type Toolset, toolset } from '../project/toolset.ts'
 import { type Policy } from '../types.ts'
-import { type Detection, detect } from './detect.ts'
-import { type Toolset, toolset } from './toolset.ts'
+import { loadPolicy } from './load.ts'
 
 /** A project as every command sees it: its policy, what it is built with, and which tools run. */
 export interface Project {

@@ -1,7 +1,7 @@
 /** What `pawl migrate` tells people: the lines it prints, and the report it writes. */
 
 import { plural } from '../../utils/text.ts'
-import { type MigratePlan } from './plan.ts'
+import { type MigratePlan } from './migration.ts'
 import { rank } from './read.ts'
 
 export const reportFile = (plan: Omit<MigratePlan, 'actions'>, backup: string | undefined): string => {

@@ -1,4 +1,4 @@
-import { loadProject } from '../project/context.ts'
+import { loadProject } from '../policy/project.ts'
 import { type Toolset } from '../project/toolset.ts'
 import { planEngineConfigs } from './engine-configs.ts'
 import { type SetupPlan } from './plan.ts'

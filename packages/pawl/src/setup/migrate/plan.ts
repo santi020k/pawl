@@ -15,6 +15,7 @@ import { plural } from '../../utils/text.ts'
 import { PACKAGE_NAME } from '../../version.ts'
 import { type SetupAction } from '../plan.ts'
 import { ESLINT_CONFIG, policyFile } from '../templates.ts'
+import { MIGRATION_REPORT, type MigrateOptions, type MigratePlan, type RuleChange } from './migration.ts'
 import {
   type CoreRules,
   type EslintClass,
@@ -32,50 +33,6 @@ import {
 } from './read.ts'
 import { reportFile } from './report.ts'
 import { styleFrom } from './style.ts'
-
-/** Where the full account of a migration is written. */
-export const MIGRATION_REPORT = '.pawl/migration.md'
-
-export interface MigrateOptions {
-  root: string
-  /** Leave the ESLint config file as it is and only write the policy. */
-  keepConfig?: boolean
-}
-
-export interface RuleChange {
-  rule: string
-  /** The level the pawl standard and its packs would set. */
-  standard: Level
-  /** The level the old config set, which the policy keeps. */
-  kept: Level
-}
-
-export interface MigratePlan {
-  /** The ESLint config that was read, relative to the root. */
-  source: string
-  /** The files whose resolved configuration was compared. */
-  samples: string[]
-  policy: PolicyInput
-  actions: SetupAction[]
-  notes: string[]
-  /** Rules that are on in the old config. */
-  total: number
-  /** Rules the pawl standard and its packs already set to the same level. */
-  same: number
-  /** Rules whose level the policy carries over because it differs from the standard. */
-  changed: RuleChange[]
-  /** Rules that are on in the standard and its packs and were not in the old config. */
-  added: string[]
-  /** Formatting rules. The formatter does their job. */
-  formatting: string[]
-  /** Import ordering rules. Import sorting does their job. */
-  importSorting: string[]
-  packs: string[]
-  /** Rules whose options the policy carries, that Biome enforces with its own options when it is the linter. */
-  biomeOptions: string[]
-  /** Rules the policy names that cannot run, and what each one needs. */
-  notEnforced: Array<{ rule: string; needs: string }>
-}
 
 const TS_TWIN = '@typescript-eslint/'
 

@@ -4,7 +4,7 @@ import { getRule, notFor, scopedRule, type Technology } from '../../catalog/rule
 import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { findProjectRoot } from '../../policy/load.ts'
-import { loadProject } from '../../project/context.ts'
+import { loadProject } from '../../policy/project.ts'
 import { allTechnologies } from '../../project/detect.ts'
 import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../../project/ignores.ts'
 import { type Policy, type Runtime } from '../../types.ts'

@@ -7,31 +7,18 @@ import { check } from './check/check.ts'
 import { format, type OutputFormat } from './check/output.ts'
 import { EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from './check/result.ts'
 import { confirm, isInteractive, select } from './cli/prompt.ts'
-import { biomeContextFor, checkBiomeConfig } from './engines/biome/state.ts'
 import { OXLINT_RULES } from './engines/oxlint/rules.ts'
 import { effectiveRules } from './policy/levels.ts'
 import { loadPolicy } from './policy/load.ts'
 import { describe, detect } from './project/detect.ts'
-import { toolset } from './project/toolset.ts'
 import { doctor, formatDoctor } from './report/doctor.ts'
 import { getDockerRule } from './scans/docker.ts'
 import { getMarkdownRule } from './scans/markdown.ts'
-import {
-  applyInit,
-  describePlan,
-  formatWritten,
-  type InitAction,
-  type InitMode,
-  planAdd,
-  planBiomeConfig,
-  planBiomePackages,
-  planInit,
-  planOxlintConfig,
-  planPrettierConfig,
-  planRuleFiles,
-  recordBaseline
-} from './setup/init.ts'
+import { planAdd } from './setup/add.ts'
+import { describePlan, formatWritten, type InitMode, planInit, recordBaseline } from './setup/init.ts'
 import { describeMigration, planMigrate } from './setup/migrate.ts'
+import { applyPlan, describeActions } from './setup/plan.ts'
+import { planSync } from './setup/sync.ts'
 import { type EngineName, type FormatterName } from './types.ts'
 import { kebabCase, plural } from './utils/text.ts'
 import { VERSION } from './version.ts'
@@ -278,7 +265,7 @@ const runInit = async (root: string, flags: Flags): Promise<number> => {
     return EXIT_OK
   }
 
-  applyInit(plan)
+  applyPlan(plan)
 
   const installed = plan.install === undefined || runInstall(root, plan.install)
 
@@ -316,33 +303,7 @@ const runInit = async (root: string, flags: Flags): Promise<number> => {
 }
 
 const runSync = async (root: string): Promise<number> => {
-  const policy = await loadPolicy(root)
-  const tools = toolset(root, policy)
-  const detection = detect(root, policy)
-  const notes: string[] = []
-  const actions: InitAction[] = []
-
-  if (tools.biome) {
-    const context = biomeContextFor(root, policy, detection, tools)
-    const rootAction = planBiomeConfig(root, policy, context, notes)
-
-    if (rootAction) actions.push(rootAction)
-
-    actions.push(...planBiomePackages(root, detection, notes, checkBiomeConfig(root, policy, context).preset))
-    actions.push(...planRuleFiles(root, policy, context, detection))
-  }
-
-  if (tools.linter === 'oxlint') {
-    const oxlintAction = planOxlintConfig(root, policy, detection)
-
-    if (oxlintAction) actions.push(oxlintAction)
-  }
-
-  if (tools.formatter === 'prettier') {
-    const prettierAction = planPrettierConfig(root, policy, notes, true)
-
-    if (prettierAction) actions.push(prettierAction)
-  }
+  const { actions, notes, tools } = await planSync(root)
 
   for (const action of actions) {
     action.apply()
@@ -386,7 +347,7 @@ const runMigrate = async (root: string, flags: Flags): Promise<number> => {
     return EXIT_OK
   }
 
-  applyInit(plan)
+  applyPlan(plan)
   out('')
 
   for (const note of plan.notes) out(`Note: ${note}`)
@@ -402,8 +363,7 @@ const runMigrate = async (root: string, flags: Flags): Promise<number> => {
 const runAdd = async (root: string, names: string[], flags: Flags): Promise<number> => {
   const plan = await planAdd(root, names, flags['no-install'] !== true)
 
-  for (const action of plan.actions)
-    out(`${action.kind === 'create' ? 'Write ' : 'Update'} ${action.path}  (${action.summary})`)
+  for (const line of describeActions(plan.actions)) out(line)
 
   if (plan.install) out(`Run    ${plan.install}`)
 
@@ -413,7 +373,7 @@ const runAdd = async (root: string, names: string[], flags: Flags): Promise<numb
     return EXIT_OK
   }
 
-  applyInit(plan)
+  applyPlan(plan)
 
   const installed = plan.install === undefined || runInstall(root, plan.install)
 

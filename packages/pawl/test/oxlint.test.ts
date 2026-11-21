@@ -11,7 +11,8 @@ import { OXLINT_RULES, OXLINT_VERSION } from '../src/engines/oxlint/rules.ts'
 import { runOxlint } from '../src/engines/oxlint/run.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { toolset } from '../src/project/toolset.ts'
-import { applyInit, planInit } from '../src/setup/init.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { link, project, write } from './helpers.ts'
 
 const require = createRequire(import.meta.url)
@@ -97,7 +98,7 @@ describe('Oxlint as the linter, with the real Oxlint', { timeout: 60_000 }, () =
       '.oxlintrc.json',
       'package.json'
     ])
-    applyInit(plan)
+    applyPlan(plan)
     expect(readFileSync(join(root, 'pawl.config.ts'), 'utf8')).toContain("engine: 'oxlint'")
     // Biome is only there to format.
     expect(JSON.parse(readFileSync(join(root, 'biome.json'), 'utf8'))).toEqual({

@@ -4,7 +4,8 @@ import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { oxlintConfig } from '../src/engines/oxlint/config.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { checkDocker, DOCKER_RULES, isDockerFile } from '../src/scans/docker.ts'
-import { applyInit, planInit } from '../src/setup/init.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { project } from './helpers.ts'
 
 describe('guards', () => {
@@ -236,7 +237,7 @@ describe('workspace tools and agents', () => {
     const root = project({ 'package.json': { name: 'mono', private: true, workspaces: ['apps/*'] }, 'nx.json': {} })
     const plan = await planInit({ root, install: false, editor: false })
 
-    applyInit(plan)
+    applyPlan(plan)
 
     const { readFileSync } = await import('node:fs')
     const manifest = JSON.parse(readFileSync(`${root}/package.json`, 'utf8')) as { nx: unknown; scripts: unknown }
@@ -257,7 +258,7 @@ describe('workspace tools and agents', () => {
     expect(await paths(plain)).not.toContain('.cursor/hooks.json')
     expect(await paths(cursor)).toContain('.cursor/hooks.json')
 
-    applyInit(await planInit({ root: cursor, install: false, editor: false, agents: true }))
+    applyPlan(await planInit({ root: cursor, install: false, editor: false, agents: true }))
 
     const { readFileSync } = await import('node:fs')
 

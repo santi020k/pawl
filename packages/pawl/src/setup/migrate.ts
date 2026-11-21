@@ -17,7 +17,8 @@ import { writeText } from '../utils/fs.ts'
 import { readJson, sameJson } from '../utils/json.ts'
 import { plural } from '../utils/text.ts'
 import { PACKAGE_NAME } from '../version.ts'
-import { ESLINT_CONFIG, type InitAction, policyFile } from './init.ts'
+import { type SetupAction } from './plan.ts'
+import { ESLINT_CONFIG, policyFile } from './templates.ts'
 
 /** Patterns pawl skips by default, so a migrated config need not list them. */
 const COVERED = new Set([...ALWAYS_IGNORED, ...DEFAULT_IGNORES])
@@ -45,7 +46,7 @@ export interface MigratePlan {
   /** The files whose resolved configuration was compared. */
   samples: string[]
   policy: PolicyInput
-  actions: InitAction[]
+  actions: SetupAction[]
   notes: string[]
   /** Rules that are on in the old config. */
   total: number
@@ -709,7 +710,7 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
     Object.keys(style).length > 0 ? 'style' : '',
     ignore && ignore.length > 0 ? 'ignores' : ''
   ].filter(Boolean)
-  const actions: InitAction[] = [
+  const actions: SetupAction[] = [
     {
       path: 'pawl.config.ts',
       kind: 'create',

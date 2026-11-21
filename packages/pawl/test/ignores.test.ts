@@ -18,7 +18,8 @@ import {
   toBiomeIgnore,
   toEslintIgnores
 } from '../src/project/ignores.ts'
-import { applyInit, planInit } from '../src/setup/init.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 const policyWith = (input: Parameters<typeof mergeLayers>[0][number]['input']) =>
@@ -169,7 +170,7 @@ describe('a folder with brackets in its name, in every engine', { timeout: 60_00
 
     write(root, { 'pawl.config.json': policy })
     link(root)
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     const result = await check({ root })
 
@@ -207,7 +208,7 @@ describe('a folder with brackets in its name, in every engine', { timeout: 60_00
     })
 
     link(root)
-    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+    applyPlan(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
 
     const result = await check({ root })
 
@@ -245,7 +246,7 @@ describe('.gitignore in every engine', { timeout: 60_000 }, () => {
     const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' }, ...files })
 
     link(root)
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     expect(JSON.parse(readFileSync(join(root, 'biome.json'), 'utf8'))).toMatchObject({
       vcs: { enabled: true, clientKind: 'git', useIgnoreFile: true }
@@ -258,7 +259,7 @@ describe('.gitignore in every engine', { timeout: 60_000 }, () => {
 
     // Opting out lints what git ignores.
     write(root, { 'pawl.config.json': { gitignore: false } })
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     const all = await check({ root })
 
@@ -292,7 +293,7 @@ describe('.gitignore in every engine', { timeout: 60_000 }, () => {
     })
 
     link(root)
-    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+    applyPlan(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
 
     const result = await check({ root })
 

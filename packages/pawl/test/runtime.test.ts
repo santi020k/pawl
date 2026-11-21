@@ -7,7 +7,8 @@ import { biomeConfig, biomeProjectConfig } from '../src/engines/biome/config.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { checkOxlintConfig, mergeOxlintConfig, oxlintConfig } from '../src/engines/oxlint/config.ts'
 import { defaultPolicy } from '../src/policy/merge.ts'
-import { applyInit, planInit } from '../src/setup/init.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 describe('runtime globals in each engine', () => {
@@ -81,13 +82,13 @@ describe('runtime globals, with the real engines', { timeout: 60_000 }, () => {
     })
 
     link(root)
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     // Biome knows the browser globals whatever the runtime, so only Bun was ever in question.
     expect(undeclared(await check({ root }))).toEqual([])
 
     write(root, { 'pawl.config.json': { runtime: 'node' } })
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     expect(undeclared(await check({ root }))).toEqual(['The Bun variable is undeclared.'])
   })
@@ -100,7 +101,7 @@ describe('runtime globals, with the real engines', { timeout: 60_000 }, () => {
     })
 
     link(root)
-    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+    applyPlan(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
 
     expect(undeclared(await check({ root }))).toEqual(["'document' is not defined."])
   })

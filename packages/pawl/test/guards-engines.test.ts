@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { type Guard, getGuard, importRestrictions } from '../src/catalog/guards.ts'
 import { check } from '../src/check/check.ts'
 import { defaultPolicy } from '../src/policy/merge.ts'
-import { applyInit, planInit } from '../src/setup/init.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { link, project } from './helpers.ts'
 
 /** One guard's code patterns, with a file they must catch at the given lines and one they must leave alone. */
@@ -157,7 +158,7 @@ describe('library guards, run by the real Biome', { timeout: 60_000 }, () => {
 
       const plan = await planInit({ root, install: false, editor: false })
 
-      applyInit(plan)
+      applyPlan(plan)
 
       expect(plan.actions.map(action => action.path)).toContain(`.pawl/rules/${name}.grit`)
 

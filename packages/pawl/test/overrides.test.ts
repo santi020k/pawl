@@ -6,7 +6,8 @@ import { biomeConfig, biomeProjectConfig } from '../src/engines/biome/config.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { oxlintConfig } from '../src/engines/oxlint/config.ts'
 import { mergeLayers } from '../src/policy/merge.ts'
-import { applyInit, planInit } from '../src/setup/init.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { type PolicyInput } from '../src/types.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
 
@@ -157,7 +158,7 @@ describe('overrides, with the real engines', { timeout: 60_000 }, () => {
     const root = project({ ...files, 'pawl.config.json': { overrides: [TESTS] } })
 
     link(root)
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     expect(flagged(await check({ root }))).toEqual(['src/a.js'])
   })
@@ -166,7 +167,7 @@ describe('overrides, with the real engines', { timeout: 60_000 }, () => {
     const root = project({ ...files, 'pawl.config.json': { engine: 'oxlint', overrides: [TESTS] } })
 
     link(root)
-    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+    applyPlan(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
 
     const result = await check({ root })
 

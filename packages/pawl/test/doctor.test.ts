@@ -5,7 +5,8 @@ import { describe, expect, it, it as test } from 'vitest'
 import { check } from '../src/check/check.ts'
 import { BIOME_VERSION } from '../src/engines/biome/config.ts'
 import { type DoctorReport, doctor, formatDoctor } from '../src/report/doctor.ts'
-import { applyInit, formatWritten, planInit } from '../src/setup/init.ts'
+import { formatWritten, planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 const ready = async (files: Record<string, string | object> = {}): Promise<string> => {
@@ -15,7 +16,7 @@ const ready = async (files: Record<string, string | object> = {}): Promise<strin
 
   const plan = await planInit({ root, install: false, editor: false })
 
-  applyInit(plan)
+  applyPlan(plan)
   // As init does: pawl formats what it wrote, so its own files pass its own check.
   await formatWritten(
     root,

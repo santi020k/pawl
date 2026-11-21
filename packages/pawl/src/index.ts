@@ -58,10 +58,15 @@ export type { Toolset } from './project/toolset.ts'
 export { toolset } from './project/toolset.ts'
 export type { Compatibility, DoctorReport } from './report/doctor.ts'
 export { doctor, formatDoctor } from './report/doctor.ts'
-export type { InitAction, InitMode, InitOptions, InitPlan } from './setup/init.ts'
-export { applyInit, formatWritten, planAdd, planInit, planPrettierConfig, recordBaseline } from './setup/init.ts'
+export { planAdd } from './setup/add.ts'
+export type { InitMode, InitOptions, InitPlan } from './setup/init.ts'
+export { formatWritten, planInit, recordBaseline } from './setup/init.ts'
 export type { MigrateOptions, MigratePlan, RuleChange } from './setup/migrate.ts'
 export { describeMigration, MIGRATION_REPORT, planMigrate } from './setup/migrate.ts'
+export type { SetupAction, SetupPlan } from './setup/plan.ts'
+export { applyPlan } from './setup/plan.ts'
+export type { SyncPlan } from './setup/sync.ts'
+export { planSync } from './setup/sync.ts'
 export type {
   Detectable,
   EngineChoice,

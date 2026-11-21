@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { check } from '../src/check/check.ts'
 import { biomeConfig, biomeTechConfig } from '../src/engines/biome/config.ts'
 import { defaultPolicy } from '../src/policy/merge.ts'
-import { applyInit, formatWritten, planInit } from '../src/setup/init.ts'
+import { formatWritten, planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { link, project, write } from './helpers.ts'
 
 const ready = async (files: Record<string, string | object>): Promise<string> => {
@@ -14,7 +15,7 @@ const ready = async (files: Record<string, string | object>): Promise<string> =>
 
   const plan = await planInit({ root, install: false, editor: false })
 
-  applyInit(plan)
+  applyPlan(plan)
   await formatWritten(
     root,
     plan.actions.map(action => action.path)

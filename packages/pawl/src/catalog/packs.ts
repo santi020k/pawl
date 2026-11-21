@@ -679,6 +679,12 @@ const BY_NAME = new Map(PACKS.map(pack => [pack.name, pack]))
 /** A pack by name. `unicorn/recommended` names the unicorn pack, started from the plugin's own preset. */
 export const getPack = (name: string): Pack | undefined => BY_NAME.get(name.split('/')[0] ?? name)
 
+/**
+ * True for a pack entry that only switches on when the policy names it: one of a plugin's own
+ * presets, such as `unicorn/recommended`, or a pack with no dependency to detect it by.
+ */
+export const onlyWhenNamed = (entry: string): boolean => entry.includes('/') || (getPack(entry)?.when.length ?? 0) === 0
+
 /** The packs whose trigger dependencies a project has. */
 export const suggestedPacks = (dependencies: ReadonlySet<string>): Pack[] =>
   PACKS.filter(pack => pack.when.some(name => dependencies.has(name)))

@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { applyInit, planInit } from '../src/setup/init.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { readJsonc } from '../src/utils/json.ts'
 import { link, project } from './helpers.ts'
 
@@ -43,7 +44,7 @@ describe('a settings file pawl merges into', () => {
     })
 
     link(root)
-    applyInit(await planInit({ root, install: false }))
+    applyPlan(await planInit({ root, install: false }))
 
     expect(JSON.parse(readFileSync(join(root, '.vscode/settings.json'), 'utf8'))).toMatchObject(settings)
   })

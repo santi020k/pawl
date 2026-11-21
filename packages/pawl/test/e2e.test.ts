@@ -482,6 +482,8 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       const root = project()
 
       expect(run(root, 'nope')).toMatchObject({ code: 2, stderr: 'pawl: Unknown command "nope". Run "pawl --help".\n' })
+      // A name every object has is not a command either.
+      expect(run(root, 'constructor')).toMatchObject({ code: 2, stderr: expect.stringContaining('Unknown command') })
       expect(run(root, 'check')).toMatchObject({ code: 2, stdout: expect.stringContaining('No biome.json found.') })
       expect(run(root, '--version').stdout).toMatch(/^\d+\.\d+\.\d+/)
     })

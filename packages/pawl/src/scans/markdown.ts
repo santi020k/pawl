@@ -1,30 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { listFiles } from '../project/files.ts'
-import { ignoreMatcher } from '../project/ignores.ts'
-import { type Finding, type Level, type Policy } from '../types.ts'
+import { type Finding } from '../types.ts'
+import { type OwnRule, type Report, ownRule as rule, runScan, type Scan, type ScanOptions } from './scan.ts'
 
 /**
- * Pawl's own checks for Markdown files.
- *
- * They follow the rules of the same names in @eslint/markdown, with a plain line scan instead of a parser.
- * Code blocks, code spans, HTML comments and front matter are skipped.
+ * Pawl's own checks for Markdown files. They follow the rules of the same names in
+ * @eslint/markdown, with a line scan instead of a parser. Code blocks, code spans, HTML comments
+ * and front matter are skipped.
  */
-export interface MarkdownRule {
-  name: string
-  level: Level
-  summary: string
-  advice: string
-}
-
-const rule = (name: string, level: Level, summary: string, advice: string): MarkdownRule => ({
-  name: `pawl/${name}`,
-  level,
-  summary,
-  advice
-})
-
-export const MARKDOWN_RULES: readonly MarkdownRule[] = [
+export const MARKDOWN_RULES: readonly OwnRule[] = [
   rule(
     'markdown-no-empty-links',
     'error',
@@ -47,11 +29,9 @@ export const MARKDOWN_RULES: readonly MarkdownRule[] = [
 
 const BY_NAME = new Map(MARKDOWN_RULES.map(def => [def.name, def]))
 
-export const getMarkdownRule = (name: string): MarkdownRule | undefined => BY_NAME.get(name)
+export const getMarkdownRule = (name: string): OwnRule | undefined => BY_NAME.get(name)
 
 export const isMarkdownFile = (file: string): boolean => /\.(md|markdown)$/i.test(file)
-
-type Report = (name: string, line: number, column: number, detail?: string) => void
 
 /** Blank out a match, keeping the columns of everything after it. */
 const blank = (text: string): string => ' '.repeat(text.length)
@@ -244,50 +224,19 @@ const checkMissingLabelRefs = (prose: readonly (string | undefined)[], report: R
   }
 }
 
-export interface MarkdownOptions {
-  root: string
-  policy: Policy
-  /** Only look at these files, relative to the root. */
-  files?: readonly string[]
-}
-
-/** Check every Markdown file in the project. */
-export const checkMarkdown = ({ root, policy, files }: MarkdownOptions): Finding[] => {
-  const ignored = ignoreMatcher(root, policy)
-  const findings: Finding[] = []
-
-  for (const file of (files ?? listFiles(root)).filter(name => isMarkdownFile(name) && !ignored(name))) {
-    const path = join(root, file)
-
-    if (!existsSync(path)) continue
-
-    const report: Report = (short, line, column, detail) => {
-      const def = BY_NAME.get(`pawl/${short}`)
-
-      if (!def) return
-
-      const severity = policy.rules[def.name] ?? def.level
-
-      if (severity === 'off') return
-
-      findings.push({
-        file,
-        line,
-        column,
-        engine: 'pawl',
-        engineRule: def.name,
-        rule: def.name,
-        severity,
-        message: `${def.summary.replace(/\.$/, '')}${detail ? ` (${detail})` : ''}. ${def.advice}`,
-        fixable: false
-      })
-    }
-    const prose = proseLines(readFileSync(path, 'utf8'))
+/** The scan of Markdown files. */
+export const markdown: Scan = {
+  reads: 'Markdown files',
+  rules: MARKDOWN_RULES,
+  matches: isMarkdownFile,
+  scan: (_file, text, report) => {
+    const prose = proseLines(text)
 
     checkEmptyLinks(prose, report)
     checkDuplicateHeadings(prose, report)
     checkMissingLabelRefs(prose, report)
   }
-
-  return findings
 }
+
+/** Check every Markdown file in the project. */
+export const checkMarkdown = (options: ScanOptions): Finding[] => runScan(markdown, options)

@@ -5,8 +5,7 @@ import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../project/context.ts'
 import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
 import { ignoreMatcher } from '../project/ignores.ts'
-import { checkDocker } from '../scans/docker.ts'
-import { checkMarkdown } from '../scans/markdown.ts'
+import { runScans } from '../scans/registry.ts'
 import { type EngineName, type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
 import {
@@ -159,7 +158,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   }
 
   // Pawl's own checks for the files no engine reads.
-  if (!idle) findings.push(...checkDocker({ root, policy, ...own }), ...checkMarkdown({ root, policy, ...own }))
+  if (!idle) findings.push(...runScans({ root, policy, ...own }))
 
   const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
   const limit = maxWarnings === undefined ? {} : { maxWarnings }

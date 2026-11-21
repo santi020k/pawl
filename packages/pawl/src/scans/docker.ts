@@ -1,30 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { listFiles } from '../project/files.ts'
-import { ignoreMatcher } from '../project/ignores.ts'
-import { type Finding, type Level, type Policy } from '../types.ts'
+import { type Finding } from '../types.ts'
+import { type OwnRule, ownRule as rule, runScan, type Scan, type ScanOptions } from './scan.ts'
 
 /**
- * Pawl's own checks for Dockerfiles and Compose files.
- *
- * No engine pawl drives reads these files, so the checks live here. They are few on purpose:
- * each one catches something that is wrong in nearly every project, with a plain line scan.
+ * Pawl's own checks for Dockerfiles and Compose files. They are few on purpose: each one
+ * catches something that is wrong in nearly every project.
  */
-export interface DockerRule {
-  name: string
-  level: Level
-  summary: string
-  advice: string
-}
-
-const rule = (name: string, level: Level, summary: string, advice: string): DockerRule => ({
-  name: `pawl/${name}`,
-  level,
-  summary,
-  advice
-})
-
-export const DOCKER_RULES: readonly DockerRule[] = [
+export const DOCKER_RULES: readonly OwnRule[] = [
   rule(
     'docker-pin-image',
     'warn',
@@ -114,10 +95,6 @@ export const DOCKER_RULES: readonly DockerRule[] = [
   rule('compose-no-version', 'warn', 'The top-level "version" key is obsolete.', 'Remove it. Compose ignores it.')
 ]
 
-const BY_NAME = new Map(DOCKER_RULES.map(def => [def.name, def]))
-
-export const getDockerRule = (name: string): DockerRule | undefined => BY_NAME.get(name)
-
 // "Dockerfile.prod" is one. "Dockerfile.ts" is source code that happens to share the name.
 const DOCKERFILE =
   /(^|\/)(Dockerfile|Containerfile)(?!\.(?:[cm]?[jt]sx?|json|md|ya?ml|txt)$)(\.[\w.-]+)?$|\.(dockerfile|containerfile)$/i
@@ -205,6 +182,7 @@ const parseDockerfile = (text: string): Instruction[] => {
   return instructions
 }
 
+/** Docker problems are about a whole line, so they have no column. */
 type Report = (name: string, line: number, detail?: string) => void
 
 const checkRun = (args: string, line: number, report: Report): void => {
@@ -308,46 +286,18 @@ const checkCompose = (text: string, report: Report): void => {
   }
 }
 
-export interface DockerOptions {
-  root: string
-  policy: Policy
-  /** Only look at these files, relative to the root. */
-  files?: readonly string[]
+/** The scan of Dockerfiles and Compose files. */
+export const docker: Scan = {
+  reads: 'Dockerfiles and Compose files',
+  rules: DOCKER_RULES,
+  matches: isDockerFile,
+  scan: (file, text, report) => {
+    const atLine: Report = (name, line, detail) => report(name, line, 1, detail)
+
+    if (COMPOSE.test(file)) checkCompose(text, atLine)
+    else checkDockerfile(text, atLine)
+  }
 }
 
 /** Check every Dockerfile and Compose file in the project. */
-export const checkDocker = ({ root, policy, files }: DockerOptions): Finding[] => {
-  const ignored = ignoreMatcher(root, policy)
-  const findings: Finding[] = []
-
-  for (const file of (files ?? listFiles(root)).filter(name => isDockerFile(name) && !ignored(name))) {
-    const path = join(root, file)
-
-    if (!existsSync(path)) continue
-
-    const report: Report = (short, line, detail) => {
-      const def = BY_NAME.get(`pawl/${short}`) as DockerRule
-      const severity = policy.rules[def.name] ?? def.level
-
-      if (severity === 'off') return
-
-      findings.push({
-        file,
-        line,
-        column: 1,
-        engine: 'pawl',
-        engineRule: def.name,
-        rule: def.name,
-        severity,
-        message: `${def.summary.replace(/\.$/, '')}${detail ? ` (${detail})` : ''}. ${def.advice}`,
-        fixable: false
-      })
-    }
-    const text = readFileSync(path, 'utf8')
-
-    if (COMPOSE.test(file)) checkCompose(text, report)
-    else checkDockerfile(text, report)
-  }
-
-  return findings
-}
+export const checkDocker = (options: ScanOptions): Finding[] => runScan(docker, options)

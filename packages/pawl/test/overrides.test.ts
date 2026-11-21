@@ -246,6 +246,15 @@ describe("overrides for pawl's own checks", () => {
         { source: 'repo', input: { rules: { 'pawl/zod': 'off', 'pawl/docker-no-root': 'off' } } }
       ]).lockViolations.map(violation => violation.rule)
     ).toEqual(['pawl/zod'])
+    // An opt-in guard the policy never switched on is off already, so a later "off" loosens nothing.
+    const optIn = (packs: string[]) =>
+      mergeLayers([
+        { source: 'company', input: { locked: ['pawl/de-morgan'], packs } },
+        { source: 'repo', input: { rules: { 'pawl/de-morgan': 'off' } } }
+      ]).lockViolations.map(violation => violation.rule)
+
+    expect(optIn([])).toEqual([])
+    expect(optIn(['de-morgan'])).toEqual(['pawl/de-morgan'])
   })
 })
 

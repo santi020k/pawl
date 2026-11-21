@@ -185,10 +185,12 @@ const requireLevels = (policy: Policy): void => {
  * The level of one of pawl's own checks that are not in the rule catalog: the Docker and Markdown
  * checks and the guards. A lock keeps them at it, as it keeps a catalog rule at its default.
  */
-const ownLevel = (name: string): Level | undefined => {
+const ownLevel = (policy: Policy, name: string): Level | undefined => {
   const guard = name.startsWith('pawl/') ? getGuard(name.slice('pawl/'.length)) : undefined
+  // An opt-in guard the policy has not switched on is off, so there is nothing to keep.
+  const guardOn = guard !== undefined && (!guard.optIn || policy.packs.includes(guard.name))
 
-  return getDockerRule(name)?.level ?? getMarkdownRule(name)?.level ?? (guard ? (guard.level ?? 'error') : undefined)
+  return getDockerRule(name)?.level ?? getMarkdownRule(name)?.level ?? (guardOn ? (guard.level ?? 'error') : undefined)
 }
 
 /**
@@ -196,7 +198,7 @@ const ownLevel = (name: string): Level | undefined => {
  * asked-for level is allowed. The rule's own default, or the level a layer set, is the floor.
  */
 const lockedLevel = (policy: Policy, name: string, wanted: Level): Level | undefined => {
-  const current = policy.rules[name] ?? ownLevel(name) ?? defaultLevel(name, policy.strict)
+  const current = policy.rules[name] ?? ownLevel(policy, name) ?? defaultLevel(name, policy.strict)
 
   return policy.locked.includes(name) && ORDER[wanted] < ORDER[current] ? current : undefined
 }

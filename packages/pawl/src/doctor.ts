@@ -237,6 +237,8 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
       problems.push(
         `${TYPE_AWARE_PACKAGE} is a dependency of this project but is not installed. Install the dependencies.`
       )
+    } else if (tsgolintInstalled(root)) {
+      push(compatibility(root, TYPE_AWARE_PACKAGE, peers[TYPE_AWARE_PACKAGE]))
     }
 
     if (config.issue) problems.push(`${config.issue.message} ${config.issue.fix ?? ''}`.trim())

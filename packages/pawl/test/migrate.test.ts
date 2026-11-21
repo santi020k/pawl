@@ -161,7 +161,13 @@ describe('migrating from an ESLint config, with the real ESLint', { timeout: 60_
       '[*]\nindent_style = space\nindent_size = 4\nmax_line_length = 120\n',
       'root = true\n\n[*]\nindent_style = tab\ntab_width = 8\n\n[*.{js,ts}]\nquote_type = single\n',
       '[*.md]\nindent_size = 4\n\n[*]\nindent_style = space\nindent_size = 2\nmax_line_length = off\n',
-      '[*.py]\nindent_size = 4\n'
+      '[*.py]\nindent_size = 4\n',
+      // One width stands for the other, as the EditorConfig parser fills them in.
+      '[*]\nindent_size = 4\n',
+      '[*]\nindent_style = tab\nindent_size = 4\n',
+      '[*]\nindent_size = tab\ntab_width = 4\n',
+      '[*]\nindent_style = space\ntab_width = 4\n',
+      '[*]\nindent_style = tab\n'
     ]
 
     for (const editorconfig of cases) {

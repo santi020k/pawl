@@ -313,6 +313,16 @@ export const readEditorconfig = (root: string): PrettierOptions => {
     }
   }
 
+  // What the EditorConfig parser Prettier uses fills in, as the EditorConfig spec says: a tab
+  // indent has the tab's width, and one of the two widths stands for the other.
+  if (values.indent_style === 'tab' && values.indent_size === undefined) values.indent_size = 'tab'
+
+  if (values.indent_size !== undefined && values.indent_size !== 'tab' && values.tab_width === undefined) {
+    values.tab_width = values.indent_size
+  }
+
+  if (values.indent_size === 'tab' && values.tab_width !== undefined) values.indent_size = values.tab_width
+
   // The same reading as Prettier's own, in src/config/editorconfig/editorconfig-to-prettier.js.
   const size = (value: string | undefined): number | undefined =>
     value !== undefined && /^[1-9]\d*$/.test(value) ? Number(value) : undefined

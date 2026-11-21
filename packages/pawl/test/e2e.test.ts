@@ -6,7 +6,7 @@ import { BASELINE_FILE } from '../src/check/baseline.ts'
 import { check } from '../src/check/check.ts'
 import { formatAgent } from '../src/check/output.ts'
 import { exitCode } from '../src/check/result.ts'
-import { BIOME_PRESET, BIOME_REACT_PRESET } from '../src/engines/biome/config.ts'
+import { BIOME_PRESET, biomeTechPreset } from '../src/engines/biome/config.ts'
 import { planAdd } from '../src/setup/add.ts'
 import { formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
 import { applyPlan } from '../src/setup/plan.ts'
@@ -140,7 +140,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
 
     link(root)
     await init(root, { editor: false })
-    expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET, BIOME_REACT_PRESET] })
+    expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET, biomeTechPreset('react')] })
     expect(json(root, BASELINE_FILE)).toMatchObject({ findings: { 'generated/out.js': expect.any(Object) } })
 
     write(root, { 'pawl.config.json': '{ "ignore": ["generated/**"], "rules": { "no-debugger": "warn" } }\n' })
@@ -160,7 +160,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     applyPlan(plan)
     await formatWritten(root, ['biome.json'])
     expect(json(root, 'biome.json')).toEqual({
-      extends: [BIOME_PRESET, BIOME_REACT_PRESET],
+      extends: [BIOME_PRESET, biomeTechPreset('react')],
       files: { includes: ['!generated'] },
       linter: { rules: { suspicious: { noDebugger: 'warn' } } }
     })
@@ -513,7 +513,7 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET] })
     expect(json(root, 'apps/web/biome.json')).toEqual({
       root: false,
-      extends: ['../../biome.json', BIOME_REACT_PRESET]
+      extends: ['../../biome.json', biomeTechPreset('react')]
     })
     expect(json(root, BASELINE_FILE)).toMatchObject({
       findings: { 'apps/web/src/a.js': { 'react-hooks/rules-of-hooks': 1 } }

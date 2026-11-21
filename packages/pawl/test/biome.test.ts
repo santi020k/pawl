@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import { GATED_TAGS } from '../src/catalog/rules.ts'
 import {
   BIOME_PRESET,
-  BIOME_REACT_PRESET,
   biomeConfig,
   biomePackageConfig,
   biomeProjectConfig,
@@ -62,7 +61,7 @@ describe('biomeProjectConfig', () => {
   it('is a single extends line on the default standard', () => {
     expect(biomeProjectConfig(defaultPolicy())).toEqual({ extends: [BIOME_PRESET] })
     expect(biomeProjectConfig(defaultPolicy(), { technologies: ['react'] })).toEqual({
-      extends: [BIOME_PRESET, BIOME_REACT_PRESET]
+      extends: [BIOME_PRESET, biomeTechPreset('react')]
     })
   })
 

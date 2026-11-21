@@ -479,9 +479,6 @@ const FILE_PACKS: readonly [(detection: Detection) => boolean, string][] = [
 export const filePacks = (detection: Detection): string[] =>
   FILE_PACKS.filter(([found]) => found(detection)).map(([, pack]) => pack)
 
-export const usesReact = (detection: Detection): boolean =>
-  detection.frameworks.some(framework => framework === 'react' || framework === 'next' || framework === 'react-native')
-
 /** The technology each framework brings rules for. A Next.js app is also a React app. */
 const FRAMEWORK_TECHNOLOGIES: Partial<Record<Framework, Technology[]>> = {
   react: ['react'],

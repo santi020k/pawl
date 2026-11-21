@@ -22,8 +22,6 @@ export const biomeTechPreset = (technology: Technology, preset: string = BIOME_P
     ? preset.replace(/pawl\.biome\.json$/, `${technology}.biome.json`)
     : `${preset}/${technology}`
 
-export const BIOME_REACT_PRESET = biomeTechPreset('react')
-
 export interface BiomeContext {
   /** The technologies the project uses. Each adds its own preset. */
   technologies?: readonly Technology[]

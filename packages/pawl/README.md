@@ -312,7 +312,7 @@ Pawl also checks Markdown files itself, skipping code blocks, code spans, HTML c
 
 ## API
 
-Everything the CLI does is exported: `check`, `doctor`, `planInit`, `applyInit`, `detect`, `loadPolicy`, `definePolicy`, `eslint`, `biomeProjectConfig`, `RULES`, `POLICY_SCHEMA` and the types. See `src/index.ts`. The policy's JSON schema is `@santi020k/pawl/schema.json`.
+Everything the CLI does is exported: `check`, `doctor`, `planInit`, `applyPlan`, `detect`, `loadPolicy`, `definePolicy`, `eslint`, `biomeProjectConfig`, `RULES`, `POLICY_SCHEMA` and the types. See `src/index.ts`. The policy's JSON schema is `@santi020k/pawl/schema.json`.
 
 ## License
 

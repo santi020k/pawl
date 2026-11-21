@@ -8,8 +8,7 @@ import {
   filePacks,
   needsEslint,
   packageTechnologies,
-  technologies,
-  usesReact
+  technologies
 } from '../src/project/detect.ts'
 import { project } from './helpers.ts'
 
@@ -30,7 +29,6 @@ suite('detect', () => {
       tools: { eslint: 'eslint.config.js', prettier: '.prettierrc' },
       workspace: { tool: undefined, packages: [], frameworks: {} }
     })
-    expect(usesReact(detection)).toBe(true)
     expect(technologies(detection)).toEqual(['react'])
     expect(packageTechnologies(detection)).toEqual({})
     expect(needsEslint(detection)).toBe(false)

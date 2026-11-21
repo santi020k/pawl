@@ -20,7 +20,6 @@ export { EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check/result.ts'
 export type { BiomeContext } from './engines/biome/config.ts'
 export {
   BIOME_PRESET,
-  BIOME_REACT_PRESET,
   BIOME_VERSION,
   biomeConfig,
   biomePackageConfig,
@@ -39,6 +38,8 @@ export type { RuleContext } from './policy/levels.ts'
 export { effectiveRules } from './policy/levels.ts'
 export { findProjectRoot, loadPolicy, resolvePolicy } from './policy/load.ts'
 export { DEFAULT_STYLE, defaultPolicy, definePolicy, mergeLayers } from './policy/merge.ts'
+export type { Project } from './policy/project.ts'
+export { loadProject } from './policy/project.ts'
 export type { JsonSchema } from './policy/schema.ts'
 export { POLICY_KEYS, POLICY_SCHEMA } from './policy/schema.ts'
 export type { Detection, DetectOptions, FileFormat, PackageManager, WorkspaceTool } from './project/detect.ts'
@@ -50,14 +51,14 @@ export {
   filePacks,
   needsEslint,
   packageTechnologies,
-  technologies,
-  usesReact
+  technologies
 } from './project/detect.ts'
 export { ALWAYS_IGNORED, DEFAULT_IGNORES } from './project/ignores.ts'
 export type { Toolset } from './project/toolset.ts'
 export { toolset } from './project/toolset.ts'
 export type { Compatibility, DoctorReport } from './report/doctor.ts'
 export { doctor, formatDoctor } from './report/doctor.ts'
+export { explainRule } from './report/explain.ts'
 export { planAdd } from './setup/add.ts'
 export type { InitMode, InitOptions, InitPlan } from './setup/init.ts'
 export { formatWritten, planInit, recordBaseline } from './setup/init.ts'

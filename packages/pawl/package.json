@@ -57,7 +57,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "docs:rules": "node scripts/build-rules-doc.ts && biome format --write ../../apps/docs/src/content/docs/reference/rules.md",
     "oxlint-rules": "node scripts/build-oxlint-rules.ts",

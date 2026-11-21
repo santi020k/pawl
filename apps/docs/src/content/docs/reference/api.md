@@ -28,28 +28,39 @@ export default eslint({ root: import.meta.dirname })
 
 ## Exports
 
-| Area     | Exports                                                                                                                                                                    |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Check    | `check`, `exitCode`, `EXIT_OK`, `EXIT_FINDINGS`, `EXIT_SETUP`                                                                                                              |
-| Setup    | `planInit`, `applyInit`, `planAdd`, `planPrettierConfig`, `recordBaseline`, `formatWritten`                                                                                |
-| Migrate  | `planMigrate`, `describeMigration`, `MIGRATION_REPORT`                                                                                                                     |
-| Detect   | `detect`, `describe`, `technologies`, `allTechnologies`, `packageTechnologies`, `needsEslint`, `usesReact`                                                                 |
-| Policy   | `definePolicy`, `loadPolicy`, `resolvePolicy`, `mergeLayers`, `effectiveRules`, `defaultPolicy`, `DEFAULT_STYLE`                                                           |
-| Rules    | `RULES`, `getRule`, `findRule`, `canonicalName`, `GATED_TAGS`                                                                                                              |
-| Packs    | `PACKS`, `getPack`, `suggestedPacks`                                                                                                                                       |
-| Baseline | `createBaseline`, `readBaseline`, `applyBaseline`, `scanSuppressions`, `BASELINE_FILE`                                                                                     |
-| Output   | `format`, `formatPretty`, `formatAgent`, `formatJson`                                                                                                                      |
-| Biome    | `biomeConfig`, `biomeProjectConfig`, `biomePackageConfig`, `biomeTechConfig`, `biomeTechPreset`, `checkBiomeConfig`, `BIOME_PRESET`, `BIOME_REACT_PRESET`, `BIOME_VERSION` |
-| ESLint   | `eslint`, `eslintPlan`, `eslintPlanFor`                                                                                                                                    |
-| Oxlint   | `oxlintConfig`, `oxlintCovers`, `checkOxlintConfig`, `OXLINT_RULES`, `OXLINT_VERSION`                                                                                      |
-| Prettier | `prettierConfig`, `checkPrettierConfig`                                                                                                                                    |
-| Doctor   | `doctor`, `formatDoctor`, `satisfies`                                                                                                                                      |
-| Tools    | `toolset`                                                                                                                                                                  |
-| Version  | `VERSION`                                                                                                                                                                  |
+| Area     | Exports                                                                                                                                              |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Check    | `check`, `exitCode`, `EXIT_OK`, `EXIT_FINDINGS`, `EXIT_SETUP`                                                                                        |
+| Project  | `loadProject`, `toolset`, `findProjectRoot`                                                                                                          |
+| Setup    | `planInit`, `planAdd`, `planSync`, `applyPlan`, `recordBaseline`, `formatWritten`                                                                    |
+| Migrate  | `planMigrate`, `describeMigration`, `MIGRATION_REPORT`                                                                                               |
+| Detect   | `detect`, `describe`, `technologies`, `allTechnologies`, `packageTechnologies`, `needsEslint`, `filePacks`, `DETECTABLE`                             |
+| Policy   | `definePolicy`, `loadPolicy`, `resolvePolicy`, `mergeLayers`, `effectiveRules`, `defaultPolicy`, `DEFAULT_STYLE`, `POLICY_KEYS`, `POLICY_SCHEMA`     |
+| Rules    | `RULES`, `getRule`, `findRule`, `canonicalName`, `GATED_TAGS`, `RUNTIMES`, `explainRule`                                                             |
+| Packs    | `PACKS`, `getPack`, `suggestedPacks`                                                                                                                 |
+| Ignores  | `ALWAYS_IGNORED`, `DEFAULT_IGNORES`                                                                                                                  |
+| Baseline | `createBaseline`, `readBaseline`, `applyBaseline`, `scanSuppressions`, `BASELINE_FILE`                                                               |
+| Output   | `format`, `formatPretty`, `formatAgent`, `formatJson`                                                                                                |
+| Biome    | `biomeConfig`, `biomeProjectConfig`, `biomePackageConfig`, `biomeTechConfig`, `biomeTechPreset`, `checkBiomeConfig`, `BIOME_PRESET`, `BIOME_VERSION` |
+| ESLint   | `eslint`, `eslintPlan`, `eslintPlanFor`                                                                                                              |
+| Oxlint   | `oxlintConfig`, `oxlintCovers`, `checkOxlintConfig`, `OXLINT_RULES`, `OXLINT_VERSION`                                                                |
+| Prettier | `prettierConfig`, `checkPrettierConfig`                                                                                                              |
+| Doctor   | `doctor`, `formatDoctor`, `satisfies`                                                                                                                |
+| Version  | `VERSION`                                                                                                                                            |
+
+Every setup command works the same way: a `plan*` function reads the disk and returns a plan of `SetupAction`s and notes, and `applyPlan` writes them.
+
+```ts
+import { applyPlan, planSync } from '@santi020k/pawl'
+
+const plan = await planSync(process.cwd())
+
+applyPlan(plan)
+```
 
 ## Types
 
-`Policy`, `PolicyInput`, `StyleOptions`, `Level`, `Finding`, `SetupIssue`, `LockViolation`, `EngineChoice`, `EngineName`, `FormatterChoice`, `FormatterName`, `CheckOptions`, `CheckResult`, `Baseline`, `BaselineResult`, `Suppression`, `Detection`, `DetectOptions`, `Detectable`, `FileFormat`, `Framework`, `Runtime`, `Override`, `OverrideInput`, `DoctorReport`, `Compatibility`, `JsonSchema`, `OxlintContext`, `PackageManager`, `WorkspaceTool`, `InitOptions`, `InitPlan`, `InitAction`, `InitMode`, `MigrateOptions`, `MigratePlan`, `RuleChange`, `OutputFormat`, `Pack`, `RuleDef`, `RuleTag`, `RuleContext`, `Technology`, `Toolset`, `BiomeContext`, `EslintOptions`, `EslintPlan`, `EslintPlanOptions`, `FlatConfig`.
+`Policy`, `PolicyInput`, `StyleOptions`, `Level`, `Finding`, `SetupIssue`, `LockViolation`, `EngineChoice`, `EngineName`, `FormatterChoice`, `FormatterName`, `CheckOptions`, `CheckResult`, `Project`, `Baseline`, `BaselineResult`, `Suppression`, `Detection`, `DetectOptions`, `Detectable`, `FileFormat`, `Framework`, `Runtime`, `Override`, `OverrideInput`, `DoctorReport`, `Compatibility`, `JsonSchema`, `OxlintContext`, `PackageManager`, `WorkspaceTool`, `SetupAction`, `SetupPlan`, `SyncPlan`, `InitOptions`, `InitPlan`, `InitMode`, `MigrateOptions`, `MigratePlan`, `RuleChange`, `OutputFormat`, `Pack`, `RuleDef`, `RuleTag`, `RuleContext`, `Technology`, `Toolset`, `BiomeContext`, `EslintOptions`, `EslintPlan`, `EslintPlanOptions`, `FlatConfig`.
 
 ## Biome presets
 

@@ -67,6 +67,11 @@ export interface EslintPlanOptions {
   dependencies?: readonly string[]
   /** Where the code runs, for the globals ESLint knows. Node and the browser when not given. */
   runtimes?: readonly Runtime[]
+  /**
+   * More folders to look for a plugin in when the project root does not have it. `migrate` names the
+   * shared configs the old setup got its plugins from, so the comparison sees the same plugins.
+   */
+  pluginRoots?: readonly string[]
 }
 
 /** Plugins whose package name does not follow the eslint-plugin-<prefix> convention. */
@@ -126,6 +131,21 @@ export const importPlugin = async (root: string, specifier: string): Promise<Loa
   }
 }
 
+/** Import a plugin from the project, or failing that from the first of the other folders that has it. */
+export const importVia = async (root: string, others: readonly string[], specifier: string): Promise<Loaded> => {
+  const loaded = await importPlugin(root, specifier)
+
+  if (loaded.module || loaded.error) return loaded
+
+  for (const other of others) {
+    const found = await importFromProject(other, specifier)
+
+    if (found.module) return found
+  }
+
+  return loaded
+}
+
 /** What a missing or broken plugin needs, in words a person can act on. */
 const needs = (packageName: string, loaded: Loaded): string =>
   loaded.error ? `${packageName}, which is installed but failed to load: ${loaded.error}` : packageName
@@ -161,11 +181,19 @@ const presetRules = (value: unknown): Rules => {
 /** The rules a pack starts from: the part of the plugin's exports the pack points at. */
 export const packPreset = (pack: Pack, plugin: Record<string, unknown>): Rules => presetRules(presetOf(pack, plugin))
 
-const presetOf = (pack: Pack, plugin: Record<string, unknown>): unknown =>
-  (pack.preset ?? []).reduce<unknown>(
-    (value, key) => (isRecord(value) ? value[key] : undefined),
-    pack.preset ? plugin : undefined
-  )
+const follow = (plugin: Record<string, unknown>, path: readonly string[]): unknown =>
+  path.reduce<unknown>((value, key) => (isRecord(value) ? value[key] : undefined), plugin)
+
+/** The pack's preset, and after it the other presets the pack lays over it. */
+const presetOf = (pack: Pack, plugin: Record<string, unknown>): unknown => {
+  if (!pack.preset) return undefined
+
+  const first = follow(plugin, pack.preset)
+
+  if (!pack.morePresets) return first
+
+  return [first, ...pack.morePresets.map(path => follow(plugin, path))].flatMap(value => toList(value as unknown))
+}
 
 /** The policy's entry for a pack: its name, or its name and one of the plugin's own presets (`unicorn/recommended`). */
 const entryFor = (packs: readonly string[], pack: Pack): string | undefined =>
@@ -196,7 +224,7 @@ const wants = (pack: Pack, options: EslintPlanOptions): 'named' | 'auto' | 'sugg
 
 /** Work out the ESLint configuration for a policy, and what it cannot cover. */
 export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan> => {
-  const { root, policy, biomeActive, typescript, technologies = [] } = options
+  const { root, policy, biomeActive, typescript, technologies = [], pluginRoots = [] } = options
   /** The fast linter already enforces this rule, so ESLint leaves it alone. */
   const covered = (name: string): boolean =>
     (biomeActive && getRule(name)?.biome !== undefined) ||
@@ -217,7 +245,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
   let needsTypes = false
 
   // TypeScript files need the typescript-eslint parser even when no TypeScript rule is on.
-  const loadedTs = typescript ? await importFromProject(root, 'typescript-eslint') : {}
+  const loadedTs = typescript ? await importVia(root, pluginRoots, 'typescript-eslint') : {}
   const tseslint = loadedTs.module
 
   if (typescript) plugins.set(TS_PREFIX, loadedTs)
@@ -227,7 +255,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
 
     if (!reason) continue
 
-    const loaded = pack.name === 'typescript' ? loadedTs : await importPlugin(root, pack.plugin)
+    const loaded = pack.name === 'typescript' ? loadedTs : await importVia(root, pluginRoots, pack.plugin)
 
     if (!loaded.module) {
       if (reason === 'suggested' && !loaded.error) availablePacks.push(pack.name)
@@ -283,6 +311,10 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     const holders = withPrefix.filter(rules => eslintName in rules)
     const inPack = holders.length > 0 ? holders : withPrefix.slice(0, 1)
 
+    // A rule the catalog holds back because Biome's version is unstable is stable in its ESLint
+    // plugin, so the level a pack's preset gave it stands unless the policy sets one.
+    if (level === 'off' && def?.nursery === true && policy.rules[name] === undefined) continue
+
     // A rule that is off only needs saying where a preset may have turned it on.
     if (level === 'off' && holders.length === 0 && !(eslintName in coreRules) && !(eslintName in tsRules)) continue
 
@@ -314,7 +346,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     if (policy.rules[name] === undefined && PACKS.some(pack => pack.prefix === prefix && pack.withPack === true))
       continue
 
-    if (!plugins.has(prefix)) plugins.set(prefix, await importFromProject(root, pluginPackage(prefix)))
+    if (!plugins.has(prefix)) plugins.set(prefix, await importVia(root, pluginRoots, pluginPackage(prefix)))
 
     const loaded = plugins.get(prefix) as Loaded
 
@@ -428,10 +460,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
         rules
       })
     } else {
-      const parser = (pack.parser ?? []).reduce<unknown>(
-        (value, key) => (isRecord(value) ? value[key] : undefined),
-        plugin
-      )
+      const parser = follow(plugin, pack.parser ?? [])
 
       config.push({
         name: `pawl/pack/${pack.name}`,
@@ -468,7 +497,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
 
       if (prefix) {
         if (!loadedPlugins.has(prefix)) {
-          const loaded = await importFromProject(root, pluginPackage(prefix))
+          const loaded = await importVia(root, pluginRoots, pluginPackage(prefix))
 
           if (!loaded.module) {
             notEnforced.push({ rule: name, needs: needs(pluginPackage(prefix), loaded) })

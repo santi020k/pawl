@@ -27,6 +27,9 @@ export const DEFAULT_IGNORES = [
   'playwright-report',
   'test-results',
   '*.tsbuildinfo',
+  '.build',
+  '.swiftpm',
+  '.pnpm-store',
   // Lockfiles: written by the package manager, never by people.
   'pnpm-lock.yaml',
   'yarn.lock',
@@ -53,7 +56,13 @@ export const DEFAULT_IGNORES = [
   '__generated__',
   '*.generated.*',
   '*.gen.*',
-  '.prisma'
+  '.prisma',
+  // Type declarations a framework's own command writes.
+  'next-env.d.ts',
+  'worker-configuration.d.ts',
+  'cloudflare-env.d.ts',
+  // Changelogs: written by the release tool.
+  'CHANGELOG.md'
 ]
 
 /** Folders a directory walk never enters, because nothing in them is checked by default. */

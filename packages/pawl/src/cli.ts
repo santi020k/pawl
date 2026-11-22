@@ -72,6 +72,7 @@ Options for init
 
 Options for migrate (it also takes the options for init)
   --keep-config         Write the policy and leave the ESLint config file alone
+  --extends <policy>    Build on a policy package or file, and carry over only what differs from it
 
   -h, --help            Show this help
   -v, --version         Show the version
@@ -95,6 +96,7 @@ const OPTIONS = {
   'no-editor': { type: 'boolean' },
   'no-install': { type: 'boolean' },
   'keep-config': { type: 'boolean' },
+  extends: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'v' }
 } as const
@@ -208,7 +210,7 @@ const chooseMode = async (root: string, flags: Flags): Promise<Chosen> => {
   return { mode: 'auto', asked: true, engine: linter, formatter: format }
 }
 
-const runInit = async (root: string, flags: Flags): Promise<number> => {
+const runInit = async (root: string, flags: Flags, packages: readonly string[] = []): Promise<number> => {
   const { mode, asked, ...choice } = await chooseMode(root, flags)
   const install = flags['no-install'] !== true
   const plan = await planInit({
@@ -219,6 +221,7 @@ const runInit = async (root: string, flags: Flags): Promise<number> => {
     agents: flags.agents === true,
     hooks: flags.hooks === true,
     install,
+    packages,
     ...choice,
     ...(flags.packs
       ? {
@@ -338,7 +341,11 @@ const runSync = async (root: string): Promise<number> => {
 }
 
 const runMigrate = async (root: string, flags: Flags): Promise<number> => {
-  const plan = await planMigrate({ root, keepConfig: flags['keep-config'] === true })
+  const plan = await planMigrate({
+    root,
+    keepConfig: flags['keep-config'] === true,
+    ...(flags.extends ? { extends: flags.extends } : {})
+  })
 
   out(describeMigration(plan).join('\n'))
 
@@ -364,7 +371,8 @@ const runMigrate = async (root: string, flags: Flags): Promise<number> => {
   // The packs the old config relied on come along, so their plugins are installed where they are missing.
   const packs = [...new Set([...(flags.packs?.split(',') ?? []), ...plan.packs])].join(',')
 
-  return runInit(root, packs.length > 0 ? { ...flags, packs } : flags)
+  // So does the policy package the new policy extends, when the project does not list it yet.
+  return runInit(root, packs.length > 0 ? { ...flags, packs } : flags, plan.policyPackage ? [plan.policyPackage] : [])
 }
 
 const runAdd = async (root: string, names: string[], flags: Flags): Promise<number> => {

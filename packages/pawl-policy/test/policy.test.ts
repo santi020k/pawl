@@ -53,6 +53,30 @@ describe('@santi020k/pawl-policy', () => {
     ])
   })
 
+  it('fails on any new warning, and a repo cannot raise that limit', () => {
+    const merged = mergeLayers([
+      { input: policy, source: '@santi020k/pawl-policy' },
+      { input: { maxWarnings: 20 }, source: 'pawl.config.ts' }
+    ])
+
+    expect(merged.maxWarnings).toBe(0)
+  })
+
+  it('lets scripts and command-line entry points use the console, and nothing else', async () => {
+    const { overrides } = await resolvePolicy(policy, file)
+
+    expect(overrides).toMatchObject([
+      { files: ['scripts/**', '**/scripts/**', '**/bin/**'], rules: { 'no-console': 'off' } }
+    ])
+    expect(overrides).toHaveLength(1)
+  })
+
+  it('leaves the choice between a declaration and an arrow function to the author', async () => {
+    const rules = effectiveRules(await resolvePolicy(policy, file), { typescript: true })
+
+    expect(rules.get('func-style')).toBe('off')
+  })
+
   it('cannot have strict turned off by a repo', () => {
     const merged = mergeLayers([
       { input: policy, source: '@santi020k/pawl-policy' },

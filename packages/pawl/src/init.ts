@@ -65,6 +65,8 @@ export interface InitOptions {
   formatter?: FormatterName
   /** Optional packs to switch on. Their ESLint plugins are added to the install. */
   packs?: readonly string[]
+  /** More packages the policy needs, such as the policy package it extends. Added to the install. */
+  packages?: readonly string[]
   /**
    * The caller will run the install command. On by default.
    * When off, pawl is written into devDependencies for the next install to pick up.
@@ -913,7 +915,8 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     ...(wantsEslint ? ['eslint'] : []),
     ...(linter === 'eslint' ? ['@eslint/js', ...(detection.typescript ? ['typescript-eslint'] : [])] : []),
     ...(formatter === 'prettier' ? ['prettier'] : []),
-    ...requestedPacks.flatMap(name => getPack(name)?.plugin ?? [])
+    ...requestedPacks.flatMap(name => getPack(name)?.plugin ?? []),
+    ...(options.packages ?? [])
   ]
   const hasManifest = existsSync(join(root, 'package.json'))
   const packages = hasManifest ? [...new Set(wanted)].filter(name => !present.has(name)) : []

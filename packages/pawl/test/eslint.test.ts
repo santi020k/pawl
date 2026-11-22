@@ -274,6 +274,42 @@ describe('eslintPlan', () => {
       expect(plan.config.at(-1)).toMatchObject({ files: ['**/*.vue'], plugins: { vue: expect.any(Object) } })
     })
 
+    it('starts the TypeScript pack from the strict and stylistic type-checked presets, then sets its levels', async () => {
+      const tseslint = plugin(
+        'typescript-eslint',
+        `{
+          parser: { name: 'ts-parser' },
+          plugin: { rules: {} },
+          configs: {
+            strictTypeChecked: [
+              { rules: { '@typescript-eslint/no-floating-promises': 'error', '@typescript-eslint/no-unnecessary-condition': 'error' } },
+              { rules: { '@typescript-eslint/no-unsafe-return': 'error', '@typescript-eslint/prefer-nullish-coalescing': 'error' } }
+            ],
+            stylisticTypeChecked: [
+              { rules: { '@typescript-eslint/consistent-type-definitions': 'error', '@typescript-eslint/prefer-nullish-coalescing': 'error' } }
+            ]
+          }
+        }`
+      )
+      const root = project({ 'package.json': { name: 'fixture' }, ...tseslint })
+      const plan = await eslintPlan({ ...options, root, biomeActive: false, typescript: true })
+      const typescript = block(plan.config, 'pawl/typescript') as {
+        rules: Record<string, unknown>
+        languageOptions: { parserOptions: Record<string, unknown> }
+      }
+
+      expect(plan.activePacks).toContain('typescript')
+      expect(typescript.rules).toMatchObject({
+        // From the first preset and from the one laid over it.
+        '@typescript-eslint/no-floating-promises': 'error',
+        '@typescript-eslint/consistent-type-definitions': 'error',
+        // The standard's own levels come last.
+        '@typescript-eslint/no-unnecessary-condition': 'off',
+        '@typescript-eslint/prefer-nullish-coalescing': 'warn'
+      })
+      expect(typescript.languageOptions.parserOptions).toMatchObject({ projectService: true })
+    })
+
     it('gives ESLint its own base rules when it is the linter, and leaves Biome its rules when it is not', async () => {
       const base = plugin(
         '@eslint/js',

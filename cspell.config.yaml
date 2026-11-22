@@ -11,12 +11,13 @@ words:
   - bunx
   - classlist
   - clinerules
+  - codegen
   - commitprompt
   - Containerfile
   - darraghor
   - distroless
-  - esbuild
   - Dockerfiles
+  - esbuild
   - fontsource
   - genai
   - heredocs
@@ -38,8 +39,8 @@ words:
   - nonroot
   - noopener
   - noreferrer
-  - opencontainers
   - opencode
+  - opencontainers
   - proptypes
   - Qwik
   - santi
@@ -49,6 +50,7 @@ words:
   - Slidev
   - spinbutton
   - stylesheet
+  - swiftpm
   - tabindex
   - textnodes
   - Titlebar

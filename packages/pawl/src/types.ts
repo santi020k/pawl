@@ -188,6 +188,7 @@ export interface SetupIssue {
     | 'biome-missing'
     | 'eslint-missing'
     | 'oxlint-missing'
+    | 'tsgolint-missing'
     | 'oxlint-config-missing'
     | 'oxlint-config-stale'
     | 'prettier-missing'
@@ -198,6 +199,7 @@ export interface SetupIssue {
     | 'engine-failed'
     | 'since-unresolved'
     | 'baseline-unreadable'
+    | 'pawl-missing'
   message: string
   fix?: string
 }

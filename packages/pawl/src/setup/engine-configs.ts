@@ -193,9 +193,17 @@ export const planPrettierConfig = (
   }
 }
 
-/** Bring .oxlintrc.json in line with the policy. Used by `init` and `sync`. */
-export const planOxlintConfig = (root: string, policy: Policy, detection: Detection): SetupAction | undefined => {
-  const context = oxlintContextFor(detection)
+/**
+ * Bring .oxlintrc.json in line with the policy. Used by `init` and `sync`. `adding` names what
+ * `init` is about to add to devDependencies: the config is written before the install runs.
+ */
+export const planOxlintConfig = (
+  root: string,
+  policy: Policy,
+  detection: Detection,
+  adding: readonly string[] = []
+): SetupAction | undefined => {
+  const context = oxlintContextFor({ ...detection, dependencies: [...detection.dependencies, ...adding] }, root, adding)
   const state = checkOxlintConfig(root, policy, context)
   const path = join(root, OXLINT_CONFIG_FILE)
 
@@ -215,7 +223,8 @@ export const planOxlintConfig = (root: string, policy: Policy, detection: Detect
 /**
  * Bring every config file of the engines a project runs in line with its policy: biome.json
  * with its packages and rule files, .oxlintrc.json, and the Prettier config. `init` leaves a
- * Prettier config the user wrote as it is; `sync` brings it in line.
+ * Prettier config the user wrote as it is; `sync` brings it in line. `adding` names the packages
+ * `init` is about to add, for the Oxlint config that depends on them.
  */
 export const planEngineConfigs = (
   root: string,
@@ -223,7 +232,7 @@ export const planEngineConfigs = (
   detection: Detection,
   tools: Pick<Toolset, 'linter' | 'formatter'>,
   notes: string[],
-  { updatePrettier }: { updatePrettier: boolean }
+  { updatePrettier, adding = [] }: { updatePrettier: boolean; adding?: readonly string[] }
 ): SetupAction[] => {
   const actions: SetupAction[] = []
 
@@ -241,7 +250,7 @@ export const planEngineConfigs = (
     )
   }
 
-  const oxlint = tools.linter === 'oxlint' ? planOxlintConfig(root, policy, detection) : undefined
+  const oxlint = tools.linter === 'oxlint' ? planOxlintConfig(root, policy, detection, adding) : undefined
   const prettier = tools.formatter === 'prettier' ? planPrettierConfig(root, policy, notes, updatePrettier) : undefined
 
   return [...actions, ...(oxlint ? [oxlint] : []), ...(prettier ? [prettier] : [])]

@@ -24,6 +24,12 @@ export const MARKDOWN_RULES: readonly OwnRule[] = [
     'off',
     'A reference has no matching definition.',
     'Add a definition such as [label]: https://example.com, or escape the brackets.'
+  ),
+  rule(
+    'markdown-no-invalid-label-refs',
+    'error',
+    'A reference has whitespace between its brackets.',
+    'Write [label][] or [text][label] with nothing between the brackets. CommonMark does not read [label][ ] as a reference.'
   )
 ]
 
@@ -224,6 +230,25 @@ const checkMissingLabelRefs = (prose: readonly (string | undefined)[], report: R
   }
 }
 
+/** A reference with only whitespace in its second brackets, which CommonMark does not read as one. */
+const INVALID_LABEL_REF = /(?<![\w\\])\[[^[\]]*[^\s[\]][^[\]]*\]\[[ \t]+\]/g
+/** The same, with the second brackets split over two lines. */
+const SPLIT_LABEL_REF = /(?<![\w\\])\[[^[\]]*[^\s[\]][^[\]]*\]\[[ \t]*$/
+
+const checkInvalidLabelRefs = (prose: readonly (string | undefined)[], report: Report): void => {
+  for (const [index, line] of prose.entries()) {
+    if (line === undefined) continue
+
+    for (const match of line.matchAll(INVALID_LABEL_REF))
+      report('markdown-no-invalid-label-refs', index + 1, match.index + 1)
+
+    const split = SPLIT_LABEL_REF.exec(line)
+
+    if (split && /^\s*\]/.test(prose[index + 1] ?? ''))
+      report('markdown-no-invalid-label-refs', index + 1, split.index + 1)
+  }
+}
+
 /** The scan of Markdown files. */
 export const markdown: Scan = {
   reads: 'Markdown files',
@@ -235,6 +260,7 @@ export const markdown: Scan = {
     checkEmptyLinks(prose, report)
     checkDuplicateHeadings(prose, report)
     checkMissingLabelRefs(prose, report)
+    checkInvalidLabelRefs(prose, report)
   }
 }
 

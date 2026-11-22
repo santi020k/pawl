@@ -25,9 +25,9 @@ Quality (`quality.yml`) runs `pnpm ok` as the repository check and owns the Git 
 | `utils/`   | JSON, file, list, text and semver helpers. No pawl concepts.                                                                                                                       |
 | `catalog/` | The product as data: rules, packs, guards, runtimes. No disk access.                                                                                                               |
 | `project/` | Detection, config file names, the files git sees, ignores and the toolset.                                                                                                         |
+| `scans/`   | Pawl's own line scans and their rules, behind `scan.ts` and a registry. The policy reads their levels.                                                                             |
 | `policy/`  | Merging the layers (`merge.ts`), loading the files (`load.ts`), the level of each rule (`levels.ts`), and `loadProject` (`project.ts`): the policy with the project it applies to. |
 | `engines/` | One folder per engine: `config.ts` (what its config should be), `run.ts` (run it and read its report) and `engine.ts` (its `Engine` adapter). `registry.ts` lists them.            |
-| `scans/`   | Pawl's own line scans, behind `scan.ts` and a registry.                                                                                                                            |
 | `check/`   | The check, its result and exit codes, the baseline and the output formats.                                                                                                         |
 | `report/`  | The doctor and `explain`.                                                                                                                                                          |
 | `setup/`   | One planner per command (`init`, `add`, `sync`, `migrate/`) and the steps they share. Plans only read the disk; `applyPlan` writes.                                                |
@@ -46,7 +46,7 @@ A new engine is an `Engine` in `engines/<name>/engine.ts`, added to `engines/reg
 - After changing a rule, the style or the Biome version, run `pnpm --filter @santi020k/pawl run preset` and `pnpm --filter @santi020k/pawl run docs:rules`, and commit the results.
 - A rule for one technology (React, Qwik, Vue, Svelte, Turborepo) gets that technology's tag, so it only applies where the technology is used.
 - Pawl reads Biome's JSON reporter, which Biome calls experimental. That is why the Biome version is pinned exactly; recheck `runBiome` in `src/engines/biome/run.ts` on every Biome upgrade.
-- After upgrading Oxlint, run `pnpm --filter @santi020k/pawl run oxlint-rules`. Oxlint rejects a config that names a rule it does not know.
+- After upgrading Oxlint or oxlint-tsgolint, or changing a rule's aliases, run `pnpm --filter @santi020k/pawl run oxlint-rules`. Oxlint rejects a config that names a rule it does not know, and `pnpm run check:generated` fails when the list is out of date.
 - Pawl never deletes or overwrites a user's existing tool config. `migrate` is the one exception to overwriting: it moves the old ESLint config aside under a new name first.
 - The policy carries rule options in two shapes. `options` is ESLint's shape and goes to ESLint and Oxlint only. `biomeOptions` is Biome's shape and goes to Biome only, where it replaces the options the catalog gives the rule. Never translate one shape into the other.
 - A guard in `src/catalog/guards.ts` is data only: imports and code patterns to refuse for one library. Every entry needs a message that says what to do instead. A code pattern has two forms that must match the same code: an ESLint selector and a GritQL pattern, which pawl writes into the project's `.pawl/rules/` for Biome. Test both against the real engines.

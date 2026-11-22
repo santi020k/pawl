@@ -107,3 +107,16 @@ export const planJsonMerge = (
     ? undefined
     : { path: file, kind: 'update', summary, apply: () => writeJson(path, merged) }
 }
+
+/**
+ * What to say about an .eslintrc file. ESLint 9 and later read flat config only, so the file's
+ * rules reach pawl through `pawl migrate` or not at all.
+ */
+export const legacyNote = (file: string, replaced: boolean, migrated: boolean): string => {
+  if (migrated)
+    return `${file} is a legacy ESLint config. Its rules are in the policy now, so you can remove the file when you are ready.`
+
+  return replaced
+    ? `${file} is a legacy ESLint config, which ESLint no longer reads now that eslint.config.js is there. Its rules were not carried over: "pawl migrate" does that, before "pawl init" has run.`
+    : `${file} is a legacy ESLint config, which pawl does not run. Run "pawl migrate" in place of "pawl init" to carry its rules into the policy, or remove ESLint and the file when you are ready.`
+}

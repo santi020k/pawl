@@ -3,11 +3,12 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
 import { check } from '../src/check/check.ts'
+import { exitCode } from '../src/check/result.ts'
 import { BIOME_VERSION } from '../src/engines/biome/config.ts'
 import { type DoctorReport, doctor, formatDoctor } from '../src/report/doctor.ts'
 import { formatWritten, planInit } from '../src/setup/init.ts'
 import { applyPlan } from '../src/setup/plan.ts'
-import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
+import { link, PACKAGE_ROOT, project, withoutTsgolint, write } from './helpers.ts'
 
 const ready = async (files: Record<string, string | object> = {}): Promise<string> => {
   const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' }, ...files })
@@ -26,7 +27,154 @@ const ready = async (files: Record<string, string | object> = {}): Promise<strin
   return root
 }
 
+/** A TypeScript project on Oxlint without oxlint-tsgolint, as one set up before pawl added it. */
+const oxlintProject = async (files: Record<string, string | object> = {}): Promise<string> => {
+  const root = project({
+    'package.json': { name: 'fixture', private: true, type: 'module' },
+    'tsconfig.json': { compilerOptions: { strict: true } },
+    'pawl.config.json': { engine: 'oxlint', strict: true },
+    ...files
+  })
+
+  link(root)
+  applyPlan(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+  await withoutTsgolint(root)
+
+  return root
+}
+
+describe('pawl doctor, with Oxlint', () => {
+  it('names the rules Oxlint cannot enforce, and what would give them to it', async () => {
+    const report = await doctor(await oxlintProject())
+    const gaps = report.engines.oxlint?.notEnforced ?? []
+
+    expect(gaps.filter(gap => gap.needs === 'oxlint-tsgolint').map(gap => gap.rule)).toEqual([
+      '@typescript-eslint/await-thenable',
+      '@typescript-eslint/consistent-type-exports',
+      '@typescript-eslint/no-deprecated',
+      '@typescript-eslint/no-floating-promises',
+      '@typescript-eslint/no-misused-promises',
+      '@typescript-eslint/no-unnecessary-type-assertion',
+      '@typescript-eslint/no-unsafe-return',
+      '@typescript-eslint/prefer-nullish-coalescing',
+      '@typescript-eslint/prefer-optional-chain'
+    ])
+    expect(gaps.filter(gap => gap.needs === 'no Oxlint equivalent').map(gap => gap.rule)).toEqual([
+      'import/no-extraneous-dependencies',
+      'import/no-unresolved',
+      'markdown/fenced-code-language',
+      'markdown/heading-increment',
+      'no-undef-init',
+      'unused-imports/no-unused-imports',
+      'yml/no-empty-sequence-entry'
+    ])
+    expect(gaps.some(gap => gap.rule.startsWith('pawl/') || gap.rule.startsWith('biome:'))).toBe(false)
+  })
+
+  it('counts the gap a package closes as a problem, and a rule Oxlint does not have as a note', async () => {
+    const report = await doctor(await oxlintProject())
+    const text = formatDoctor(report)
+
+    expect(report.problems).toEqual([
+      'Not enforced by Oxlint: @typescript-eslint/await-thenable, @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated and 6 more (install oxlint-tsgolint).'
+    ])
+    expect(text).toContain(
+      'Problem: Not enforced by Oxlint: @typescript-eslint/await-thenable, @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated and 6 more (install oxlint-tsgolint).'
+    )
+    expect(text).toContain(
+      '          not enforced, no Oxlint equivalent: import/no-extraneous-dependencies, import/no-unresolved, markdown/fenced-code-language and 4 more'
+    )
+    expect(text).not.toContain('Problem: Not enforced by Oxlint: import')
+  })
+
+  it('does not ask a project without TypeScript for the type-aware rules', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'oxlint', strict: true }
+    })
+
+    link(root)
+    applyPlan(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    const report = await doctor(root)
+
+    expect(report.problems).toEqual([])
+    expect(report.engines.oxlint?.notEnforced.filter(gap => gap.rule.startsWith('@typescript-eslint/'))).toEqual([])
+    expect(report.engines.oxlint?.notEnforced.length).toBeGreaterThan(0)
+  })
+
+  it('leaves out what ESLint next to Oxlint takes, and does not name it twice', async () => {
+    const report = await doctor(await oxlintProject({ 'eslint.config.js': 'export default []\n' }))
+    const rules = (report.engines.oxlint?.notEnforced ?? []).map(gap => gap.rule)
+
+    // ESLint takes the core rule Oxlint has no equivalent for. The rules whose plugin it cannot load
+    // are already a problem of ESLint's, with the plugin to install.
+    expect(rules).not.toContain('no-undef-init')
+    expect(report.problems.some(problem => problem.startsWith('Not enforced by ESLint'))).toBe(true)
+    expect(report.problems.some(problem => problem.startsWith('Not enforced by Oxlint'))).toBe(false)
+  })
+
+  it('asks for tsgolint without strict mode too, for the type-aware rules the standard has on by default', async () => {
+    const report = await doctor(await oxlintProject({ 'pawl.config.json': { engine: 'oxlint' } }))
+
+    expect(report.problems).toEqual([
+      'Not enforced by Oxlint: @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated, @typescript-eslint/prefer-optional-chain (install oxlint-tsgolint).'
+    ])
+  })
+
+  it('asks for tsgolint at the root when only a workspace package declares it, and does not stop the check', async () => {
+    const root = await oxlintProject({
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'packages/a/package.json': { name: 'a', devDependencies: { 'oxlint-tsgolint': '*' } }
+    })
+    const report = await doctor(root)
+
+    expect(report.problems).toEqual([
+      'Not enforced by Oxlint: @typescript-eslint/await-thenable, @typescript-eslint/consistent-type-exports, @typescript-eslint/no-deprecated and 6 more (add oxlint-tsgolint to the devDependencies of the root package.json).'
+    ])
+    expect((await check({ root })).setup.map(issue => issue.code)).not.toContain('tsgolint-missing')
+  })
+
+  it('says to install the dependencies when init added tsgolint and the install has not run', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'tsconfig.json': { compilerOptions: { strict: true } },
+      'pawl.config.json': { engine: 'oxlint', strict: true }
+    })
+
+    link(root)
+    applyPlan(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+
+    const report = await doctor(root)
+
+    expect(report.problems).toEqual([
+      'oxlint-tsgolint is a dependency of this project but is not installed. Install the dependencies.'
+    ])
+    expect(report.engines.oxlint?.notEnforced.filter(gap => gap.needs === 'oxlint-tsgolint')).toEqual([])
+  })
+})
+
 describe('pawl doctor', () => {
+  it('names a pattern whose brackets match no file, but would as a character class', async () => {
+    const root = await ready({
+      'pawl.config.json': {
+        // Braces are read as a glob reads them, so they need no note.
+        ignore: ['legacy/v[0-9]', 'src/app/[slug]', 'later/[id]', 'tools/*.{gen,auto}.js'],
+        overrides: [{ files: ['**/*.min.[jc]s'], rules: { 'no-console': 'off' } }]
+      },
+      'legacy/v1/a.js': 'export const a = 1\n',
+      'src/app/[slug]/page.js': 'export const b = 1\n',
+      'public/app.min.js': 'export const c = 1\n',
+      'tools/a.gen.js': 'export const d = 1\n'
+    })
+
+    // The route folder is there as it is written, and the pattern no file matches either way is left alone.
+    expect((await doctor(root)).problems).toEqual([
+      '"legacy/v[0-9]" in ignore matches no file: pawl reads brackets as the characters themselves. As a character class it would match legacy/v1/a.js, so list the paths it should match instead.',
+      '"**/*.min.[jc]s" in the files of an override matches no file: pawl reads brackets as the characters themselves. As a character class it would match public/app.min.js, so list the paths it should match instead.'
+    ])
+  })
+
   it('reports the setup, the tool versions and the packs the files call for', async () => {
     const report = await doctor(await ready({ 'README.md': '# fixture\n', '.github/workflows/ci.yml': 'on: push\n' }))
 
@@ -43,6 +191,55 @@ describe('pawl doctor', () => {
       'Suggest:  markdown, yaml for the files in this repo (pawl add markdown yaml)'
     )
     expect(formatDoctor(report)).toContain(`Biome:    ${BIOME_VERSION}, biome.json in line with the policy`)
+  })
+
+  it('reports a project that does not have pawl itself installed, as the check does', async () => {
+    // A biome.json that extends the standard, and no install: pawl ran through npx, or the clone is fresh.
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'biome.json': { extends: ['@santi020k/pawl/biome'] },
+      'src/a.js': 'debugger\n'
+    })
+    const result = await check({ root })
+
+    expect(result.setup).toEqual([
+      {
+        code: 'pawl-missing',
+        message:
+          'biome.json extends @santi020k/pawl/biome, but @santi020k/pawl is not installed in this project, so Biome cannot load the standard.',
+        fix: 'Add @santi020k/pawl to devDependencies and install.'
+      }
+    ])
+    expect(result.commands).toEqual([])
+    expect(exitCode(result)).toBe(2)
+    expect((await doctor(root)).problems).toEqual([
+      'biome.json extends @santi020k/pawl/biome, but @santi020k/pawl is not installed in this project. Add it to devDependencies and install.'
+    ])
+
+    link(root)
+
+    expect((await check({ root })).setup).toEqual([])
+    expect((await doctor(root)).problems).toEqual([])
+  })
+
+  it('names a missing plugin once, however many rules wait on it', async () => {
+    // ESLint lints alone, and none of the plugins the standard's rules come from is installed.
+    const root = await ready({ 'pawl.config.json': { engine: 'eslint' } })
+    const report = await doctor(root)
+    const unicorn = report.problems.filter(problem => problem.includes('eslint-plugin-unicorn'))
+    const waiting = report.engines.eslint?.notEnforced.filter(item => item.needs === 'eslint-plugin-unicorn') ?? []
+
+    expect(waiting.length).toBeGreaterThan(4)
+    expect(unicorn).toEqual([
+      `Not enforced by ESLint: ${waiting
+        .slice(0, 3)
+        .map(item => item.rule)
+        .join(', ')} and ${waiting.length - 3} more (install eslint-plugin-unicorn).`
+    ])
+    // A plugin one rule waits on still names that rule.
+    expect(report.problems).toContain(
+      'Not enforced by ESLint: unused-imports/no-unused-imports (install eslint-plugin-unused-imports).'
+    )
   })
 
   it('reports a baseline that cannot be read', async () => {

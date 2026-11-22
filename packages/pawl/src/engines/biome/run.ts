@@ -3,7 +3,15 @@ import { getRuleByBiome, scopedName } from '../../catalog/rules.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
-import { EngineError, type EngineRun, parseReport, type RunOptions, resolveBin, runNode, targets } from '../engine.ts'
+import {
+  EngineError,
+  type EngineRun,
+  parseReport,
+  type RunOptions,
+  resolveBin,
+  runChunked,
+  runNode
+} from '../engine.ts'
 import { BIOME_VERSION } from './config.ts'
 
 const BIN = { packageName: '@biomejs/biome', bin: 'biome', fallback: 'bin/biome', besidePawl: true }
@@ -88,11 +96,16 @@ export const runBiome = async ({ root, files, write = false }: RunOptions): Prom
     )
   }
 
-  const shown = ['check', ...(write ? ['--write'] : []), ...targets(files)]
+  const shown = ['check', ...(write ? ['--write'] : [])]
   const quiet = ['--reporter=json', '--max-diagnostics=none', '--no-errors-on-unmatched', '--colors=off']
-  const result = await runNode(bin, ['check', ...quiet, ...shown.slice(1)], root, 'biome', shown)
-  const report = parseReport(result, 'Biome', '{', isReport)
-  const findings = report.diagnostics.map(toFinding).filter((finding): finding is Finding => finding !== undefined)
 
-  return { findings, command: result.command }
+  return runChunked(files, ['biome', ...shown].join(' '), async targets => {
+    const result = await runNode(bin, ['check', ...quiet, ...shown.slice(1), ...targets], root, 'biome', [
+      ...shown,
+      ...targets
+    ])
+    const report = parseReport(result, 'Biome', '{', isReport)
+
+    return report.diagnostics.map(toFinding).filter((finding): finding is Finding => finding !== undefined)
+  })
 }

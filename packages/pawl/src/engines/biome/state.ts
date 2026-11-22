@@ -8,8 +8,10 @@ import { extraGlobals, RUNTIMES } from '../../catalog/runtimes.ts'
 import { BIOME_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
 import { type Detection, technologies as repoTechnologies } from '../../project/detect.ts'
 import { type Policy, type SetupIssue } from '../../types.ts'
+import { ancestors } from '../../utils/fs.ts'
 import { isRecord, type Json, type JsonObject, type JsonRecord, readJsonc, sameJson } from '../../utils/json.ts'
 import { toList } from '../../utils/list.ts'
+import { PACKAGE_NAME } from '../../version.ts'
 import { BIOME_PRESET, type BiomeContext, biomePackageConfig, biomeProjectConfig, isRuleValue } from './config.ts'
 
 /** Biome reads the .gitignore when the policy wants it and there is a .gitignore or a git repo to read. */
@@ -129,6 +131,17 @@ const extendsList = (config: JsonObject): Json[] => toList<Json>(config.extends)
 
 const findPreset = (config: JsonObject): string | undefined =>
   extendsList(config).find((entry): entry is string => typeof entry === 'string' && PRESET_REFERENCE.test(entry))
+
+/**
+ * True when the project can load pawl by name, as a biome.json that extends `@santi020k/pawl/biome`
+ * needs. It cannot when pawl only ran through npx, or before the first install after a clone.
+ */
+export const presetInstalled = (root: string): boolean =>
+  // Biome looks in the node_modules folders above the config and nowhere else, so the same is done here.
+  ancestors(root).some(dir => existsSync(join(dir, 'node_modules', PACKAGE_NAME, 'package.json')))
+
+/** A biome.json that names the standard by package, not by file as pawl's own repo does. */
+export const extendsPackage = (preset: string | undefined): boolean => preset?.startsWith(PACKAGE_NAME) === true
 
 /** Compare the project's biome.json with what the policy calls for. */
 export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeContext = {}): BiomeConfigCheck => {

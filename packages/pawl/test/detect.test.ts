@@ -78,7 +78,9 @@ suite('detect', () => {
       'packages:\n- apps/*\n- packages/*\n',
       '# The workspace.\npackages:\n  # Apps first.\n  - apps/*\n\n  - packages/* # libraries\ncatalog:\n  react: ^19.0.0\n',
       "packages: ['apps/*', packages/*]\n",
-      'packages:\r\n  - apps/*\r\n  - packages/*\r\n'
+      'packages:\r\n  - apps/*\r\n  - packages/*\r\n',
+      // A flow list over more lines.
+      "packages: [\n  'apps/*',\n  packages/*, # libraries\n]\ncatalog:\n  react: ^19.0.0\n"
     ]) {
       const detection = detect(project({ ...packages, 'pnpm-workspace.yaml': yaml }))
 
@@ -110,6 +112,45 @@ suite('detect', () => {
       'packages/ui/button',
       'plugins/plugin-a',
       'tools/cli'
+    ])
+  })
+
+  it('finds the packages pnpm finds, at any depth, with braces, classes and exclusions matched as pnpm matches them', () => {
+    const folders = [
+      'packages/a',
+      'packages/test',
+      'components/x',
+      'components/x/test/fixture',
+      'components/test',
+      'apps/a',
+      'apps/a/b/c/d',
+      'apps/a/b/c/d/e/f',
+      'apps/a/node_modules/dep',
+      'apps/a/bower_components/old',
+      'apps/.cache/p',
+      'libs/one',
+      'libs/two',
+      'libs/three',
+      'tools/z'
+    ]
+    const root = project({
+      'package.json': { name: 'workspace', private: true },
+      // pnpm's own example of an exclusion, braces, a class, and the root, which is never a package.
+      'pnpm-workspace.yaml':
+        'packages:\n  - packages/*\n  - components/**\n  - "!**/test/**"\n  - apps/**\n  - "{libs,tools}/*"\n  - "!libs/t[^w]*"\n  - .\n',
+      ...Object.fromEntries(folders.map(folder => [`${folder}/package.json`, {}]))
+    })
+
+    // Checked against `pnpm ls -r` on the same tree.
+    expect(detect(root).workspace.packages).toEqual([
+      'apps/a',
+      'apps/a/b/c/d',
+      'apps/a/b/c/d/e/f',
+      'components/x',
+      'libs/one',
+      'libs/two',
+      'packages/a',
+      'tools/z'
     ])
   })
 

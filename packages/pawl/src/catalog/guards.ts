@@ -69,6 +69,16 @@ const ZOD_READERS = 'meta|(?:safe)?(?:parse|encode|decode)(?:Async)?|spa|validat
 /** The Testing Library queries that return at once, so there is nothing to await. */
 const SYNC_QUERY = '(?:get|query)(?:All)?By(?:LabelText|PlaceholderText|Text|AltText|Title|DisplayValue|Role|TestId)'
 
+/** Every Testing Library query, which includes the ones that wait. */
+const ANY_QUERY =
+  '(?:get|query|find)(?:All)?By(?:LabelText|PlaceholderText|Text|AltText|Title|DisplayValue|Role|TestId)'
+
+/** A string literal in source text, in either quote, escapes included. A template literal is not one. */
+const STRING_LITERAL = `(?:'(?:[^'\\\\\\n]|\\\\.)*'|\\"(?:[^\\"\\\\\\n]|\\\\.)*\\")`
+
+/** `z.literal('a')`, as source text. */
+const ZOD_LITERAL = `z\\.literal\\(\\s*${STRING_LITERAL}\\s*\\)`
+
 /** The build flags Nuxt moved from process to import.meta. */
 const NUXT_FLAGS = 'client|browser|server|nitro|dev|test|prerender'
 
@@ -102,8 +112,47 @@ const GRIT = {
   awaitBoundQuery: { pattern: '`await $object.$query($...)`', conditions: [`$query <: r"^${SYNC_QUERY}$"`] },
   screenDebug: { pattern: '`screen.$util($...)`', conditions: ['$util <: r"^(?:debug|logTestingPlaygroundURL)$"'] },
   debugUtil: { pattern: '`$util($...)`', conditions: ['$util <: r"^(?:logRoles|logDOM|prettyDOM)$"'] },
+  literalUnion: {
+    pattern: '`z.union($items)`',
+    conditions: [`$items <: r"^\\[\\s*${ZOD_LITERAL}(?:\\s*,\\s*${ZOD_LITERAL})+\\s*,?\\s*\\]$"`]
+  },
+  describe1: { pattern: '`z.$a($...).describe($...)`' },
+  describe2: { pattern: '`z.$a($...).$b($...).describe($...)`' },
+  describe3: { pattern: '`z.$a($...).$b($...).$c($...).describe($...)`' },
+  describe4: { pattern: '`z.$a($...).$b($...).$c($...).$d($...).describe($...)`' },
+  renderDestructured: {
+    pattern: '`const $names = render($...)`',
+    conditions: [`$names <: r"^\\{[^{}]*\\b${ANY_QUERY}\\b[^{}]*\\}$"`]
+  },
+  renderQuery: { pattern: '`render($...).$query($...)`', conditions: [`$query <: r"^${ANY_QUERY}$"`] },
+  waitForQuery: { pattern: '`waitFor(() => $query($...))`', conditions: [`$query <: r"^${SYNC_QUERY}$"`] },
+  waitForBoundQuery: {
+    pattern: '`waitFor(() => $object.$query($...))`',
+    conditions: [`$query <: r"^${SYNC_QUERY}$"`]
+  },
+  waitForExpect: {
+    pattern: '`waitFor(() => expect($query($...)).toBeInTheDocument())`',
+    conditions: [`$query <: r"^${SYNC_QUERY}$"`]
+  },
+  waitForExpectBound: {
+    pattern: '`waitFor(() => expect($object.$query($...)).toBeInTheDocument())`',
+    conditions: [`$query <: r"^${SYNC_QUERY}$"`]
+  },
   processFlag: { pattern: '`process.$flag`', conditions: [`$flag <: r"^(?:${NUXT_FLAGS})$"`] }
 } satisfies Record<string, GritPattern>
+
+/** The packages whose users write Testing Library tests. */
+const TESTING_LIBRARY = [
+  '@testing-library/dom',
+  '@testing-library/react',
+  '@testing-library/vue',
+  '@testing-library/svelte',
+  '@testing-library/angular',
+  '@testing-library/preact'
+]
+
+/** How many calls may sit between `z` and `.describe()` that the guard follows. */
+const DESCRIBE_DEPTHS = [1, 2, 3, 4] as const
 
 export const GUARDS: readonly Guard[] = [
   {
@@ -335,8 +384,28 @@ export const GUARDS: readonly Guard[] = [
         selector: `CallExpression[callee.computed=false][callee.property.name!=/^(?:${ZOD_READERS})$/][callee.object.callee.property.name='meta']`,
         message: 'Call .meta() last in a Zod schema, after every other method.',
         grit: GRIT.metaNotLast
+      },
+      {
+        selector:
+          "CallExpression[callee.object.name='z'][callee.property.name='union'][arguments.length=1][arguments.0.type='ArrayExpression'][arguments.0.elements.length>=2]" +
+          ":not(:has(ArrayExpression.arguments > :not(CallExpression[callee.object.name='z'][callee.property.name='literal'][arguments.length=1][arguments.0.value=type(string)])))",
+        message: 'Write z.enum([...]) instead of z.union() of string z.literal() values.',
+        grit: GRIT.literalUnion
       }
     ]
+  },
+  {
+    // `.meta()` came with Zod 4, while Zod 3 and the AI SDK's tool schemas write `.describe()`,
+    // which Zod 4 still reads. So the project switches this one on, as `pawl add zod-meta`.
+    name: 'zod-meta',
+    title: 'Zod metadata',
+    when: [],
+    optIn: true,
+    syntax: DESCRIBE_DEPTHS.map(depth => ({
+      selector: `CallExpression[callee.computed=false][callee.property.name='describe']${`[callee.object${'.callee.object'.repeat(depth)}.name='z']`}`,
+      message: "Write .meta({ description: '...' }) instead of .describe('...') in a Zod 4 schema.",
+      grit: GRIT[`describe${depth}` as 'describe1']
+    }))
   },
   {
     name: 'testing-library',
@@ -361,7 +430,43 @@ export const GUARDS: readonly Guard[] = [
         message:
           'getBy, getAllBy, queryBy and queryAllBy queries are synchronous. Drop the await, or use a findBy query.',
         grit: GRIT.awaitBoundQuery
+      },
+      {
+        selector: `VariableDeclaration[kind='const'] > VariableDeclarator[init.callee.name='render'] > ObjectPattern.id:has(> Property:matches([key.name=/^${ANY_QUERY}$/], [value.name=/^${ANY_QUERY}$/]))`,
+        message: 'Query through screen, such as screen.getByText(), not through the queries that render() returns.',
+        grit: GRIT.renderDestructured
+      },
+      {
+        selector: `CallExpression[callee.property.name=/^${ANY_QUERY}$/][callee.object.callee.name='render']`,
+        message: 'Query through screen, such as screen.getByText(), not through the queries that render() returns.',
+        grit: GRIT.renderQuery
       }
+    ]
+  },
+  {
+    // Its own guard, so it can stay at warn: the old config only warned about it.
+    name: 'testing-library-find-by',
+    title: 'Testing Library findBy queries',
+    when: TESTING_LIBRARY,
+    level: 'warn',
+    syntax: [
+      ...[
+        { grit: GRIT.waitForQuery, body: `[arguments.0.body.callee.name=/^${SYNC_QUERY}$/]` },
+        { grit: GRIT.waitForBoundQuery, body: `[arguments.0.body.callee.property.name=/^${SYNC_QUERY}$/]` },
+        {
+          grit: GRIT.waitForExpect,
+          body: `[arguments.0.body.callee.property.name='toBeInTheDocument'][arguments.0.body.callee.object.callee.name='expect'][arguments.0.body.callee.object.arguments.0.callee.name=/^${SYNC_QUERY}$/]`
+        },
+        {
+          grit: GRIT.waitForExpectBound,
+          body: `[arguments.0.body.callee.property.name='toBeInTheDocument'][arguments.0.body.callee.object.callee.name='expect'][arguments.0.body.callee.object.arguments.0.callee.property.name=/^${SYNC_QUERY}$/]`
+        }
+      ].map(({ grit, body }) => ({
+        selector: `CallExpression[callee.name='waitFor'][arguments.length=1][arguments.0.type='ArrowFunctionExpression'][arguments.0.params.length=0]${body}`,
+        message:
+          'Use a findBy query, such as await screen.findByText(), instead of waitFor() around a getBy or queryBy query.',
+        grit
+      }))
     ]
   },
   {

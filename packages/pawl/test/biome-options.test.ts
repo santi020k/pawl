@@ -86,7 +86,7 @@ describe('Biome options in the policy', () => {
       ]
     })
 
-    expect(biomeConfig(policy).overrides).toEqual([
+    expect(biomeProjectConfig(policy).overrides).toEqual([
       {
         includes: ['legacy/**'],
         linter: {

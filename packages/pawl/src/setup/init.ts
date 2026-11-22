@@ -5,6 +5,7 @@ import { BASELINE_FILE } from '../check/baseline.ts'
 import { check } from '../check/check.ts'
 import { BLOCKING } from '../check/result.ts'
 import { runBiome } from '../engines/biome/run.ts'
+import { TYPE_AWARE_PACKAGE } from '../engines/oxlint/config.ts'
 import { loadProject } from '../policy/project.ts'
 import { ESLINT_CONFIG_FILES, hasAny } from '../project/config-files.ts'
 import { type Detection, describe, filePacks, needsEslint } from '../project/detect.ts'
@@ -15,7 +16,7 @@ import { PACKAGE_NAME } from '../version.ts'
 import { planEngineConfigs } from './engine-configs.ts'
 import { installCommand, listed } from './install.ts'
 import { planAgents, planEditor, planHook, planScripts, planTurboTasks, planWorkflow } from './integrations.ts'
-import { assertPacks, describeActions, planPolicyFile, type SetupAction, type SetupPlan } from './plan.ts'
+import { assertPacks, describeActions, legacyNote, planPolicyFile, type SetupAction, type SetupPlan } from './plan.ts'
 import { ESLINT_CONFIG } from './templates.ts'
 
 /**
@@ -48,6 +49,8 @@ export interface InitOptions {
    * When off, pawl is written into devDependencies for the next install to pick up.
    */
   install?: boolean
+  /** `pawl migrate` has just carried the old ESLint config into the policy. */
+  migrated?: boolean
 }
 
 export interface InitPlan extends SetupPlan {
@@ -62,11 +65,13 @@ interface Choice {
   formatter: FormatterName
   /** ESLint runs: as the linter, for the packs, or for what Biome cannot lint yet. */
   eslint: boolean
+  /** Oxlint needs oxlint-tsgolint for the rules of the standard that read types. */
+  typeAware: boolean
 }
 
 /** The tools for a project: what the options name, else what the mode keeps or brings in. */
 const chooseTools = (options: InitOptions, detection: Detection): Choice => {
-  const { mode = 'auto' } = options
+  const { root, mode = 'auto' } = options
   const { tools } = detection
   const keep = mode === 'keep' && !tools.biome
   const kept: EngineName | undefined = (tools.oxlint && 'oxlint') || (tools.eslint && 'eslint') || undefined
@@ -75,9 +80,10 @@ const chooseTools = (options: InitOptions, detection: Detection): Choice => {
   const eslint =
     linter === 'eslint' ||
     (options.packs?.length ?? 0) > 0 ||
-    (mode !== 'biome' && (tools.eslint !== undefined || needsEslint(detection)))
+    (mode !== 'biome' && (hasAny(root, ESLINT_CONFIG_FILES) || needsEslint(detection)))
+  const typeAware = linter === 'oxlint' && detection.typescript && existsSync(join(root, 'package.json'))
 
-  return { linter, formatter, eslint }
+  return { linter, formatter, eslint, typeAware }
 }
 
 /** What the policy file must say for the choice to stick: only what pawl would not work out by itself. */
@@ -100,17 +106,24 @@ const planEslintConfig = (
   root: string,
   choice: Choice,
   detection: Detection,
-  notes: string[]
+  notes: string[],
+  migrated: boolean
 ): SetupAction | undefined => {
   const file = detection.tools.eslint
+  const flat = hasAny(root, ESLINT_CONFIG_FILES)
+  // An .eslintrc file. ESLint reads flat config only, so pawl cannot run this one as it is.
+  const legacy = file !== undefined && !flat ? file : undefined
 
   if (!choice.eslint) {
-    if (file) notes.push(`Pawl no longer runs ESLint here. You can remove ESLint and ${file} when you are ready.`)
+    if (legacy) notes.push(legacyNote(legacy, false, migrated))
+    else if (file) notes.push(`Pawl no longer runs ESLint here. You can remove ESLint and ${file} when you are ready.`)
 
     return undefined
   }
 
-  if (!file) {
+  if (!flat) {
+    if (legacy) notes.push(legacyNote(legacy, true, migrated))
+
     return {
       path: 'eslint.config.js',
       kind: 'create',
@@ -119,9 +132,8 @@ const planEslintConfig = (
     }
   }
 
-  if (!hasAny(root, ESLINT_CONFIG_FILES)) {
-    notes.push(`${file} is a legacy ESLint config. Pawl works with flat config (eslint.config.js) and left it alone.`)
-  } else if (!readFileSync(join(root, file), 'utf8').includes(PACKAGE_NAME)) {
+  // Anything else is an ESLint config already built from the policy.
+  if (file && !readFileSync(join(root, file), 'utf8').includes(PACKAGE_NAME)) {
     notes.push(
       `Your ${file} is unchanged. To put ESLint under the pawl standard and its packs, export eslint() from ${PACKAGE_NAME} in it.`
     )
@@ -144,7 +156,7 @@ const missingPackages = (
   const wanted = [
     PACKAGE_NAME,
     ...(linter === 'biome' || formatter === 'biome' ? ['@biomejs/biome'] : []),
-    ...(linter === 'oxlint' ? ['oxlint'] : []),
+    ...(linter === 'oxlint' ? ['oxlint', ...(choice.typeAware ? [TYPE_AWARE_PACKAGE] : [])] : []),
     ...(choice.eslint ? ['eslint'] : []),
     ...(linter === 'eslint' ? ['@eslint/js', ...(detection.typescript ? ['typescript-eslint'] : [])] : []),
     ...(formatter === 'prettier' ? ['prettier'] : []),
@@ -209,13 +221,16 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const notes: string[] = []
   const actions: (SetupAction | undefined)[] = [
     planPolicyFile(root, pinned, notes),
-    ...planEngineConfigs(root, policy, detection, choice, notes, { updatePrettier: false })
+    ...planEngineConfigs(root, policy, detection, choice, notes, {
+      updatePrettier: false,
+      adding: choice.typeAware ? [TYPE_AWARE_PACKAGE] : []
+    })
   ]
 
   if (formatter !== 'prettier' && tools.prettier)
     notes.push(`Biome now formats the code. You can remove Prettier and ${tools.prettier} when you are ready.`)
 
-  actions.push(planEslintConfig(root, choice, detection, notes))
+  actions.push(planEslintConfig(root, choice, detection, notes, options.migrated === true))
 
   if (tools.oxlint && linter !== 'oxlint') {
     notes.push(

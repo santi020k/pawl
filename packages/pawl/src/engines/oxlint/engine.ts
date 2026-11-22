@@ -1,7 +1,7 @@
 import { OXLINT_CONFIG_FILE } from '../../project/config-files.ts'
 import { PEER_RANGES } from '../../version.ts'
 import { type Engine } from '../engine.ts'
-import { checkOxlintConfig, oxlintContextFor } from './config.ts'
+import { checkOxlintConfig, oxlintContextFor, TYPE_AWARE_PACKAGE, tsgolintInstalled } from './config.ts'
 import { oxlintInstalled, runOxlint } from './run.ts'
 
 /** Oxlint lints, when the policy names it. */
@@ -17,13 +17,25 @@ export const oxlint: Engine = {
     fix: 'Add oxlint to devDependencies.'
   },
   inspect: ({ root, policy, detection }) => {
-    const config = checkOxlintConfig(root, policy, oxlintContextFor(detection))
+    const context = oxlintContextFor(detection, root)
+    const config = checkOxlintConfig(root, policy, context)
+    // The config asks Oxlint for type information, which it cannot get without the package.
+    const tsgolintMissing = context.typeAware === true && !tsgolintInstalled(root)
+    const issues = config.issue ? [config.issue] : []
+
+    if (tsgolintMissing) {
+      issues.push({
+        code: 'tsgolint-missing',
+        message: `This project depends on ${TYPE_AWARE_PACKAGE}, but it is not installed, so Oxlint cannot run the rules that need type information.`,
+        fix: 'Install the dependencies.'
+      })
+    }
 
     return {
       config: OXLINT_CONFIG_FILE,
       status: config.status,
-      runnable: config.status !== 'missing',
-      issues: config.issue ? [config.issue] : []
+      runnable: !tsgolintMissing && config.status !== 'missing',
+      issues
     }
   },
   run: runOxlint

@@ -2,10 +2,13 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { check } from '../src/check/check.ts'
-import { biomeConfig, biomeProjectConfig } from '../src/engines/biome/config.ts'
+import { biomeConfig, biomeProjectConfig, TEMPLATE_FILES } from '../src/engines/biome/config.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { oxlintConfig } from '../src/engines/oxlint/config.ts'
 import { mergeLayers } from '../src/policy/merge.ts'
+import { checkDocker } from '../src/scans/docker.ts'
+import { checkMarkdown } from '../src/scans/markdown.ts'
+import { levelForFile } from '../src/scans/scan.ts'
 import { planInit } from '../src/setup/init.ts'
 import { applyPlan } from '../src/setup/plan.ts'
 import { type PolicyInput } from '../src/types.ts'
@@ -62,10 +65,13 @@ describe('overrides in the policy', () => {
     })
 
     // The second override is for React, which this project does not use, so Biome gets none for it.
-    expect(biomeConfig(policy).overrides).toEqual([
+    const own = [
       { includes: ['**/*.test.js', '**/*.test.ts'], linter: { rules: { suspicious: { noDebugger: 'off' } } } }
-    ])
-    expect(biomeProjectConfig(policy).overrides).toEqual(biomeConfig(policy).overrides)
+    ]
+
+    expect(biomeProjectConfig(policy).overrides).toEqual(own)
+    // In the whole config they follow the standard's own override for component files, so they can undo it.
+    expect(biomeConfig(policy).overrides).toEqual([{ includes: TEMPLATE_FILES, linter: expect.anything() }, ...own])
   })
 
   it('become Oxlint overrides, with the plugins they need and their options', () => {
@@ -142,6 +148,114 @@ describe('overrides in the policy', () => {
       rules: { 'no-console': ['warn', { allow: ['log'] }] }
     })
     expect(plan.notEnforced).toContainEqual({ rule: 'unicorn/no-null', needs: 'eslint-plugin-unicorn' })
+  })
+})
+
+describe("overrides for pawl's own checks", () => {
+  const files = {
+    'README.md': '# Notes\n\n## Setup\n\n## Setup\n',
+    'CHANGELOG.md': '# Changes\n\n## Patch\n\n## Patch\n',
+    'docs/api/README.md': '# API\n\n[empty]()\n',
+    Dockerfile: 'FROM node:22-slim\nUSER node\nMAINTAINER someone\n',
+    'examples/app/Dockerfile': 'FROM node:22-slim\nUSER node\nMAINTAINER someone\n'
+  }
+  const found = (policy: ReturnType<typeof policyWith>): string[] => {
+    const root = project(files)
+
+    return [...checkMarkdown({ root, policy }), ...checkDocker({ root, policy })]
+      .map(finding => `${finding.file} ${finding.rule.slice('pawl/'.length)} ${finding.severity}`)
+      .sort()
+  }
+
+  it('set the level of a Markdown or Docker check for the files they name', () => {
+    const policy = policyWith({
+      rules: { 'pawl/markdown-no-duplicate-headings': 'error' },
+      overrides: [
+        // A changelog repeats its headings by design.
+        { files: ['CHANGELOG.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'off' } },
+        { files: ['docs/**'], rules: { 'pawl/markdown-no-empty-links': 'warn' } },
+        { files: ['examples/**'], rules: { 'pawl/docker-no-maintainer': 'off' } }
+      ]
+    })
+
+    expect(found(policy)).toEqual([
+      'Dockerfile docker-no-maintainer warn',
+      'README.md markdown-no-duplicate-headings error',
+      'docs/api/README.md markdown-no-empty-links warn'
+    ])
+  })
+
+  it('let a later entry win, and can switch a check on for some files only', () => {
+    const policy = policyWith({
+      overrides: [
+        { files: ['*.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'warn' } },
+        { files: ['CHANGELOG.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'off' } },
+        { files: ['Dockerfile'], rules: { 'pawl/docker-no-maintainer': 'error' } }
+      ]
+    })
+
+    expect(found(policy)).toEqual([
+      'Dockerfile docker-no-maintainer error',
+      'README.md markdown-no-duplicate-headings warn',
+      'docs/api/README.md markdown-no-empty-links error',
+      'examples/app/Dockerfile docker-no-maintainer error'
+    ])
+  })
+
+  it('cannot loosen a locked check', () => {
+    const policy = mergeLayers([
+      {
+        source: 'company',
+        input: { rules: { 'pawl/docker-no-maintainer': 'error' }, locked: ['pawl/docker-no-maintainer'] }
+      },
+      {
+        source: 'repo',
+        input: { overrides: [{ files: ['examples/**'], rules: { 'pawl/docker-no-maintainer': 'off' } }] }
+      }
+    ])
+
+    expect(found(policy).filter(line => line.includes('docker'))).toEqual([
+      'Dockerfile docker-no-maintainer error',
+      'examples/app/Dockerfile docker-no-maintainer error'
+    ])
+    expect(policy.lockViolations).toHaveLength(1)
+  })
+
+  it('cannot switch off a locked check at its own level, for some files or for all', () => {
+    const company = { source: 'company', input: { locked: ['pawl/docker-no-root', 'pawl/markdown-no-empty-links'] } }
+    const policy = mergeLayers([
+      company,
+      {
+        source: 'repo',
+        input: {
+          rules: { 'pawl/markdown-no-empty-links': 'off' },
+          overrides: [{ files: ['Dockerfile'], rules: { 'pawl/docker-no-root': 'off' } }]
+        }
+      }
+    ])
+
+    expect(policy.lockViolations.map(({ rule, wanted, kept }) => `${rule} ${wanted} ${kept}`)).toEqual([
+      'pawl/markdown-no-empty-links off error',
+      'pawl/docker-no-root off warn'
+    ])
+    expect(levelForFile(policy, 'pawl/docker-no-root', 'Dockerfile', 'warn')).toBe('warn')
+    expect(levelForFile(policy, 'pawl/markdown-no-empty-links', 'README.md', 'error')).toBe('error')
+    // A locked guard keeps its level too, and a check that is not locked can still be switched off.
+    expect(
+      mergeLayers([
+        { source: 'company', input: { locked: ['pawl/zod'] } },
+        { source: 'repo', input: { rules: { 'pawl/zod': 'off', 'pawl/docker-no-root': 'off' } } }
+      ]).lockViolations.map(violation => violation.rule)
+    ).toEqual(['pawl/zod'])
+    // An opt-in guard the policy never switched on is off already, so a later "off" loosens nothing.
+    const optIn = (packs: string[]) =>
+      mergeLayers([
+        { source: 'company', input: { locked: ['pawl/de-morgan'], packs } },
+        { source: 'repo', input: { rules: { 'pawl/de-morgan': 'off' } } }
+      ]).lockViolations.map(violation => violation.rule)
+
+    expect(optIn([])).toEqual([])
+    expect(optIn(['de-morgan'])).toEqual(['pawl/de-morgan'])
   })
 })
 

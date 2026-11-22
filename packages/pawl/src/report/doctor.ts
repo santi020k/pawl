@@ -1,18 +1,28 @@
 import { activeGuards } from '../catalog/guards.ts'
 import { getPack } from '../catalog/packs.ts'
 import { readBaseline, unreadableBaseline } from '../check/baseline.ts'
-import { BIOME_VERSION } from '../engines/biome/config.ts'
+import { BIOME_PRESET, BIOME_VERSION } from '../engines/biome/config.ts'
 import { eslintPlanFor } from '../engines/eslint/plan.ts'
+import {
+  NO_OXLINT_EQUIVALENT,
+  oxlintContextFor,
+  oxlintGaps,
+  rootDeclaresTsgolint,
+  TYPE_AWARE_PACKAGE,
+  tsgolintInstalled
+} from '../engines/oxlint/config.ts'
 import { activeEngines } from '../engines/registry.ts'
 import { findConfigFile } from '../policy/load.ts'
 import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../policy/project.ts'
 import { OXLINT_CONFIG_FILE } from '../project/config-files.ts'
 import { describe, filePacks } from '../project/detect.ts'
-import { type EngineName, type FormatterName, type Runtime, type SetupIssue } from '../types.ts'
+import { listFiles } from '../project/files.ts'
+import { makeIgnore } from '../project/ignores.ts'
+import { type EngineName, type FormatterName, type Policy, type Runtime, type SetupIssue } from '../types.ts'
 import { installedVersion, satisfies } from '../utils/semver.ts'
 import { plural } from '../utils/text.ts'
-import { NODE_RANGE, PACKAGE_ROOT, VERSION } from '../version.ts'
+import { NODE_RANGE, PACKAGE_NAME, PACKAGE_ROOT, PEER_RANGES, VERSION } from '../version.ts'
 
 /** One tool's installed version against the versions pawl works with. */
 export interface Compatibility {
@@ -48,7 +58,10 @@ export interface DoctorReport {
   formatter: FormatterName
   engines: {
     biome?: EngineReport
-    oxlint?: EngineReport
+    oxlint?: EngineReport & {
+      /** Rules of the standard that are on and that nothing runs: Oxlint does not enforce them, and ESLint does not take them. */
+      notEnforced: Array<{ rule: string; needs: string }>
+    }
     prettier?: EngineReport
     eslint?: EngineReport & {
       activePacks: string[]
@@ -85,6 +98,93 @@ const compatibility = (
 /** A setup problem as one line of the report. */
 const problem = (issue: SetupIssue): string => `${issue.message} ${issue.fix ?? ''}`.trim()
 
+/** How many rule names one problem line spells out before it counts the rest. */
+const NAMED = 3
+
+/**
+ * One problem for each thing that is missing, not one for each rule that waits on it: a plugin
+ * that is not installed can hold back twenty rules, and twenty lines would bury the other problems.
+ * The whole list stays in the report, under `engines.eslint.notEnforced`.
+ */
+const notEnforcedProblems = (notEnforced: readonly { rule: string; needs: string }[]): string[] =>
+  groupByNeed(notEnforced).map(([needs, rules]) => `Not enforced by ESLint: ${nameRules(rules)} (install ${needs}).`)
+
+/** The rules, each group in the order given, by what they wait on. */
+const groupByNeed = (notEnforced: readonly { rule: string; needs: string }[]): [string, string[]][] => {
+  const byNeed = new Map<string, string[]>()
+
+  for (const { rule, needs } of notEnforced) byNeed.set(needs, [...(byNeed.get(needs) ?? []), rule])
+
+  return [...byNeed]
+}
+
+/** The first few names, then a count of the rest. */
+const nameRules = (rules: readonly string[]): string => {
+  const rest = rules.length - NAMED
+
+  return rest > 1 ? `${rules.slice(0, NAMED).join(', ')} and ${rest} more` : rules.join(', ')
+}
+
+/** Every rule an ESLint config switches on, by the name it has there. */
+const eslintEnforces = (config: ReadonlyArray<{ rules?: Record<string, unknown> }>): Set<string> => {
+  const names = new Set<string>()
+
+  for (const { rules = {} } of config) {
+    for (const [name, value] of Object.entries(rules)) {
+      const level = Array.isArray(value) ? value[0] : value
+
+      if (level !== 'off' && level !== 0) names.add(name)
+    }
+  }
+
+  return names
+}
+
+/**
+ * A pattern of the policy whose brackets match no path as the characters themselves, but would match
+ * some as a character class, as in `legacy/v[0-9]`. Pawl reads brackets the first way, for route
+ * folders such as `app/[slug]`, so such a pattern skips nothing, and nothing else says so.
+ */
+const globProblems = (root: string, policy: Policy): string[] => {
+  const patterns = [
+    ...policy.ignore.map(pattern => ({ pattern, where: 'ignore' })),
+    ...policy.overrides.flatMap(override =>
+      override.files.map(pattern => ({ pattern, where: 'the files of an override' }))
+    )
+  ].filter(({ pattern }) => /\\[[\]]/.test(pattern))
+
+  if (patterns.length === 0) return []
+
+  const files = listFiles(root)
+
+  return patterns.flatMap(({ pattern, where }) => {
+    const written = pattern.replace(/\\([[\]])/g, '$1')
+
+    if (files.some(makeIgnore([pattern]))) return []
+
+    const example = files.find(makeIgnore([written]))
+
+    return example === undefined
+      ? []
+      : [
+          `"${written}" in ${where} matches no file: pawl reads brackets as the characters themselves. As a character class it would match ${example}, so list the paths it should match instead.`
+        ]
+  })
+}
+
+/** The two setup problems the doctor words as a step to take, where the check says what could not run. */
+const doctorWording = (issue: SetupIssue, config: string | undefined): string | undefined => {
+  if (issue.code === 'pawl-missing') {
+    return `${config} extends ${BIOME_PRESET}, but ${PACKAGE_NAME} is not installed in this project. Add it to devDependencies and install.`
+  }
+
+  if (issue.code === 'tsgolint-missing') {
+    return `${TYPE_AWARE_PACKAGE} is a dependency of this project but is not installed. Install the dependencies.`
+  }
+
+  return undefined
+}
+
 /** Work out everything `pawl doctor` reports. Reads files only; runs no engine. */
 export const doctor = async (root: string): Promise<DoctorReport> => {
   const project = await loadProject(root)
@@ -105,6 +205,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
   })
 
   let activePacks: string[] = []
+  let ruleOwners: { enforced: Set<string>; failed: Set<string> } = { enforced: new Set(), failed: new Set() }
 
   for (const engine of activeEngines(tools)) {
     const state = engine.inspect(project)
@@ -113,13 +214,21 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     if (installed) push(compatibility(root, engine.packageName, engine.range, engine.name === 'biome'))
     else problems.push(problem(engine.missing))
 
-    problems.push(...state.issues.map(problem))
+    problems.push(...state.issues.map(issue => doctorWording(issue, state.config) ?? problem(issue)))
 
     if (engine.name !== 'eslint') {
-      engines[engine.name] = {
+      const report = {
         installed,
         ...(state.config ? { config: state.config } : {}),
         ...(state.status ? { status: state.status } : {})
+      }
+
+      if (engine.name === 'oxlint') {
+        engines.oxlint = { ...report, notEnforced: [] }
+
+        if (tsgolintInstalled(root)) push(compatibility(root, TYPE_AWARE_PACKAGE, PEER_RANGES[TYPE_AWARE_PACKAGE]))
+      } else {
+        engines[engine.name] = report
       }
 
       continue
@@ -142,7 +251,35 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
       if (pack && pack.plugin !== 'eslint') push(compatibility(root, pack.plugin, pack.range))
     }
 
-    for (const { rule, needs } of plan.notEnforced) problems.push(`Not enforced by ESLint: ${rule} (install ${needs}).`)
+    problems.push(...notEnforcedProblems(plan.notEnforced))
+    ruleOwners = { enforced: eslintEnforces(plan.config), failed: new Set(plan.notEnforced.map(item => item.rule)) }
+  }
+
+  if (engines.oxlint) {
+    const wanted = oxlintGaps(policy, oxlintContextFor(detection, root)).filter(
+      ({ rule }) =>
+        // A project without TypeScript has no file for a TypeScript rule.
+        (detection.typescript || !rule.startsWith('@typescript-eslint/')) &&
+        // ESLint next to Oxlint takes what Oxlint leaves; a rule it cannot load is already a problem above.
+        !ruleOwners.enforced.has(rule.replace(/^eslint:/, '')) &&
+        !ruleOwners.failed.has(rule)
+    )
+
+    engines.oxlint.notEnforced = wanted
+
+    // A workspace package's copy, or an optional peer, is one Oxlint at the root cannot run.
+    const elsewhere = detection.dependencies.includes(TYPE_AWARE_PACKAGE) && !rootDeclaresTsgolint(root)
+
+    for (const [needs, rules] of groupByNeed(wanted)) {
+      if (needs === NO_OXLINT_EQUIVALENT) continue
+
+      const add =
+        needs === TYPE_AWARE_PACKAGE && elsewhere
+          ? `add ${needs} to the devDependencies of the root package.json`
+          : `install ${needs}`
+
+      problems.push(`Not enforced by Oxlint: ${nameRules(rules)} (${add}).`)
+    }
   }
 
   for (const entry of compat) {
@@ -163,6 +300,8 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
   const unreadable = unreadableBaseline(root)
 
   if (unreadable) problems.push(problem(unreadable))
+
+  problems.push(...globProblems(root, policy))
 
   const guards = activeGuards(detection.dependencies, policy.packs)
   const named = new Set([...policy.packs.map(entry => entry.split('/')[0] ?? entry), ...activePacks])
@@ -222,6 +361,14 @@ export const formatDoctor = (report: DoctorReport): string => {
     lines.push(
       `Oxlint:   ${engines.oxlint.installed ? (versionOf('oxlint') ?? 'installed') : 'not installed'}, ${OXLINT_CONFIG_FILE} (${engines.oxlint.status})`
     )
+  }
+
+  if (engines.oxlint) {
+    const none = engines.oxlint.notEnforced.filter(({ needs }) => needs === NO_OXLINT_EQUIVALENT)
+
+    if (none.length > 0) {
+      lines.push(`          not enforced, no Oxlint equivalent: ${nameRules(none.map(({ rule }) => rule))}`)
+    }
   }
 
   if (engines.prettier) {

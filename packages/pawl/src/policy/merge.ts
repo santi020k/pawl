@@ -1,5 +1,7 @@
+import { getGuard } from '../catalog/guards.ts'
 import { canonicalName, defaultLevel, getRule, scopedRule } from '../catalog/rules.ts'
-import { literalBrackets } from '../project/ignores.ts'
+import { expandBraces, literalBrackets } from '../project/ignores.ts'
+import { findOwnRule } from '../scans/registry.ts'
 import {
   type Level,
   type Override,
@@ -96,7 +98,7 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
       if (!policy.locked.includes(name)) policy.locked.push(name)
     }
 
-    for (const pattern of (input.ignore ?? []).map(literalBrackets)) {
+    for (const pattern of (input.ignore ?? []).flatMap(expandBraces).map(literalBrackets)) {
       if (!policy.ignore.includes(pattern)) policy.ignore.push(pattern)
     }
 
@@ -168,11 +170,23 @@ const requireLevels = (policy: Policy): void => {
 }
 
 /**
+ * The level of one of pawl's own checks that are not in the rule catalog: the Docker and Markdown
+ * checks and the guards. A lock keeps them at it, as it keeps a catalog rule at its default.
+ */
+const ownLevel = (policy: Policy, name: string): Level | undefined => {
+  const guard = name.startsWith('pawl/') ? getGuard(name.slice('pawl/'.length)) : undefined
+  // An opt-in guard the policy has not switched on is off, so there is nothing to keep.
+  const guardOn = guard !== undefined && (!guard.optIn || policy.packs.includes(guard.name))
+
+  return findOwnRule(name)?.rule.level ?? (guardOn ? (guard.level ?? 'error') : undefined)
+}
+
+/**
  * The level a locked rule keeps when a layer asks for a looser one, or undefined when the
  * asked-for level is allowed. The rule's own default, or the level a layer set, is the floor.
  */
 const lockedLevel = (policy: Policy, name: string, wanted: Level): Level | undefined => {
-  const current = policy.rules[name] ?? defaultLevel(name, policy.strict)
+  const current = policy.rules[name] ?? ownLevel(policy, name) ?? defaultLevel(name, policy.strict)
 
   return policy.locked.includes(name) && ORDER[wanted] < ORDER[current] ? current : undefined
 }
@@ -200,7 +214,7 @@ const mergeOverride = (
   )
 
   return {
-    files: override.files.map(literalBrackets),
+    files: override.files.flatMap(expandBraces).map(literalBrackets),
     rules,
     options,
     biomeOptions: biomeOptionsOf(override.biomeOptions, `${source} (overrides)`)

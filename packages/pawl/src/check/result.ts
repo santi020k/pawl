@@ -31,10 +31,12 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'eslint-missing',
   'prettier-missing',
   'oxlint-missing',
+  'tsgolint-missing',
   'oxlint-config-missing',
   'biome-config-missing',
   'since-unresolved',
-  'baseline-unreadable'
+  'baseline-unreadable',
+  'pawl-missing'
 ]
 
 /** True when the setup problems mean part of the check did not run. */

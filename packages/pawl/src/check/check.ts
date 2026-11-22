@@ -4,7 +4,7 @@ import { activeEngines } from '../engines/registry.ts'
 import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../policy/project.ts'
 import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
-import { ignoreMatcher } from '../project/ignores.ts'
+import { configIgnores, ignoreMatcher } from '../project/ignores.ts'
 import { runScans } from '../scans/registry.ts'
 import { type EngineName, type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
@@ -144,7 +144,14 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
   const findings: Finding[] = []
   const own = scoped ? { files: scoped.files } : {}
-  const run: RunOptions = { root, ...(scoped ? { files: scoped.targets } : {}), write: options.fix === true }
+  const run: RunOptions = {
+    root,
+    ...(scoped ? { files: scoped.targets } : {}),
+    write: options.fix === true,
+    // For Prettier, which has no config file of pawl's to read them from.
+    ignore: configIgnores(policy),
+    gitignore: policy.gitignore
+  }
 
   for (const engine of activeEngines(project.tools)) {
     if (engine.name !== 'prettier') engines.push(engine.name)

@@ -7,7 +7,7 @@ import { type Pack } from '../../catalog/packs.ts'
 import { importPlugin, packPreset, pluginPreset } from '../../engines/eslint/load.ts'
 import { ESLINT_LEGACY_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
 import { listFiles } from '../../project/files.ts'
-import { ALWAYS_IGNORED, DEFAULT_IGNORES, WALK_SKIP } from '../../project/ignores.ts'
+import { ALWAYS_IGNORED, DEFAULT_IGNORES, literalBrackets, makeIgnore, WALK_SKIP } from '../../project/ignores.ts'
 import { type Level } from '../../types.ts'
 import { readJson } from '../../utils/json.ts'
 
@@ -270,4 +270,125 @@ export const readLegacyIgnores = (root: string): string[] => {
     .split(/\r?\n/)
     .map(line => line.trim().replace(/^\//, '').replace(/\/$/, ''))
     .filter(line => line.length > 0 && !line.startsWith('#') && !line.startsWith('!') && !COVERED.has(line))
+}
+
+/** How many patterns one ignore pattern of the old config may be listed out into. */
+const LISTED_LIMIT = 32
+
+/** A character as it is in a pawl glob, where `*`, `?`, brackets and the backslash are special. */
+const globLiteral = (char: string): string => char.replace(/[*?[\]\\]/, '\\$&')
+
+/**
+ * An ignore pattern of the old config with its character classes listed out, such as `*.min.[jc]s`
+ * as `*.min.js` and `*.min.cs`: in a pawl pattern brackets are the characters themselves. Undefined
+ * for a class that cannot be listed, such as `[!a]`, or one that would make too many patterns.
+ */
+const listClasses = (pattern: string): string[] | undefined => {
+  const open = pattern.search(/(?<!\\)\[/)
+
+  if (open === -1) return [pattern]
+
+  // The first character of a class may be `]` itself.
+  const close = pattern.indexOf(']', open + 2)
+
+  if (close === -1) return [pattern]
+
+  const body = pattern.slice(open + 1, close)
+
+  if (/^[!^]/.test(body) || body.includes('[:')) return undefined
+
+  const chars = new Set<string>()
+
+  for (let index = 0; index < body.length; index++) {
+    const low = body[index] === '\\' ? (body[++index] ?? '') : (body[index] as string)
+
+    if (body[index + 1] === '-' && index + 2 < body.length) {
+      const high = body[index + 2] as string
+
+      for (let code = low.charCodeAt(0); code <= high.charCodeAt(0) && chars.size <= LISTED_LIMIT; code++) {
+        chars.add(String.fromCharCode(code))
+      }
+
+      index += 2
+    } else chars.add(low)
+  }
+
+  // A range written backwards, such as `[z-a]`, lists nothing.
+  if (chars.size === 0) return undefined
+
+  const listed: string[] = []
+
+  for (const char of chars) {
+    const rest = listClasses(`${pattern.slice(0, open)}${globLiteral(char)}${pattern.slice(close + 1)}`)
+
+    if (!rest) return undefined
+
+    listed.push(...rest)
+  }
+
+  return listed.length <= LISTED_LIMIT ? listed : undefined
+}
+
+/** `@(a|b)` in a minimatch pattern, which stands for `a` or `b`. */
+const EXTGLOB_ONE = /(?<!\\)@\(([^()]*)\)/
+
+/** The other extglobs, such as `!(a)` or `+(a)`, which no list of names can stand for. */
+const EXTGLOB_OTHER = /(?<!\\)[!*+?]\([^()]*\)/
+
+/** An extglob `@(a|b)` as the patterns it stands for, or undefined for one no list can say. */
+const listExtglobs = (pattern: string): string[] | undefined => {
+  if (EXTGLOB_OTHER.test(pattern)) return undefined
+
+  const group = EXTGLOB_ONE.exec(pattern)
+
+  if (!group) return [pattern]
+
+  const before = pattern.slice(0, group.index)
+  const after = pattern.slice(group.index + group[0].length)
+  const listed: string[] = []
+
+  for (const choice of (group[1] ?? '').split('|')) {
+    const rest = listExtglobs(`${before}${choice}${after}`)
+
+    if (!rest) return undefined
+
+    listed.push(...rest)
+  }
+
+  return listed
+}
+
+/** What a pawl pattern reads as the characters themselves: brackets and extglobs. */
+const NOT_LITERAL = /(?<!\\)\[|(?<!\\)[@!*+?]\(/
+
+/**
+ * The ignore patterns of the old config as pawl reads them. A pattern with brackets that names
+ * paths in the project as they are, such as a route folder `app/[slug]`, stays as it is. Any other
+ * has its extglobs and classes listed out, or is left out with a note when they cannot be.
+ */
+export const policyIgnores = (root: string, patterns: readonly string[], notes: string[]): string[] => {
+  let files: string[] | undefined
+
+  return patterns.flatMap(pattern => {
+    if (!NOT_LITERAL.test(pattern)) return [pattern]
+
+    files ??= listFiles(root)
+
+    if (files.some(makeIgnore([literalBrackets(pattern)]))) return [pattern]
+
+    const extglobs = listExtglobs(pattern)
+    const listed = extglobs?.map(listClasses)
+
+    if (listed?.every(item => item !== undefined)) {
+      const all = listed.flat()
+
+      if (all.length <= LISTED_LIMIT) return all
+    }
+
+    notes.push(
+      `The ignore pattern "${pattern}" has a part pawl cannot list out, such as a character class or an extglob. Add the paths it skips to "ignore" in the policy.`
+    )
+
+    return []
+  })
 }

@@ -53,6 +53,8 @@ When git does not know the ref, or the clone is too shallow to join it to the br
 
 The scope is whole files, not changed lines. A file the pull request touches is checked in full, and the [baseline](/guide/ratchet/) still allows the findings it already had. A partial run cannot see findings in files the branch did not touch, so keep a full `pawl check --ci` on the main branch.
 
+A pull request that touches thousands of files is checked too. When the list is too long for one command line, pawl runs each engine several times on part of it, one run after the other, and `--verbose` shows the command once with the number of files and runs.
+
 ### GitHub Actions
 
 `init --workflow` writes `.github/workflows/pawl.yml`. It runs the check, then `pawl doctor --format json` and uploads its report as the `pawl-doctor` artifact, so the tool versions and any drift are on record even when the check fails. Every action is pinned to a commit. For an npm project it looks like this:

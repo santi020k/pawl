@@ -28,19 +28,73 @@ export interface Suppression {
 const DIRECTIVE =
   'biome-ignore(?:-all|-start)?|eslint-disable(?:-next-line|-line)?|oxlint-disable(?:-next-line|-line)?|@ts-ignore|@ts-expect-error|@ts-nocheck'
 
+const SLASH_COMMENT = new RegExp(`(?:\\/\\/|\\/\\*|\\*|<!--)\\s*(${DIRECTIVE})\\b`)
+
 /**
  * The files a linter reads, by how each writes a comment. Markdown is left out on purpose:
  * its code blocks show such comments far more often than they mean them.
  */
 const COMMENTS: readonly [RegExp, RegExp][] = [
   // Scripts and components, then the stylesheets and JSON files Biome lints.
-  [/\.(?:[cm]?[jt]sx?|vue|svelte|astro|css|jsonc?)$/, new RegExp(`(?:\\/\\/|\\/\\*|\\*|<!--)\\s*(${DIRECTIVE})\\b`)],
+  [/\.(?:[cm]?[jt]sx?|vue|svelte|astro|css|jsonc?)$/, SLASH_COMMENT],
   // GraphQL, which Biome lints, and the YAML and TOML files an ESLint pack lints.
   [/\.(?:graphql|gql|ya?ml|toml)$/, new RegExp(`#\\s*(${DIRECTIVE})\\b`)]
 ]
 
 /** The pattern that finds a disable comment in a file, or undefined for a file no linter reads. */
 const suppressionPattern = (file: string): RegExp | undefined => COMMENTS.find(([files]) => files.test(file))?.[1]
+
+const JSON_FILE = /\.jsonc?$/
+
+/**
+ * JSON text with the inside of every string blanked, lines kept, so a value that shows a disable
+ * comment, such as a snippet in a settings file, is not read as one. Comments are left as they are.
+ */
+export const blankJsonStrings = (text: string): string => {
+  let out = ''
+  let index = 0
+
+  while (index < text.length) {
+    const char = text[index] as string
+    const next = text[index + 1]
+
+    if (char === '"') {
+      out += char
+      index++
+
+      while (index < text.length && text[index] !== '"' && text[index] !== '\n') {
+        // An escape takes the character after it, so \" does not end the string.
+        const width = text[index] === '\\' && text[index + 1] !== '\n' ? 2 : 1
+
+        out += ' '.repeat(width)
+        index += width
+      }
+
+      if (text[index] === '"') {
+        out += '"'
+        index++
+      }
+
+      continue
+    }
+
+    if (char === '/' && (next === '/' || next === '*')) {
+      const end = next === '/' ? text.indexOf('\n', index) : text.indexOf('*/', index + 2) + 2
+      // A line comment ends before its newline, a block comment after its */, and either at the end.
+      const stop = end === -1 || end === 1 ? text.length : end
+
+      out += text.slice(index, stop)
+      index = stop
+
+      continue
+    }
+
+    out += char
+    index++
+  }
+
+  return out
+}
 
 export const readBaseline = (root: string): Baseline | undefined => {
   const baseline = readJson<Baseline>(join(root, BASELINE_FILE))
@@ -82,7 +136,8 @@ export const scanSuppressions = (
 
     if (!pattern || ignored(file) || !existsSync(join(root, file))) continue
 
-    const lines = readFileSync(join(root, file), 'utf8').split('\n')
+    const text = readFileSync(join(root, file), 'utf8')
+    const lines = (JSON_FILE.test(file) ? blankJsonStrings(text) : text).split('\n')
 
     lines.forEach((text, index) => {
       const match = pattern.exec(text)

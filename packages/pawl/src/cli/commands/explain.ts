@@ -9,7 +9,7 @@ import { out } from '../io.ts'
 export const runExplain = async (root: string, query: string | undefined): Promise<number> => {
   if (!query) throw new UsageError('Which rule? For example: pawl explain no-console')
 
-  const lines = explainRule(await loadPolicy(root), query)
+  const lines = explainRule(await loadPolicy(root), query, root)
 
   if (!lines) {
     out(`"${query}" is not in the pawl catalog. If it is an engine rule, see that engine's documentation.`)

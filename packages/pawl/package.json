@@ -60,8 +60,8 @@
     "build": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "docs:rules": "node scripts/build-rules-doc.ts && biome format --write ../../apps/docs/src/content/docs/reference/rules.md",
-    "oxlint-rules": "node scripts/build-oxlint-rules.ts",
-    "preset": "node scripts/build-preset.ts",
+    "oxlint-rules": "node scripts/build-oxlint-rules.ts && biome format --write src/engines/oxlint/rules.ts",
+    "preset": "node scripts/build-preset.ts && biome format --write presets",
     "schema": "node scripts/build-schema.ts && biome format --write pawl.config.schema.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -71,6 +71,7 @@
     "@types/node": "catalog:",
     "eslint": "catalog:",
     "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
@@ -126,6 +127,7 @@
     "eslint-plugin-yml": ">=3.0.0",
     "eslint-plugin-zod": ">=5.0.0",
     "oxlint": ">=1.94.0",
+    "oxlint-tsgolint": ">=7.0.2007",
     "prettier": ">=3.0.0",
     "typescript-eslint": ">=8.0.0"
   },
@@ -278,6 +280,9 @@
       "optional": true
     },
     "oxlint": {
+      "optional": true
+    },
+    "oxlint-tsgolint": {
       "optional": true
     },
     "prettier": {

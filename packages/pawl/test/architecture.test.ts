@@ -4,14 +4,16 @@ import { describe, expect, it } from 'vitest'
 import { PACKAGE_ROOT } from './helpers.ts'
 
 /** The layers of src, lowest first. A module may import from its own layer or a lower one. See AGENTS.md. */
-const LAYERS = ['utils', 'catalog', 'project', 'policy', 'engines', 'scans', 'check', 'report', 'setup', 'cli']
+const LAYERS = ['utils', 'catalog', 'project', 'scans', 'policy', 'engines', 'check', 'report', 'setup', 'cli']
 
 const SRC = join(PACKAGE_ROOT, 'src')
 
 const sources = (dir: string): string[] =>
-  readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
-    entry.isDirectory() ? sources(join(dir, entry.name)) : entry.name.endsWith('.ts') ? [join(dir, entry.name)] : []
-  )
+  readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    if (entry.isDirectory()) return sources(join(dir, entry.name))
+
+    return entry.name.endsWith('.ts') ? [join(dir, entry.name)] : []
+  })
 
 /** Every module of src and the modules it imports, both relative to src. */
 const graph = new Map(

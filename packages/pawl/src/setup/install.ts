@@ -1,7 +1,8 @@
 import { join } from 'node:path'
 import { PACKS } from '../catalog/packs.ts'
 import { BIOME_VERSION } from '../engines/biome/config.ts'
-import { OXLINT_VERSION } from '../engines/oxlint/rules.ts'
+import { TYPE_AWARE_PACKAGE } from '../engines/oxlint/config.ts'
+import { OXLINT_VERSION, TSGOLINT_VERSION } from '../engines/oxlint/rules.ts'
 import { type Detection, type PackageManager } from '../project/detect.ts'
 import { readJson } from '../utils/json.ts'
 import { PACKAGE_NAME, VERSION } from '../version.ts'
@@ -19,6 +20,7 @@ const TOOL_RANGES: Record<string, string> = {
   '@biomejs/biome': BIOME_VERSION,
   eslint: '^10.0.0',
   oxlint: OXLINT_VERSION,
+  [TYPE_AWARE_PACKAGE]: TSGOLINT_VERSION,
   '@eslint/js': '^10.0.0',
   'typescript-eslint': '^8.0.0',
   prettier: '^3.0.0'

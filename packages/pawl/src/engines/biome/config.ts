@@ -122,6 +122,36 @@ const biomeOverrides = (policy: Policy, include: (tag: RuleTag) => boolean): Jso
       : []
   })
 
+/** Component files: a script Biome reads, and a template it does not unless its HTML support is switched on. */
+export const TEMPLATE_FILES = ['**/*.vue', '**/*.svelte', '**/*.astro']
+
+/**
+ * Rules that judge a name by how the script uses it. In a component file the template uses names
+ * too, and Biome does not read it, so these would report what the template needs as unused, and
+ * the fix for a type-only import would turn one the template uses as a value into `import type`.
+ * Biome's own guide switches the same four off for these files.
+ */
+export const TEMPLATE_BLIND_RULES = [
+  'no-unused-vars',
+  'unused-imports/no-unused-imports',
+  'prefer-const',
+  '@typescript-eslint/consistent-type-imports'
+]
+
+/**
+ * The overrides the standard itself brings, ahead of the policy's own so that a policy can undo
+ * them, for example once it has switched on Biome's full support for these files.
+ */
+const standardOverrides = (include: (tag: RuleTag) => boolean): JsonObject[] => {
+  const entries = biomeEntries(
+    TEMPLATE_BLIND_RULES.map((name): [string, Level] => [name, 'off']),
+    include,
+    () => undefined
+  )
+
+  return [{ includes: TEMPLATE_FILES, linter: { rules: toGroups(entries) } }]
+}
+
 /**
  * The complete Biome configuration for a policy.
  * Rules for a technology are only included for projects that use it.
@@ -133,7 +163,7 @@ export const biomeConfig = (
   const { style } = policy
   const include = (tag: RuleTag): boolean => !isGated(tag) || technologies.includes(tag)
   const rules = lintRules(policy, include)
-  const overrides = lint ? biomeOverrides(policy, include) : []
+  const overrides = lint ? [...standardOverrides(include), ...biomeOverrides(policy, include)] : []
   const globals = extraGlobals(runtimes)
   const restricted = lint ? importRestrictions(policy, dependencies) : undefined
 
@@ -248,10 +278,14 @@ export const biomeProjectConfig = (
   context: BiomeContext = {},
   preset: string = BIOME_PRESET
 ): JsonObject => {
-  const { files: _files, ...delta } = diff(
-    biomeConfig(policy, context),
-    biomeConfig(defaultPolicy(), { technologies: context.technologies ?? [] })
-  )
+  const {
+    files: _files,
+    overrides: _overrides,
+    ...delta
+  } = diff(biomeConfig(policy, context), biomeConfig(defaultPolicy(), { technologies: context.technologies ?? [] }))
+  const include = (tag: RuleTag): boolean => !isGated(tag) || (context.technologies ?? []).includes(tag)
+  // Biome adds a project's overrides after the preset's, so the standard's own are not repeated here.
+  const overrides = context.lint === false ? [] : biomeOverrides(policy, include)
   // A later pattern wins in Biome, so the preset's ignores are undone by naming the folders again.
   const includes = [
     ...(policy.defaultIgnores ? [] : DEFAULT_IGNORES.map(pattern => toBiomeIgnore(`!${pattern}`))),
@@ -262,7 +296,8 @@ export const biomeProjectConfig = (
     extends: [preset, ...ordered(context.technologies).map(technology => biomeTechPreset(technology, preset))],
     // Biome adds these to the preset's list, so only the project's own patterns go here.
     ...(includes.length > 0 ? { files: { includes } } : {}),
-    ...delta
+    ...delta,
+    ...(overrides.length > 0 ? { overrides } : {})
   }
 }
 

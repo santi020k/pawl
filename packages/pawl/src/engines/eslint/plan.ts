@@ -10,7 +10,7 @@ import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../..
 import { type Policy, type Runtime } from '../../types.ts'
 import { isRecord } from '../../utils/json.ts'
 import { toList } from '../../utils/list.ts'
-import { oxlintCovers } from '../oxlint/config.ts'
+import { oxlintCovers, tsgolintInstalled } from '../oxlint/config.ts'
 import {
   importFromProject,
   importPlugin,
@@ -68,6 +68,8 @@ export interface EslintPlanOptions {
   biomeActive: boolean
   /** Oxlint is the linter, so ESLint only takes what Oxlint does not enforce. */
   oxlintActive?: boolean
+  /** oxlint-tsgolint can run, so Oxlint enforces the rules that need type information too. */
+  oxlintTypeAware?: boolean
   typescript: boolean
   /** The technologies the project uses. Rules for any other technology are left out. */
   technologies?: readonly Technology[]
@@ -479,7 +481,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     options,
     covered: name =>
       (biomeActive && getRule(name)?.biome !== undefined) ||
-      (options.oxlintActive === true && oxlintCovers(getRule(name)?.name ?? name)),
+      (options.oxlintActive === true && oxlintCovers(getRule(name)?.name ?? name, options.oxlintTypeAware)),
     ts,
     plugins: new Map(typescript ? [[TS_PREFIX, ts]] : []),
     coreRules: {},
@@ -523,6 +525,7 @@ export const eslintPlanFor = async (root: string, policy?: Policy): Promise<Esli
     policy: resolved,
     biomeActive: tools.linter === 'biome',
     oxlintActive: tools.linter === 'oxlint',
+    oxlintTypeAware: tsgolintInstalled(root),
     typescript: detection.typescript,
     // One ESLint config covers the whole repo, so it takes every technology in it.
     technologies: allTechnologies(detection),

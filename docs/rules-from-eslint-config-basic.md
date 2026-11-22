@@ -8,13 +8,13 @@ Only the rules the old config set explicitly are covered here. Rules it inherite
 
 | Outcome                                                    |   Rules |
 | ---------------------------------------------------------- | ------: |
-| In the pawl catalog, enforced by Biome with no plugin      |      72 |
+| In the pawl catalog, enforced by Biome with no plugin      |      70 |
 | In the catalog as another name for a rule above            |      17 |
-| In the catalog, on only under `strict` (unstable in Biome) |      24 |
+| In the catalog, on only under `strict` (unstable in Biome) |      26 |
 | In the catalog, enforced by Oxlint (no Biome equivalent)   |      16 |
-| Checked by pawl itself: a guard or a Markdown check        |      12 |
+| Checked by pawl itself: a guard or a Markdown check        |      17 |
 | Replaced by the formatter or by import sorting             |      41 |
-| No dependency-free home yet                                |      60 |
+| No dependency-free home yet                                |      55 |
 | Left out on purpose                                        |      18 |
 | **Total configured in eslint-config-basic**                | **260** |
 
@@ -70,9 +70,7 @@ Levels are the ones the old config used. Where it used a stronger level in its s
 | `@typescript-eslint/no-duplicate-enum-values` | `suspicious/noDuplicateEnumValues`          | warn                    |
 | `@typescript-eslint/no-empty-object-type`     | `complexity/noBannedTypes`                  | warn                    |
 | `@typescript-eslint/no-explicit-any`          | `suspicious/noExplicitAny`                  | warn, error when strict |
-| `@typescript-eslint/no-floating-promises`     | `nursery/noFloatingPromises`                | off, error when strict  |
 | `@typescript-eslint/no-invalid-void-type`     | `suspicious/noConfusingVoidType`            | warn                    |
-| `@typescript-eslint/no-misused-promises`      | `nursery/noMisusedPromises`                 | off, error when strict  |
 | `@typescript-eslint/no-non-null-assertion`    | `style/noNonNullAssertion`                  | warn, error when strict |
 | `@typescript-eslint/no-var-requires`          | `style/noCommonJs`                          | warn                    |
 | `@typescript-eslint/prefer-for-of`            | `style/useForOf`                            | warn                    |
@@ -193,18 +191,23 @@ These need no engine and no plugin. The guards switch on when the project depend
 | --------------------------------------------- | ------------------------------------------------------- | ----- |
 | `markdown/no-duplicate-headings`              | `pawl/markdown-no-duplicate-headings`                   | off   |
 | `markdown/no-empty-links`                     | `pawl/markdown-no-empty-links`                          | error |
+| `markdown/no-invalid-label-refs`              | `pawl/markdown-no-invalid-label-refs`                   | error |
 | `markdown/no-missing-label-refs`              | `pawl/markdown-no-missing-label-refs`                   | off   |
 | `nuxt/prefer-import-meta`                     | `pawl/nuxt` guard                                       | error |
 | `testing-library/no-await-sync-queries`       | `pawl/testing-library` guard                            | error |
 | `testing-library/no-debugging-utils`          | `pawl/testing-library-debug` guard                      | warn  |
 | `testing-library/no-dom-import`               | `pawl/testing-library-dom` guard, an import restriction | error |
+| `testing-library/prefer-find-by`              | `pawl/testing-library-find-by` guard                    | warn  |
+| `testing-library/prefer-screen-queries`       | `pawl/testing-library` guard                            | error |
+| `zod/prefer-enum-over-literal-union`          | `pawl/zod` guard                                        | error |
 | `zod/prefer-loose-object`                     | `pawl/zod` guard                                        | error |
+| `zod/prefer-meta`                             | `pawl/zod-meta` guard, opt-in                           | error |
 | `zod/prefer-meta-last`                        | `pawl/zod` guard                                        | error |
 | `zod/prefer-nullish`                          | `pawl/zod` guard                                        | error |
 | `zod/prefer-strict-object`                    | `pawl/zod` guard                                        | error |
 | `zod/prefer-trim-before-string-length-checks` | `pawl/zod` guard                                        | error |
 
-The guards match less than the plugins do, on purpose, to stay free of false positives: the Zod object checks need the factory written as `z` and the modifier right after `z.object(...)`, and the debugging check leaves a bare `debug()` alone. The Markdown checks skip code blocks, code spans, HTML comments and front matter; `no-duplicate-headings` compares headings across the whole document, as the plugin does by default.
+The guards match less than the plugins do, on purpose, to stay free of false positives: the Zod object checks need the factory written as `z` and the modifier right after `z.object(...)`, the `.describe()` check needs a call chain that starts at `z`, the literal union check needs every member to be `z.literal()` of a string, the Testing Library checks look only at queries taken from `render()` and at `waitFor()` with one callback that returns a query, and the debugging check leaves a bare `debug()` alone. The Markdown checks skip code blocks, code spans, HTML comments and front matter; `no-duplicate-headings` compares headings across the whole document, as the plugin does by default.
 
 ## No dependency-free home yet
 
@@ -216,8 +219,8 @@ Neither Biome nor Oxlint has an equivalent for these, and pawl has no check of i
 | @angular-eslint         |     6 | `component-class-suffix`, `directive-class-suffix`, `no-empty-lifecycle-method`, `no-output-native`, `use-lifecycle-interface`, `use-pipe-transform-interface`                                                                                                                                                                                                                                          |
 | @typescript-eslint      |     6 | `no-unsafe-argument`, `no-unsafe-assignment`, `no-unsafe-call`, `no-unsafe-member-access`, `restrict-template-expressions`, `unbound-method`                                                                                                                                                                                                                                                            |
 | ESLint core             |     6 | `brace-style`, `comma-dangle`, `no-multi-spaces`, `no-restricted-syntax`, `quote-props`, `space-before-function-paren`                                                                                                                                                                                                                                                                                  |
-| testing-library         |     4 | `await-async-queries`, `no-unnecessary-act`, `prefer-find-by`, `prefer-screen-queries`                                                                                                                                                                                                                                                                                                                  |
-| zod                     |     4 | `array-style`, `prefer-enum-over-literal-union`, `prefer-meta`, `prefer-string-schema-with-trim`                                                                                                                                                                                                                                                                                                        |
+| testing-library         |     2 | `await-async-queries`, `no-unnecessary-act`                                                                                                                                                                                                                                                                                                                                                             |
+| zod                     |     2 | `array-style`, `prefer-string-schema-with-trim`                                                                                                                                                                                                                                                                                                                                                         |
 | @darraghor/nestjs-typed |     3 | `api-method-should-specify-api-response`, `api-property-returning-array-should-set-array`, `injectable-should-be-provided`                                                                                                                                                                                                                                                                              |
 | regexp                  |     3 | `no-super-linear-backtracking`, `no-unused-capturing-group`, `prefer-character-class`                                                                                                                                                                                                                                                                                                                   |
 | unicorn                 |     2 | `consistent-destructuring`, `prefer-switch`                                                                                                                                                                                                                                                                                                                                                             |
@@ -225,7 +228,6 @@ Neither Biome nor Oxlint has an equivalent for these, and pawl has no check of i
 | @graphql-eslint         |     1 | `no-unreachable-types`                                                                                                                                                                                                                                                                                                                                                                                  |
 | import                  |     1 | `no-relative-packages`                                                                                                                                                                                                                                                                                                                                                                                  |
 | jsonc                   |     1 | `sort-keys`                                                                                                                                                                                                                                                                                                                                                                                             |
-| markdown                |     1 | `no-invalid-label-refs`                                                                                                                                                                                                                                                                                                                                                                                 |
 | qwik                    |     1 | `no-async-prevent-default`                                                                                                                                                                                                                                                                                                                                                                              |
 | tsdoc                   |     1 | `syntax`                                                                                                                                                                                                                                                                                                                                                                                                |
 | vue                     |     1 | `padding-line-between-blocks`                                                                                                                                                                                                                                                                                                                                                                           |

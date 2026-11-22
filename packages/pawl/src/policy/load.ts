@@ -2,13 +2,15 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createRequire, findPackageJSON } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { GUARDS, getGuard } from '../catalog/guards.ts'
+import { getPack, PACKS } from '../catalog/packs.ts'
 import { ESLINT_CONFIG_FILES, hasAny, PAWL_CONFIG_FILES } from '../project/config-files.ts'
 import { type Policy, type PolicyInput } from '../types.ts'
 import { ancestors } from '../utils/fs.ts'
 import { isRecord } from '../utils/json.ts'
 import { toList } from '../utils/list.ts'
 import { defaultPolicy, type Layer, mergeLayers } from './merge.ts'
-import { POLICY_KEYS } from './schema.ts'
+import { POLICY_KEYS, policyProblems } from './schema.ts'
 
 const MAX_DEPTH = 10
 
@@ -85,8 +87,31 @@ const pickEntry = (exportsField: unknown): string | undefined => {
   return undefined
 }
 
+/**
+ * A JS or TS policy can set an option to undefined, as in `maxWarnings: ci ? 0 : undefined`, and
+ * means it is not set. Leaving such keys out of plain objects, at any depth, lets the checks and the
+ * merge read them that way. JSON cannot say undefined, so a JSON policy is unchanged.
+ */
+const withoutUndefined = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutUndefined)
+
+  if (!isRecord(value)) return value
+
+  const prototype = Object.getPrototypeOf(value) as unknown
+
+  if (prototype !== Object.prototype && prototype !== null) return value
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, withoutUndefined(item)])
+  )
+}
+
 /** Refuse a policy with keys pawl does not know, so a typo does not pass in silence. */
-const validate = (value: unknown, source: string): PolicyInput => {
+const validate = (given: unknown, source: string): PolicyInput => {
+  const value = withoutUndefined(given)
+
   if (!isRecord(value)) throw new Error(`${source} must be an object: export default definePolicy({ ... })`)
 
   const unknown = Object.keys(value).filter(key => !(POLICY_KEYS as readonly string[]).includes(key))
@@ -97,7 +122,29 @@ const validate = (value: unknown, source: string): PolicyInput => {
     )
   }
 
+  const problems = [...policyProblems(value), ...unknownPacks(value.packs)]
+
+  if (problems.length > 0) {
+    throw new Error(
+      problems.length === 1
+        ? `${source} has a value pawl cannot use: ${problems[0]}`
+        : `${source} has values pawl cannot use:\n${problems.map(problem => `  ${problem}`).join('\n')}`
+    )
+  }
+
   return value as PolicyInput
+}
+
+/** A pack name with a typo would switch nothing on and say nothing, so it is refused like an unknown key. */
+const unknownPacks = (packs: unknown): string[] => {
+  const names = Array.isArray(packs) ? packs.filter((name): name is string => typeof name === 'string') : []
+  const unknown = names.filter(name => !getPack(name) && !getGuard(name)?.optIn)
+
+  return unknown.length > 0
+    ? [
+        `"packs" names ${unknown.map(name => `"${name}"`).join(', ')}, which ${unknown.length === 1 ? 'is not a pack' : 'are not packs'}. The packs are: ${[...PACKS.map(pack => pack.name), ...GUARDS.filter(guard => guard.optIn).map(guard => guard.name)].join(', ')}.`
+      ]
+    : []
 }
 
 const loadFile = async (file: string): Promise<PolicyInput> => {

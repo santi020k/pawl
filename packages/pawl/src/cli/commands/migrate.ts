@@ -36,5 +36,5 @@ export const runMigrate = async (root: string, flags: Flags): Promise<number> =>
   // The packs the old config relied on come along, so their plugins are installed where they are missing.
   const packs = [...new Set([...packList(flags.packs), ...plan.packs])].join(',')
 
-  return runInit(root, packs.length > 0 ? { ...flags, packs } : flags)
+  return runInit(root, packs.length > 0 ? { ...flags, packs } : flags, true)
 }

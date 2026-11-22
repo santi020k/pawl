@@ -1,12 +1,19 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { scopedName } from '../../catalog/rules.ts'
 import { type Finding } from '../../types.ts'
-import { toPosix } from '../../utils/fs.ts'
+import { ancestors, toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
-import { EngineError, type EngineRun, parseReport, type RunOptions, resolveBin, runNode, targets } from '../engine.ts'
-import { OXLINT_RULES } from './rules.ts'
-
-/** Oxlint's own name back to the neutral one, for reading its report. */
-const NEUTRAL = new Map(Object.entries(OXLINT_RULES).map(([name, rule]) => [rule, name]))
+import {
+  EngineError,
+  type EngineRun,
+  parseReport,
+  type RunOptions,
+  resolveBin,
+  runChunked,
+  runNode
+} from '../engine.ts'
+import { oxlintCatalogName, resolveTsgolint } from './config.ts'
 
 const BIN = { packageName: 'oxlint', bin: 'oxlint', fallback: 'bin/oxlint', besidePawl: true }
 
@@ -18,7 +25,26 @@ interface OxlintDiagnostic {
   code?: string
   severity: string
   filename?: string
+  help?: string
   labels?: Array<{ span?: { line?: number; column?: number } }>
+}
+
+/** The diagnostic Oxlint gives when tsgolint cannot read the project's tsconfig. */
+const TSCONFIG_ERROR = 'typescript(tsconfig-error)'
+
+/**
+ * Where to tell Oxlint to find tsgolint, or undefined when it finds it itself. Oxlint looks for
+ * node_modules/.bin/tsgolint from the project up, and only there, so a copy it cannot see, as in
+ * a layout without a .bin folder, has to be named.
+ */
+const tsgolintEnv = (root: string): Record<string, string> | undefined => {
+  const bin = process.env.OXLINT_TSGOLINT_PATH === undefined ? resolveTsgolint(root) : undefined
+
+  if (!bin) return undefined
+
+  if (ancestors(root).some(dir => existsSync(join(dir, 'node_modules/.bin/tsgolint')))) return undefined
+
+  return { OXLINT_TSGOLINT_PATH: bin }
 }
 
 /** Oxlint's rule name as it appears in a config: core rules bare, the rest as plugin/rule. */
@@ -37,7 +63,7 @@ const toFinding = (diagnostic: OxlintDiagnostic): Finding => {
     column: Math.max(1, span?.column ?? 1),
     engine: 'oxlint',
     engineRule,
-    rule: NEUTRAL.get(engineRule) ?? scopedName('oxlint', engineRule),
+    rule: oxlintCatalogName(engineRule) ?? scopedName('oxlint', engineRule),
     severity: diagnostic.severity === 'error' ? 'error' : 'warn',
     message: diagnostic.message,
     fixable: false
@@ -60,9 +86,32 @@ export const runOxlint = async ({ root, files, write = false }: RunOptions): Pro
     })
   }
 
-  const shown = [...(write ? ['--fix'] : []), ...targets(files)]
-  const result = await runNode(bin, ['--format', 'json', ...shown], root, 'oxlint', shown)
-  const report = parseReport(result, 'Oxlint', '{', isReport)
+  const shown = write ? ['--fix'] : []
 
-  return { findings: (report.diagnostics ?? []).map(toFinding), command: result.command }
+  return runChunked(files, ['oxlint', ...shown].join(' '), async targets => {
+    const result = await runNode(
+      bin,
+      ['--format', 'json', ...shown, ...targets],
+      root,
+      'oxlint',
+      [...shown, ...targets],
+      tsgolintEnv(root)
+    )
+    const diagnostics = parseReport(result, 'Oxlint', '{', isReport).diagnostics ?? []
+    const tsconfig = diagnostics.find(diagnostic => diagnostic.code === TSCONFIG_ERROR)
+
+    // tsgolint reports a tsconfig it cannot read as one diagnostic and then runs none of the rules
+    // that need type information, so the check did not run in full.
+    if (tsconfig) {
+      throw new EngineError(
+        [
+          `Oxlint could not read ${tsconfig.filename ?? 'the tsconfig'}, so the rules that need type information did not run.`,
+          [tsconfig.message, tsconfig.help].filter(Boolean).join(': ')
+        ].join('\n'),
+        { command: result.command }
+      )
+    }
+
+    return diagnostics.map(toFinding)
+  })
 }

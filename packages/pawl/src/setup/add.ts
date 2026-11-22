@@ -8,7 +8,7 @@ import { writeText } from '../utils/fs.ts'
 import { PACKAGE_NAME } from '../version.ts'
 import { installCommand, listed } from './install.ts'
 import { planScripts } from './integrations.ts'
-import { assertPacks, planPolicyFile, type SetupAction, type SetupPlan } from './plan.ts'
+import { assertPacks, legacyNote, planPolicyFile, type SetupAction, type SetupPlan } from './plan.ts'
 import { ESLINT_CONFIG } from './templates.ts'
 
 /**
@@ -34,19 +34,19 @@ export const planAdd = async (root: string, names: readonly string[], install = 
 
   if (!needsEslint) {
     // Nothing to set up.
-  } else if (!detection.tools.eslint) {
+  } else if (hasAny(root, ESLINT_CONFIG_FILES)) {
+    notes.push(
+      `Packs apply through eslint() from ${PACKAGE_NAME}. Make sure your ${detection.tools.eslint} exports it or spreads it.`
+    )
+  } else {
     actions.push({
       path: 'eslint.config.js',
       kind: 'create',
       summary: 'ESLint for the packs',
       apply: () => writeText(join(root, 'eslint.config.js'), ESLINT_CONFIG)
     })
-  } else if (hasAny(root, ESLINT_CONFIG_FILES)) {
-    notes.push(
-      `Packs apply through eslint() from ${PACKAGE_NAME}. Make sure your ${detection.tools.eslint} exports it or spreads it.`
-    )
-  } else {
-    notes.push(`${detection.tools.eslint} is a legacy ESLint config. Packs need flat config (eslint.config.js).`)
+
+    if (detection.tools.eslint) notes.push(legacyNote(detection.tools.eslint, true, false))
   }
 
   const named = names.filter(name => onlyWhenNamed(name) && !loaded.packs.includes(name))

@@ -1,7 +1,15 @@
 import { scopedName } from '../../catalog/rules.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
-import { EngineError, type EngineRun, parseReport, type RunOptions, resolveBin, runNode, targets } from '../engine.ts'
+import {
+  EngineError,
+  type EngineRun,
+  parseReport,
+  type RunOptions,
+  resolveBin,
+  runChunked,
+  runNode
+} from '../engine.ts'
 
 interface EslintMessage {
   ruleId: string | null
@@ -34,37 +42,40 @@ export const runEslint = async ({ root, files, write = false }: RunOptions): Pro
     })
   }
 
-  const shown = [...(write ? ['--fix'] : []), ...targets(files)]
+  const shown = write ? ['--fix'] : []
   const quiet = ['--format', 'json', '--no-warn-ignored', '--no-error-on-unmatched-pattern']
-  const result = await runNode(bin, [...quiet, ...shown], root, 'eslint', shown)
 
-  // ESLint exits with 1 when it finds problems and with 2 when it could not lint; then what it said is the reason.
-  if (result.code > 1) {
-    throw new EngineError(result.stderr.trim() || result.stdout.trim() || `ESLint exited with code ${result.code}.`, {
-      command: result.command
-    })
-  }
+  return runChunked(files, ['eslint', ...shown].join(' '), async targets => {
+    const result = await runNode(bin, [...quiet, ...shown, ...targets], root, 'eslint', [...shown, ...targets])
 
-  const results = parseReport(result, 'ESLint', '[', isReport)
-  const findings: Finding[] = []
-
-  for (const { filePath, messages } of results) {
-    const file = toPosix(filePath.startsWith(root) ? filePath.slice(root.length + 1) : filePath)
-
-    for (const message of messages) {
-      findings.push({
-        file,
-        line: Math.max(1, message.line ?? 1),
-        column: Math.max(1, message.column ?? 1),
-        engine: 'eslint',
-        engineRule: message.ruleId ?? 'parse',
-        rule: message.ruleId ?? scopedName('eslint', 'parse'),
-        severity: message.severity === 2 ? 'error' : 'warn',
-        message: message.message,
-        fixable: message.fix !== undefined
+    // ESLint exits with 1 when it finds problems and with 2 when it could not lint; then what it said is the reason.
+    if (result.code > 1) {
+      throw new EngineError(result.stderr.trim() || result.stdout.trim() || `ESLint exited with code ${result.code}.`, {
+        command: result.command
       })
     }
-  }
 
-  return { findings, command: result.command }
+    const results = parseReport(result, 'ESLint', '[', isReport)
+    const findings: Finding[] = []
+
+    for (const { filePath, messages } of results) {
+      const file = toPosix(filePath.startsWith(root) ? filePath.slice(root.length + 1) : filePath)
+
+      for (const message of messages) {
+        findings.push({
+          file,
+          line: Math.max(1, message.line ?? 1),
+          column: Math.max(1, message.column ?? 1),
+          engine: 'eslint',
+          engineRule: message.ruleId ?? 'parse',
+          rule: message.ruleId ?? scopedName('eslint', 'parse'),
+          severity: message.severity === 2 ? 'error' : 'warn',
+          message: message.message,
+          fixable: message.fix !== undefined
+        })
+      }
+    }
+
+    return findings
+  })
 }

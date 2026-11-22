@@ -8,7 +8,7 @@
     "build": "turbo run build",
     "changeset": "changeset",
     "check": "pnpm --filter @santi020k/pawl run build && node packages/pawl/dist/cli.js check",
-    "check:generated": "pnpm --filter @santi020k/pawl run preset && pnpm --filter @santi020k/pawl run docs:rules && pnpm --filter @santi020k/pawl run schema && git diff --exit-code -- packages/pawl/presets packages/pawl/pawl.config.schema.json apps/docs/src/content/docs/reference/rules.md",
+    "check:generated": "pnpm --filter @santi020k/pawl run preset && pnpm --filter @santi020k/pawl run docs:rules && pnpm --filter @santi020k/pawl run schema && pnpm --filter @santi020k/pawl run oxlint-rules && git diff --exit-code -- packages/pawl/presets packages/pawl/pawl.config.schema.json packages/pawl/src/engines/oxlint/rules.ts apps/docs/src/content/docs/reference/rules.md",
     "check:packed-install": "node scripts/check-packed-install.ts",
     "commit": "commitprompt",
     "dev": "turbo run dev",

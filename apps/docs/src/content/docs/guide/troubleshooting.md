@@ -33,12 +33,12 @@ It prints the setup, one line per part:
 
 Then it lists each problem, or `No problems found.` A problem is:
 
-- a tool that is in use but not installed;
+- a tool that is in use but not installed, pawl itself included;
 - a Node older than pawl's `engines.node`, a Biome other than the exact version pawl pins, or an ESLint, Oxlint, Prettier or pack plugin outside the range pawl declares for it;
 - a Biome, Oxlint or Prettier config that is missing, out of date, or, for Biome, does not extend the pawl standard;
 - a layer that tried to loosen a locked rule;
 - a `.pawl/baseline.json` that cannot be read;
-- a rule or pack ESLint cannot enforce, with the plugin it needs, or the reason an installed plugin failed to load.
+- a rule or pack ESLint cannot enforce, with the plugin it needs, or the reason an installed plugin failed to load. One plugin is named once, with the first of the rules that wait on it; `--format json` lists them all.
 
 `pawl doctor` exits with 0 when there are no problems and 2 when there are. `pawl doctor --format json` prints the same report as one JSON document, for CI; `init --workflow` uploads it as an artifact.
 
@@ -50,7 +50,7 @@ Then it lists each problem, or `No problems found.` A problem is:
 | `baseline`     | Baseline written                                     |                                                             | Part of the check did not run; the baseline is left as it was     |
 | `init`, `add`  | Done, a dry run, or you said no                      |                                                             | The install failed, or `init` could not record the baseline       |
 | `migrate`      | As `init`                                            |                                                             | As `init`                                                         |
-| `explain`      | The rule was found                                   | The rule is not in the catalog                              |                                                                   |
+| `explain`      | The rule was found                                   | Pawl has no rule of that name                               |                                                                   |
 | `doctor`       | No problems                                          |                                                             | At least one problem                                              |
 | Any            |                                                      |                                                             | An unknown command, option or option value, or any other error    |
 
@@ -69,6 +69,24 @@ The policy, or the files in the repo, call for a tool that is not in `node_modul
 
 For Biome, install the exact version pawl pins. `pawl doctor` prints it.
 
+The same goes for `oxlint-tsgolint`, which runs Oxlint's rules that need type information:
+
+```txt
+setup  This project depends on oxlint-tsgolint, but it is not installed, so Oxlint cannot run the rules that need type information.
+       Install the dependencies.
+```
+
+`pawl init` adds it to TypeScript projects on Oxlint, and `.oxlintrc.json` asks for the type-aware rules from then on. Run the install. To lint without those rules, remove the package from `package.json` and run `pawl sync`.
+
+### Pawl itself is not installed
+
+```txt
+setup  biome.json extends @santi020k/pawl/biome, but @santi020k/pawl is not installed in this project, so Biome cannot load the standard.
+       Add @santi020k/pawl to devDependencies and install.
+```
+
+The project's `biome.json` loads the standard from the package, so pawl has to be in the project's own `node_modules`. Running it through `npx` alone is not enough, and neither is a fresh clone before its first install. Install the dependencies, or add the package.
+
 ### The check did not complete
 
 ```txt
@@ -76,6 +94,14 @@ The check did not complete. Fix the setup problem above and run it again.
 ```
 
 An engine could not run, an engine is missing, the Biome or Oxlint config file is missing, or the baseline cannot be read. Pawl never reports success when part of the check did not run. Fix the `setup` line above it; `--verbose` shows the engine commands that ran.
+
+### Prettier cannot parse a file
+
+```txt
+src/a.ts:1  prettier:parse  SyntaxError: Expression expected. (1:12)
+```
+
+When Prettier is the formatter and a file has a syntax error, the file is a finding with the line and column Prettier names, and the check goes on with the other files. Pawl cannot fix it: correct the syntax. Run `pawl explain prettier:parse` for the rule. A broken Prettier config file, an unknown option or a missing plugin is a different case: it stops the check as a setup problem, with what Prettier said.
 
 ### The baseline cannot be read
 
@@ -149,6 +175,14 @@ pawl: pawl.config.json has an option pawl does not know: ignores. The options ar
 
 Pawl refuses unknown keys in every policy layer, so a typo does not pass in silence. Fix the name; [Configuration](/reference/config/) lists every option.
 
+### A policy value pawl cannot use
+
+```txt
+pawl: pawl.config.json has a value pawl cannot use: "rules.no-console" is "warning". It must be "off", "warn" or "error".
+```
+
+Pawl checks the values of every policy layer against its schema, and the names under `packs` against the packs it has. The message names the place and what it takes. With `$schema` in a `pawl.config.json`, an editor shows the same problem while you type.
+
 ### Files git ignores are checked, or files you want are skipped
 
 Pawl skips what the root `.gitignore` lists, and a default list of build output, lockfiles, AI tool folders and generated code. Set `gitignore: false` or `defaultIgnores: false` in the policy to check them, then run `pawl sync`. Oxlint reads the `.gitignore` by itself, whatever the policy says. See [What pawl skips](/guide/policy/#what-pawl-skips).
@@ -161,4 +195,4 @@ Pawl gives the linters the globals of the runtimes it detects. Name them in the 
 
 ### pawl explain does not know a rule
 
-`pawl explain` covers the rules in the pawl catalog and pawl's Docker checks. For any other engine rule it exits with 1 and points you to that engine's documentation.
+`pawl explain` covers the rules in the pawl catalog, pawl's Docker and Markdown checks, the guards, and the other names pawl gives a finding, such as `pawl/sort-package-json` and `eslint:parse`. A name with an engine's prefix, such as `biome:style/noDefaultExport` or `oxlint:unicorn/no-null`, is one of that engine's own rules: `pawl explain` says so and links to its page where it can. For a name it does not know at all it exits with 1.

@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from '../project/files.ts'
-import { ignoreMatcher } from '../project/ignores.ts'
-import { type Finding, type Level, type Policy } from '../types.ts'
+import { ignoreMatcher, makeIgnore } from '../project/ignores.ts'
+import { type Finding, type Level, type Override, type Policy } from '../types.ts'
 
 /**
  * One of pawl's own rules. No engine pawl drives reads the files these are for, so pawl checks
@@ -22,6 +22,28 @@ export const ownRule = (name: string, level: Level, summary: string, advice: str
   summary,
   advice
 })
+
+const overrideMatchers = new WeakMap<Override, (file: string) => boolean>()
+
+/** True when an override's patterns name a file. */
+const overrideCovers = (override: Override, file: string): boolean => {
+  const matcher = overrideMatchers.get(override) ?? makeIgnore(override.files)
+
+  overrideMatchers.set(override, matcher)
+
+  return matcher(file)
+}
+
+/**
+ * The level of one of pawl's own checks for one file: the policy's level, else the check's own,
+ * then the overrides that name the file, the later ones winning, as the engines read them.
+ */
+export const levelForFile = (policy: Policy, name: string, file: string, fallback: Level): Level =>
+  policy.overrides.reduce(
+    (level, override) =>
+      name in override.rules && overrideCovers(override, file) ? (override.rules[name] as Level) : level,
+    policy.rules[name] ?? fallback
+  )
 
 /** Report a problem with one of the scan's rules, by the rule's short name, with an optional detail. */
 export type Report = (rule: string, line: number, column: number, detail?: string) => void
@@ -55,7 +77,7 @@ export const runScan = (scan: Scan, { root, policy, files }: ScanOptions): Findi
 
     const report: Report = (short, line, column, detail) => {
       const def = rules.get(`pawl/${short}`)
-      const severity = def ? (policy.rules[def.name] ?? def.level) : 'off'
+      const severity = def ? levelForFile(policy, def.name, file, def.level) : 'off'
 
       if (!def || severity === 'off') return
 

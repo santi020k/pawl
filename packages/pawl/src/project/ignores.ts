@@ -111,7 +111,7 @@ export const gitignorePatterns = (root: string): string[] => {
 
 /**
  * The patterns an engine config file carries: pawl's own folder, the defaults unless turned off,
- * then the policy's own. The engines skip node_modules and .git by themselves.
+ * then the policy's own. Biome skips node_modules and .git by itself; Oxlint is told to in its own config.
  */
 export const configIgnores = (policy: Pick<Policy, 'defaultIgnores' | 'ignore'>): string[] => [
   ...new Set(['.pawl', ...(policy.defaultIgnores ? DEFAULT_IGNORES : []), ...policy.ignore])
@@ -160,37 +160,105 @@ const REGEXP_SPECIAL = /[.*+?^${}()|[\]\\/-]/g
 
 const literal = (text: string): string => text.replace(REGEXP_SPECIAL, '\\$&')
 
-/** Where the character class that opens at `open` closes, or -1 when the `[` is on its own. */
-const classEnd = (pattern: string, open: number): number => {
+/**
+ * A pattern with braces, such as `*.{js,ts}` or `{apps,tools}/*`, as the patterns it stands for, as a
+ * shell, minimatch or EditorConfig reads them. Groups do not nest, and `\{` is a brace itself.
+ */
+export const expandBraces = (pattern: string): string[] => {
+  const group = /(?<!\\)\{([^{}]*,[^{}]*)\}/.exec(pattern)
+
+  if (!group) return [pattern]
+
+  const before = pattern.slice(0, group.index)
+  const after = pattern.slice(group.index + group[0].length)
+
+  return (group[1] ?? '').split(',').flatMap(choice => expandBraces(`${before}${choice}${after}`))
+}
+
+/** The POSIX classes git knows inside brackets, such as `[[:digit:]]`, in the ASCII range git reads. */
+const POSIX_CLASSES: Readonly<Record<string, string>> = {
+  alnum: 'a-zA-Z0-9',
+  alpha: 'a-zA-Z',
+  blank: ' \\t',
+  cntrl: '\\x00-\\x1f\\x7f',
+  digit: '0-9',
+  graph: '\\x21-\\x7e',
+  lower: 'a-z',
+  print: '\\x20-\\x7e',
+  punct: '!-\\/:-@\\[-`{-~',
+  space: ' \\t\\n\\r\\f\\v',
+  upper: 'A-Z',
+  xdigit: '0-9A-Fa-f'
+}
+
+/** The class does not close, or names a POSIX class git does not know: git then matches nothing. */
+const MALFORMED = Symbol('malformed')
+
+/**
+ * The character class of a .gitignore line that opens at `open`, such as `[cod]`, `[a-z]`, `[!_]` or
+ * `[[:digit:]]`, read as git's wildmatch reads it, with the index of its `]`. It never matches a slash.
+ * A range written backwards, such as `z-a`, matches only its first character, as in git.
+ */
+const readClass = (pattern: string, open: number): { source: string; end: number } | typeof MALFORMED => {
+  const parts: string[] = []
   let index = open + 1
+  let previous: string | undefined
+  const negated = pattern[index] === '!' || pattern[index] === '^'
 
-  if (pattern[index] === '!' || pattern[index] === '^') index++
+  if (negated) index++
 
-  // A `]` right after the opening is one of the characters, not the end.
-  if (pattern[index] === ']') index++
+  // The first character is one of the set even when it is `]`.
+  for (let first = true; ; first = false) {
+    let char = pattern[index]
 
-  for (; index < pattern.length; index++) {
-    if (pattern[index] === '\\') index++
-    else if (pattern[index] === ']') return index
+    if (char === undefined) return MALFORMED
+
+    if (char === ']' && !first) return { source: `(?!/)[${negated ? '^' : ''}${parts.join('')}]`, end: index }
+
+    if (char === '\\') {
+      char = pattern[++index]
+
+      if (char === undefined) return MALFORMED
+    } else if (char === '-' && previous !== undefined && index + 1 < pattern.length && pattern[index + 1] !== ']') {
+      let high = pattern[++index] as string
+
+      if (high === '\\') high = pattern[++index] ?? ''
+
+      if (high === '') return MALFORMED
+
+      if (high >= previous) parts.push(`${literal(previous)}-${literal(high)}`)
+
+      previous = undefined
+      index++
+
+      continue
+    } else if (char === '[' && pattern[index + 1] === ':') {
+      const close = pattern.indexOf(']', index + 2)
+
+      if (close === -1) return MALFORMED
+
+      // Without `:]` the `[` is one of the characters, as in git.
+      if (close - 1 >= index + 2 && pattern[close - 1] === ':') {
+        const named = POSIX_CLASSES[pattern.slice(index + 2, close - 1)]
+
+        if (named === undefined) return MALFORMED
+
+        parts.push(named)
+        previous = undefined
+        index = close + 1
+
+        continue
+      }
+    }
+
+    parts.push(literal(char))
+    previous = char
+    index++
   }
-
-  return -1
 }
 
-/** A character class of a .gitignore line, such as `[cod]`, `[a-z]` or `[!_]`. It never matches a slash. */
-const classSource = (body: string): string => {
-  const negated = body.startsWith('!') || body.startsWith('^')
-  let source = ''
-
-  for (let index = negated ? 1 : 0; index < body.length; index++) {
-    const char = body[index] as string
-
-    if (char === '\\' && index + 1 < body.length) source += literal(body[++index] as string)
-    else source += char === '-' ? '-' : literal(char)
-  }
-
-  return `(?!/)[${negated ? '^' : ''}${source}]`
-}
+/** A regular expression that matches nothing, for a line git cannot match anything with. */
+const NOTHING = /(?!)/
 
 /**
  * A small glob matcher: `**`, `*`, `?`, a character class in brackets, and a backslash to take the
@@ -202,13 +270,16 @@ const globToRegExp = (pattern: string): RegExp => {
 
   for (let index = 0; index < anchored.length; index++) {
     const char = anchored[index] as string
-    const close = char === '[' ? classEnd(anchored, index) : -1
 
     if (char === '\\' && index + 1 < anchored.length) {
       source += literal(anchored[++index] as string)
-    } else if (close !== -1) {
-      source += classSource(anchored.slice(index + 1, close))
-      index = close
+    } else if (char === '[') {
+      const set = readClass(anchored, index)
+
+      if (set === MALFORMED) return NOTHING
+
+      source += set.source
+      index = set.end
     } else if (char === '*' && anchored[index + 1] === '*') {
       source += anchored[index + 2] === '/' ? '(?:.*/)?' : '.*'
       index += anchored[index + 2] === '/' ? 2 : 1

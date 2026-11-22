@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["NO_COLOR"],
+  "globalEnv": ["NO_COLOR", "OXLINT_TSGOLINT_PATH"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

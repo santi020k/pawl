@@ -24,6 +24,7 @@ import {
   on,
   packFit,
   pickSamples,
+  policyIgnores,
   rank,
   readIgnores,
   readLegacyIgnores,
@@ -32,7 +33,7 @@ import {
   splitName
 } from './read.ts'
 import { reportFile } from './report.ts'
-import { styleFrom } from './style.ts'
+import { readEditorconfig, readPrettier, styleFrom } from './style.ts'
 
 const TS_TWIN = '@typescript-eslint/'
 
@@ -355,8 +356,19 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
 
   const effective = effectiveRules(await resolvePolicy({ packs }, policyPath), context)
   const { rules, changed, importSorting, added, same } = compareLevels(old, standard, comparable, effective)
-  const style = styleFrom(root, old.formatting)
-  const ignore = source.legacy ? readLegacyIgnores(root) : await readIgnores(source.path)
+  const configured = readPrettier(root)
+  // Prettier's CLI reads .editorconfig for what its own config leaves out.
+  const prettier = configured && { ...readEditorconfig(root), ...configured }
+  const style = styleFrom(old.formatting, prettier)
+
+  if (detection.tools.prettier && !prettier) {
+    notes.push(
+      `Could not read the Prettier config in ${detection.tools.prettier}. Set "style" in the policy to match it, or "pawl fix" will format the code to the standard's style.`
+    )
+  }
+
+  const read = source.legacy ? readLegacyIgnores(root) : await readIgnores(source.path)
+  const ignore = read && policyIgnores(root, read, notes)
   const policy: PolicyInput = {
     ...(namedPacks.length > 0 ? { packs: namedPacks } : {}),
     ...(Object.keys(style).length > 0 ? { style } : {}),

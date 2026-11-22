@@ -1,8 +1,16 @@
 import { packageTechnologies } from '../../project/detect.ts'
+import { PACKAGE_NAME } from '../../version.ts'
 import { type Engine } from '../engine.ts'
-import { BIOME_VERSION } from './config.ts'
+import { BIOME_PRESET, BIOME_VERSION } from './config.ts'
 import { biomeInstalled, runBiome } from './run.ts'
-import { biomeContextFor, checkBiomeConfig, checkBiomePackages, checkRuleFiles } from './state.ts'
+import {
+  biomeContextFor,
+  checkBiomeConfig,
+  checkBiomePackages,
+  checkRuleFiles,
+  extendsPackage,
+  presetInstalled
+} from './state.ts'
 
 const stale = (what: string, missing: boolean): string => `${what} is ${missing ? 'missing' : 'out of date'}`
 
@@ -44,10 +52,21 @@ export const biome: Engine = {
       })
     }
 
+    // Biome loads the standard from the package biome.json names, and fails in its own words without it.
+    const loadable = !extendsPackage(config.preset) || presetInstalled(root)
+
+    if (!loadable) {
+      issues.push({
+        code: 'pawl-missing',
+        message: `${config.file} extends ${BIOME_PRESET}, but ${PACKAGE_NAME} is not installed in this project, so Biome cannot load the standard.`,
+        fix: `Add ${PACKAGE_NAME} to devDependencies and install.`
+      })
+    }
+
     return {
       ...(config.file ? { config: config.file } : {}),
       status: config.status,
-      runnable: config.status !== 'missing',
+      runnable: loadable && config.status !== 'missing',
       issues
     }
   },

@@ -47,7 +47,7 @@ Then run `pawl sync`, which rewrites the engine config files from the policy. `p
 | `runtime`        | Where the code runs: `node`, `browser`, `bun`, `deno` or `worker`. Replaces what pawl detects. |
 | `detect`         | `false` turns detection off; `{ exclude: ['tailwind'] }` leaves a technology out.              |
 
-Every option is listed in [Configuration](/reference/config/). An option pawl does not know, such as `ignores` for `ignore`, stops the run with an error, so a typo never passes in silence.
+Every option is listed in [Configuration](/reference/config/). An option pawl does not know, such as `ignores` for `ignore`, stops the run with an error, and so does a value it cannot use, such as the level `warning` or a pack name it does not have, so a typo never passes in silence.
 
 ## Rule names
 
@@ -68,7 +68,7 @@ The default style is 2 spaces, single quotes, no semicolons, no trailing commas 
 
 ## Overrides
 
-Set levels and options for some files only. Each entry names its files and takes `rules` and `options` like the top level:
+Set levels and options for some files only. Each entry names its files and takes `rules`, `options` and `biomeOptions` like the top level:
 
 ```ts
 export default definePolicy({

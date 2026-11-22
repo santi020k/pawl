@@ -1,9 +1,10 @@
 ---
 title: Getting started
-description: Set up pawl in a repo, run the first check, and learn the daily commands.
+description: "Set up pawl in a repo with one command: init detects the stack, writes the lint and format config, and records a baseline. Then learn the daily commands."
+head: [{ tag: title, content: "Getting started: set up pawl in a repo | pawl" }]
 ---
 
-import { Steps } from '@astrojs/starlight/components'
+import { Steps, TabItem, Tabs } from '@astrojs/starlight/components'
 import Terminal from '../../../components/Terminal.astro'
 import { initRun } from '../../../data/demo.ts'
 
@@ -21,11 +22,38 @@ Node 22.18 or later.
 
 <Steps>
 
-1. Run `init` at the root of the repo.
+1. Run `init` at the root of the repo, with the package manager the repo uses.
 
-   ```sh
-   npx @santi020k/pawl init
-   ```
+   <Tabs syncKey="package-manager">
+     <TabItem label="npm">
+
+     ```sh
+     npx @santi020k/pawl init
+     ```
+
+     </TabItem>
+     <TabItem label="pnpm">
+
+     ```sh
+     pnpm dlx @santi020k/pawl init
+     ```
+
+     </TabItem>
+     <TabItem label="yarn">
+
+     ```sh
+     yarn dlx @santi020k/pawl init
+     ```
+
+     </TabItem>
+     <TabItem label="Bun">
+
+     ```sh
+     bunx @santi020k/pawl init
+     ```
+
+     </TabItem>
+   </Tabs>
 
    `init` looks at the repo, shows what it will change, and asks before writing. In a terminal it offers a menu; in CI or under a coding agent it uses `auto`.
 

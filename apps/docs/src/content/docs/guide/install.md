@@ -1,7 +1,8 @@
 ---
 
 title: Install
-description: What pawl needs, how init installs it, and the optional tools it can run.
+description: "Install pawl with npm, pnpm, yarn or Bun. It needs Node 22.18 or later and has no dependencies: Biome, Oxlint, ESLint, Prettier and plugins are optional peers."
+head: [{ tag: title, content: "Install pawl with npm, pnpm, yarn or Bun | pawl" }]
 ---
 
 :::caution[Early]
@@ -17,6 +18,8 @@ Node 22.18 or later.
 ```sh
 npx @santi020k/pawl init
 ```
+
+With another package manager, the command is `pnpm dlx @santi020k/pawl init`, `yarn dlx @santi020k/pawl init` or `bunx @santi020k/pawl init`.
 
 `init` adds `@santi020k/pawl` to the project's `devDependencies`, together with the tools you pick, and installs them with the project's package manager. The [getting started](/guide/getting-started/) guide walks through the rest.
 

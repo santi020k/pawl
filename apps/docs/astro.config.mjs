@@ -9,7 +9,9 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'pawl',
-      description: 'Fast guardrails for AI-written code. One standard, for the linter and formatter you choose.',
+      // The site's description, kept in step with siteDescription in src/metadata.ts. Every doc page has its own.
+      description:
+        'Fast guardrails for AI-written code: one lint and format standard for Biome, Oxlint, ESLint and Prettier, with a baseline so only new findings fail.',
       logo: {
         dark: './src/assets/pawl-mark.svg',
         light: './src/assets/pawl-mark-light.svg'
@@ -23,11 +25,15 @@ export default defineConfig({
         { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
         { tag: 'link', attrs: { rel: 'manifest', href: '/site.webmanifest' } },
         { tag: 'meta', attrs: { name: 'theme-color', content: '#0B0D0C', media: '(prefers-color-scheme: dark)' } },
-        { tag: 'meta', attrs: { name: 'theme-color', content: '#F5F7F2', media: '(prefers-color-scheme: light)' } }
+        { tag: 'meta', attrs: { name: 'theme-color', content: '#F5F7F2', media: '(prefers-color-scheme: light)' } },
+        // Starlight writes the language alone ("en"); Open Graph wants language and territory, as the landing page has.
+        { tag: 'meta', attrs: { property: 'og:locale', content: 'en_US' } }
       ],
       components: {
         Footer: './src/components/starlight/Footer.astro',
-        Head: './src/components/starlight/Head.astro'
+        Head: './src/components/starlight/Head.astro',
+        Hero: './src/components/starlight/Hero.astro',
+        MarkdownContent: './src/components/starlight/MarkdownContent.astro'
       },
       editLink: {
         baseUrl: 'https://github.com/santi020k/pawl/edit/main/apps/docs/'
@@ -37,7 +43,7 @@ export default defineConfig({
       expressiveCode: {
         themes: ['vitesse-black', 'vitesse-light'],
         styleOverrides: {
-          borderRadius: '0.625rem',
+          borderRadius: 'var(--ui-radius-lg)',
           borderColor: 'var(--sl-color-hairline)',
           codeBackground: 'hsl(var(--surface))',
           codeFontFamily: 'var(--pawl-font-mono)',
@@ -53,7 +59,10 @@ export default defineConfig({
           }
         }
       },
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/santi020k/pawl' }],
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/santi020k/pawl' },
+        { icon: 'npm', label: 'npm', href: 'https://www.npmjs.com/package/@santi020k/pawl' }
+      ],
       sidebar: [
         {
           label: 'Start here',

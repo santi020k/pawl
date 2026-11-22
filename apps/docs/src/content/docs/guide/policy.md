@@ -1,7 +1,8 @@
 ---
 
 title: The policy
-description: Change the standard for a repo, or publish one for a whole company.
+description: "Set the lint standard for one repo in pawl.config.ts, or share one: extend @santi020k/pawl-policy or publish your own, with locked rules no repo can loosen."
+head: [{ tag: title, content: "The policy: one lint standard for one repo or many | pawl" }]
 ---
 
 A repo on the default standard needs no config file. To change something, add `pawl.config.ts`:

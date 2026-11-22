@@ -165,14 +165,38 @@ const literal = (text: string): string => text.replace(REGEXP_SPECIAL, '\\$&')
  * shell, minimatch or EditorConfig reads them. Groups do not nest, and `\{` is a brace itself.
  */
 export const expandBraces = (pattern: string): string[] => {
-  const group = /(?<!\\)\{([^{}]*,[^{}]*)\}/.exec(pattern)
+  const group = braceGroup(pattern)
 
   if (!group) return [pattern]
 
-  const before = pattern.slice(0, group.index)
-  const after = pattern.slice(group.index + group[0].length)
+  const before = pattern.slice(0, group.open)
+  const after = pattern.slice(group.close + 1)
 
-  return (group[1] ?? '').split(',').flatMap(choice => expandBraces(`${before}${choice}${after}`))
+  return pattern
+    .slice(group.open + 1, group.close)
+    .split(',')
+    .flatMap(choice => expandBraces(`${before}${choice}${after}`))
+}
+
+/**
+ * Where the first group of braces with a comma in it opens and closes. A scan, not a regular
+ * expression, so a long pattern from a config file cannot make it slow.
+ */
+const braceGroup = (pattern: string): { open: number; close: number } | undefined => {
+  let open = -1
+
+  for (let index = 0; index < pattern.length; index++) {
+    const char = pattern[index]
+
+    if (char === '{') open = pattern[index - 1] === '\\' ? -1 : index
+    else if (char === '}') {
+      if (open !== -1 && pattern.slice(open + 1, index).includes(',')) return { open, close: index }
+
+      open = -1
+    }
+  }
+
+  return undefined
 }
 
 /** The POSIX classes git knows inside brackets, such as `[[:digit:]]`, in the ASCII range git reads. */

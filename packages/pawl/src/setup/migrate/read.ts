@@ -276,7 +276,7 @@ export const readLegacyIgnores = (root: string): string[] => {
 const LISTED_LIMIT = 32
 
 /** A character as it is in a pawl glob, where `*`, `?`, brackets and the backslash are special. */
-const globLiteral = (char: string): string => char.replace(/[*?[\]\\]/, '\\$&')
+const globLiteral = (char: string): string => char.replace(/[*?[\]\\]/g, '\\$&')
 
 /**
  * An ignore pattern of the old config with its character classes listed out, such as `*.min.[jc]s`

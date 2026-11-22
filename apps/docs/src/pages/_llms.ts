@@ -28,7 +28,7 @@ const figureLine = /^\s*(<[A-Z][^>]*\/>|\{.*<[A-Z].*\})\s*$/u
 const tabLabel = /^(\s*)<TabItem\s[^>]*\blabel="([^"]+)"[^>]*>\s*$/u
 const asideStart = /^\s*:::(\w+)(?:\[(.*)\])?\s*$/u
 const asideEnd = /^\s*:::\s*$/u
-const comment = /^\s*<!--.*-->\s*$/u
+const comment = /^\s*<!--[\s\S]*?-->\s*$/u
 
 /**
  * The page body without what only renders on the site: MDX imports, exports and component tags, and HTML comments.

@@ -1,12 +1,15 @@
 ---
-
 title: Install
 description: "Install pawl with npm, pnpm, yarn or Bun. It needs Node 22.18 or later and has no dependencies: Biome, Oxlint, ESLint, Prettier and plugins are optional peers."
 head: [{ tag: title, content: "Install pawl with npm, pnpm, yarn or Bun | pawl" }]
 ---
 
-:::caution[Early]
-Pawl is early, and the API may still change before 1.0.
+import { TabItem, Tabs } from '@astrojs/starlight/components'
+
+Pawl is published on npm as [`@santi020k/pawl`](https://www.npmjs.com/package/@santi020k/pawl). The [changelog](/changelog/) lists every release.
+
+:::note[Before 1.0]
+Until 1.0, a minor release may change the API or the standard. Read a release's notes before you move to it, and see [Upgrading](/guide/upgrade/).
 :::
 
 ## Requirements
@@ -15,9 +18,28 @@ Node 22.18 or later.
 
 ## Run it
 
-```sh
-npx @santi020k/pawl init
-```
+<Tabs syncKey="package-manager">
+  <TabItem label="npm">
+    ```sh
+    npx @santi020k/pawl init
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```sh
+    pnpm dlx @santi020k/pawl init
+    ```
+  </TabItem>
+  <TabItem label="yarn">
+    ```sh
+    yarn dlx @santi020k/pawl init
+    ```
+  </TabItem>
+  <TabItem label="Bun">
+    ```sh
+    bunx @santi020k/pawl init
+    ```
+  </TabItem>
+</Tabs>
 
 With another package manager, the command is `pnpm dlx @santi020k/pawl init`, `yarn dlx @santi020k/pawl init` or `bunx @santi020k/pawl init`.
 
@@ -78,4 +100,14 @@ Each optional [pack](/guide/packs/) runs one ESLint plugin, and the plugin is an
 pawl doctor
 ```
 
-It shows which tools are in use and whether each one is installed. See [Troubleshooting](/guide/troubleshooting/#pawl-doctor).
+It prints the pawl version, the tools in use and whether each one is installed at a version pawl works with. See [Troubleshooting](/guide/troubleshooting/#pawl-doctor).
+
+## Verify the package
+
+Every release is published from pawl's GitHub Actions release workflow, through npm trusted publishing, with a provenance attestation that ties the package to the commit it was built from. npm checks the registry signatures and attestations of what a project has installed:
+
+```sh
+npm audit signatures
+```
+
+The npm page of each version shows its provenance too.

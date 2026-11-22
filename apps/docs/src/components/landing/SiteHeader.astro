@@ -1,8 +1,11 @@
 ---
 import { Button, ButtonLink, Container, Drawer, NavigationMenu, SkipLink, ThemeToggle, VisuallyHidden } from '@santi020k/lumen-astro'
-
+import { currentVersion } from '../../releases.ts'
 import PawlMark from '../PawlMark.astro'
-import { npmUrl, version } from './facts.ts'
+import { npmUrl } from './facts.ts'
+
+// The newest version on npm, as the changelog has it.
+const version = await currentVersion()
 
 const repoUrl = 'https://github.com/santi020k/pawl'
 
@@ -25,7 +28,7 @@ const menuLinks = [...links, { label: 'GitHub', href: repoUrl }, { label: 'npm',
         <PawlMark />
         <span>pawl</span>
       </a>
-      <a class="version" href="/reference/changelog/">v{version}<VisuallyHidden>, changelog</VisuallyHidden></a>
+      {version && <a class="version" href="/changelog/">v{version}<VisuallyHidden>, changelog</VisuallyHidden></a>}
     </div>
 
     <NavigationMenu variant="unstyled" class="site-nav" aria-label="Main">

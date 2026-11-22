@@ -22,7 +22,7 @@ export default definePolicy({
 })
 ```
 
-Then run `pawl sync`. A repo can still change anything that is not locked. An attempt to loosen a locked rule is ignored, and `pawl check` and `pawl doctor` report it.
+Then run `pawl sync`. The policy shares its version with `@santi020k/pawl`, so upgrade the two together. A repo can still change anything that is not locked. An attempt to loosen a locked rule is ignored, and `pawl check` and `pawl doctor` report it.
 
 ## Your own policy
 

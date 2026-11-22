@@ -2,7 +2,9 @@
 
 Fast guardrails for AI-written code. One standard, for the linter and formatter you choose.
 
-> **Status: early.** The API may still change before 1.0.
+[Documentation](https://pawl.santi020k.com) · [Changelog](https://pawl.santi020k.com/changelog/) · [Upgrading](https://pawl.santi020k.com/guide/upgrade/)
+
+> **Before 1.0:** a minor release may change the API or the standard. Read a release's notes before you move to it.
 
 ## Set up a repo
 
@@ -24,7 +26,7 @@ Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Action
 
 - `biome.json`, a few lines that extend the standard and turn on Biome's `.gitignore` support;
 - `check` and `fix` scripts in `package.json`;
-- `.vscode/settings.json`, so the editor formats and fixes on save;
+- `.vscode/settings.json`, so the editor formats and fixes on save, and `.vscode/extensions.json`, which recommends the editor extension;
 - `.pawl/baseline.json`, the findings the repo already has.
 
 Pawl never deletes or overwrites a tool config you already have. It tells you what you can remove.

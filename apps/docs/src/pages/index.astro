@@ -21,13 +21,16 @@ import {
 } from '@santi020k/lumen-astro'
 
 import ratchet from '../assets/ratchet.webp'
-import { dependencyCount, dockerCheckCount, npmUrl, packCount, ruleCount, version } from '../components/landing/facts.ts'
+import { dependencyCount, dockerCheckCount, npmUrl, packCount, ruleCount } from '../components/landing/facts.ts'
 import SiteFooter from '../components/landing/SiteFooter.astro'
 import SiteHeader from '../components/landing/SiteHeader.astro'
 import RatchetChart from '../components/RatchetChart.astro'
 import Terminal from '../components/Terminal.astro'
 import { explain, sessions } from '../data/demo.ts'
 import Landing from '../layouts/Landing.astro'
+import { currentVersion } from '../releases.ts'
+
+const version = await currentVersion()
 
 const install = [
   { value: 'npm', label: 'npm', code: 'npx @santi020k/pawl init', language: 'bash' },
@@ -238,8 +241,8 @@ const facts = [
 
       <Container class="hero__inner">
         <Stack gap="xl" class="hero__copy">
-          <Pill href={npmUrl} variant="brand" class="hero__release">
-            Early release · v{version} on npm
+          <Pill href="/changelog/" variant="brand" class="hero__release">
+            {version ? `v${version} on npm · See what's new` : 'Early release'}
             <Icon name="arrow-up-right" decorative size="sm" />
           </Pill>
           <h1 id="hero-title">Fast guardrails for <span class="lime"><span class="nowrap">AI-written</span> code.</span></h1>
@@ -450,8 +453,8 @@ const facts = [
           <Stack gap="xl" align="center" class="cta__inner">
             <h2 id="cta-title">Set up a repo in one command.</h2>
             <p>
-              Pawl is early. The library works and is tested against the real Biome and ESLint, and the API may still change before
-              1.0.
+              {version ? `Pawl ${version} is on npm.` : 'Pawl is early.'} It is tested against the real Biome and ESLint, and until
+              1.0 a minor release may still change the API.
             </p>
             <CodeTabs ariaLabel="Package manager" items={install} storageKey="pawl-package-manager" copy class="cta__install" />
             <Stack direction="horizontal" gap="md" wrap justify="center">

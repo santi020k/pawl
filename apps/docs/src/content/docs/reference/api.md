@@ -7,8 +7,8 @@ head: [{ tag: title, content: "API reference: @santi020k/pawl exports | pawl" }]
 
 Everything the CLI does is exported, so other tools can build on it. The package is ESM and has no dependencies.
 
-:::note[Before 1.0]
-Pawl is still 0.x, so the API may change before 1.0. The source of truth is [`src/index.ts`](https://github.com/santi020k/pawl/blob/main/packages/pawl/src/index.ts).
+:::caution[Before 1.0]
+Until 1.0, a minor release may change the API; the [changelog](/changelog/) says what changed. The source of truth is [`src/index.ts`](https://github.com/santi020k/pawl/blob/main/packages/pawl/src/index.ts).
 :::
 
 ## In config files

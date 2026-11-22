@@ -7,7 +7,7 @@ import { createPathCards } from '@santi020k/og'
 import { collectContentCards } from '@santi020k/og/content'
 import { definePresetConfig } from '@santi020k/og/presets'
 
-const badges = { guide: 'Guide', reference: 'Reference' }
+const badges = { changelog: 'Changelog', guide: 'Guide', reference: 'Reference' }
 
 // A card has room for about two lines of description. A page's description is written for search results and runs
 // longer, so a long one gives the card its first sentence or clause instead of being cut off mid-phrase.

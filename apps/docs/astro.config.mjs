@@ -39,6 +39,8 @@ export default defineConfig({
         baseUrl: 'https://github.com/santi020k/pawl/edit/main/apps/docs/'
       },
       lastUpdated: true,
+      // Adds the changelog's versions to its table of contents. See src/route-data.ts.
+      routeMiddleware: './src/route-data.ts',
       plugins: [starlightLinksValidator()],
       expressiveCode: {
         themes: ['vitesse-black', 'vitesse-light'],
@@ -69,7 +71,8 @@ export default defineConfig({
           items: [
             { label: 'Getting started', slug: 'guide/getting-started' },
             { label: 'Install', slug: 'guide/install' },
-            { label: 'Coming from ESLint', slug: 'guide/migrate' }
+            { label: 'Coming from ESLint', slug: 'guide/migrate' },
+            { label: 'Upgrading', slug: 'guide/upgrade' }
           ]
         },
         {
@@ -98,10 +101,10 @@ export default defineConfig({
             { label: 'CLI', slug: 'reference/cli' },
             { label: 'Configuration', slug: 'reference/config' },
             { label: 'Rules', slug: 'reference/rules' },
-            { label: 'API', slug: 'reference/api' },
-            { label: 'Changelog', slug: 'reference/changelog' }
+            { label: 'API', slug: 'reference/api' }
           ]
-        }
+        },
+        { label: 'Changelog', slug: 'changelog' }
       ]
     })
   ]

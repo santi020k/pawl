@@ -7,7 +7,7 @@
 
 import pawlPackage from '../../../../../packages/pawl/package.json'
 import counts from '../../data/counts.json'
-import { npmPackage, npmUrl } from '../../metadata.ts'
+import { npmUrl } from '../../metadata.ts'
 
 /** RULES.length: the rules in the standard. */
 export const ruleCount = counts.rules
@@ -17,9 +17,6 @@ export const packCount = counts.packs
 
 /** DOCKER_RULES.length: pawl's own checks for Dockerfiles and Compose files. */
 export const dockerCheckCount = counts.dockerChecks
-
-/** The latest release: Changesets bumps package.json in the release pull request and publishes that version on merge. */
-export const version = npmPackage.version
 
 /** Runtime dependencies of the library. Every engine, formatter and plugin is an optional peer. */
 export const dependencyCount = Object.keys(

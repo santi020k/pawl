@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { checkMarkdown, getMarkdownRule, isMarkdownFile, MARKDOWN_RULES } from '../src/markdown.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
+import { checkMarkdown, getMarkdownRule, isMarkdownFile, MARKDOWN_RULES } from '../src/scans/markdown.ts'
 import { type Policy } from '../src/types.ts'
 import { project } from './helpers.ts'
 
@@ -66,9 +66,31 @@ A directive.
 [spaced label]: https://example.com
 `
 
+const INVALID_REFS = `# References
+
+See [the docs][ ] and [the guide][\t] here, ![logo][ ] too,
+and [split][
+] over two lines.
+
+[the docs]: https://example.com/docs
+`
+
+const VALID_REFS = `# Fine
+
+See [the docs][docs], [the guide][] and [home], with a [link](https://example.com)[ ] after it.
+An empty pair [ ][ ] and [][ ] and a checkbox [ ] [ ] mean nothing, nor does items[0][ ] or \\[escaped][ ].
+Two lines [stay][
+docs] together, and [one]
+[two] are separate.
+\`code [span][ ]\`
+
+[docs]: https://example.com/docs
+`
+
 const SKIPPED = `---
 title: [front matter]
 link: []()
+ref: [x][ ]
 ---
 
 # Title
@@ -77,6 +99,7 @@ link: []()
 # Title
 [empty]()
 [missing]
+[x][ ]
 \`\`\`
 
 ~~~~
@@ -86,7 +109,7 @@ still code
 ~~~~
 
 <!-- [empty]() and
-[missing] -->
+[missing][ ] -->
 
 \`[empty]()\`
 `
@@ -160,6 +183,22 @@ describe('Markdown checks', () => {
 
   it('leaves tasks, alerts, inline links, escapes, code spans, footnotes, wiki links and directives alone', () => {
     expect(rules(project({ 'fine.md': FINE_REFS }), turnOn('no-missing-label-refs'))).toEqual([])
+  })
+
+  it('finds a reference with whitespace between its brackets, on one line or two', () => {
+    const root = project({ 'refs.md': INVALID_REFS })
+
+    expect(rules(root)).toEqual([
+      'refs.md:3 markdown-no-invalid-label-refs',
+      'refs.md:3 markdown-no-invalid-label-refs',
+      'refs.md:3 markdown-no-invalid-label-refs',
+      'refs.md:4 markdown-no-invalid-label-refs'
+    ])
+    expect(checkMarkdown({ root, policy: defaultPolicy() })[0]).toMatchObject({ column: 5, severity: 'error' })
+  })
+
+  it('leaves references with nothing between the brackets, empty pairs, escapes and code alone', () => {
+    expect(rules(project({ 'fine.md': VALID_REFS }))).toEqual([])
   })
 
   it('skips front matter, fenced code, HTML comments and code spans', () => {

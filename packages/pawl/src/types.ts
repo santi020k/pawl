@@ -116,6 +116,7 @@ export interface PolicyInput {
 
 /** An override, merged. */
 export interface Override {
+  /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   files: string[]
   rules: Record<string, Level>
   options: Record<string, unknown[]>
@@ -145,6 +146,7 @@ export interface Policy {
   biomeOptions: Record<string, Record<string, unknown>>
   overrides: Override[]
   locked: string[]
+  /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   ignore: string[]
   gitignore: boolean
   defaultIgnores: boolean
@@ -183,8 +185,10 @@ export interface SetupIssue {
     | 'biome-config-missing'
     | 'biome-config-stale'
     | 'biome-config-foreign'
+    | 'biome-missing'
     | 'eslint-missing'
     | 'oxlint-missing'
+    | 'tsgolint-missing'
     | 'oxlint-config-missing'
     | 'oxlint-config-stale'
     | 'prettier-missing'
@@ -193,6 +197,9 @@ export interface SetupIssue {
     | 'pack-missing'
     | 'locked-rule'
     | 'engine-failed'
+    | 'since-unresolved'
+    | 'baseline-unreadable'
+    | 'pawl-missing'
   message: string
   fix?: string
 }

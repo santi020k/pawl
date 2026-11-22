@@ -2,11 +2,14 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
-import { BASELINE_FILE } from '../src/baseline.ts'
-import { check, exitCode } from '../src/check.ts'
-import { BIOME_PRESET, BIOME_REACT_PRESET } from '../src/engines/biome.ts'
-import { applyInit, formatWritten, planAdd, planInit, recordBaseline } from '../src/init.ts'
-import { formatAgent } from '../src/output.ts'
+import { BASELINE_FILE } from '../src/check/baseline.ts'
+import { check } from '../src/check/check.ts'
+import { formatAgent } from '../src/check/output.ts'
+import { exitCode } from '../src/check/result.ts'
+import { BIOME_PRESET, biomeTechPreset } from '../src/engines/biome/config.ts'
+import { planAdd } from '../src/setup/add.ts'
+import { formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { VERSION } from '../src/version.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
@@ -15,7 +18,7 @@ const json = (root: string, file: string): unknown => JSON.parse(readFileSync(jo
 const init = async (root: string, options: Parameters<typeof planInit>[0] | object = {}) => {
   const plan = await planInit({ root, install: false, ...options })
 
-  applyInit(plan)
+  applyPlan(plan)
   await formatWritten(
     root,
     plan.actions.map(action => action.path)
@@ -137,7 +140,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
 
     link(root)
     await init(root, { editor: false })
-    expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET, BIOME_REACT_PRESET] })
+    expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET, biomeTechPreset('react')] })
     expect(json(root, BASELINE_FILE)).toMatchObject({ findings: { 'generated/out.js': expect.any(Object) } })
 
     write(root, { 'pawl.config.json': '{ "ignore": ["generated/**"], "rules": { "no-debugger": "warn" } }\n' })
@@ -154,10 +157,10 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     const plan = await planInit({ root, install: false, editor: false })
 
     expect(plan.actions.map(action => `${action.kind} ${action.path}`)).toEqual(['update biome.json'])
-    applyInit(plan)
+    applyPlan(plan)
     await formatWritten(root, ['biome.json'])
     expect(json(root, 'biome.json')).toEqual({
-      extends: [BIOME_PRESET, BIOME_REACT_PRESET],
+      extends: [BIOME_PRESET, biomeTechPreset('react')],
       files: { includes: ['!generated'] },
       linter: { rules: { suspicious: { noDebugger: 'warn' } } }
     })
@@ -194,7 +197,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(plan.formatter).toBe('biome')
     expect(plan.policy.engine).toBe('eslint')
     expect(plan.actions.map(action => action.path)).toEqual(['pawl.config.ts', 'biome.json', 'package.json'])
-    applyInit(plan)
+    applyPlan(plan)
     expect(readFileSync(join(root, 'pawl.config.ts'), 'utf8')).toContain("engine: 'eslint'")
     // ESLint lints, so Biome is only there to format.
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET], linter: { enabled: false } })
@@ -207,6 +210,62 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       }
     })
   })
+
+  it('does not count a legacy .eslintrc as ESLint running, and points to migrate', async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module', devDependencies: { eslint: '^9.0.0' } },
+      '.eslintrc.json': { rules: { 'no-console': 'off' } }
+    })
+    const plan = await planInit({ root, install: false, editor: false })
+
+    // ESLint reads flat config only, so with an .eslintrc alone Biome is the one linter.
+    expect(plan.engines).toEqual(['biome'])
+    expect(plan.actions.map(action => action.path)).toEqual(['biome.json', 'package.json'])
+    expect(plan.notes).toContain(
+      '.eslintrc.json is a legacy ESLint config, which pawl does not run. Run "pawl migrate" in place of "pawl init" to carry its rules into the policy, or remove ESLint and the file when you are ready.'
+    )
+
+    // Run by "pawl migrate", which has just carried the rules over, it does not send you back there.
+    const migrated = await planInit({ root, install: false, editor: false, migrated: true })
+
+    expect(migrated.notes).toContain(
+      '.eslintrc.json is a legacy ESLint config. Its rules are in the policy now, so you can remove the file when you are ready.'
+    )
+    expect(migrated.notes.join(' ')).not.toContain('pawl migrate')
+  })
+
+  it.runIf(existsSync(join(PACKAGE_ROOT, 'dist/index.js')))(
+    'writes a flat config when the repo keeps ESLint and only has a legacy .eslintrc',
+    async () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        '.eslintrc.json': { rules: { 'no-console': 'off' } },
+        'src/a.js': 'debugger\n'
+      })
+
+      link(root, { eslint: true })
+
+      const plan = await planInit({ root, mode: 'keep', install: false, editor: false })
+
+      expect(plan.engines).toEqual(['eslint'])
+      expect(plan.actions.map(action => action.path)).toEqual([
+        'pawl.config.ts',
+        'biome.json',
+        'eslint.config.js',
+        'package.json'
+      ])
+      expect(plan.notes.join(' ')).toContain(
+        '.eslintrc.json is a legacy ESLint config, which ESLint no longer reads now that eslint.config.js is there.'
+      )
+      applyPlan(plan)
+
+      // Without the flat config, ESLint would stop with "couldn't find an eslint.config file".
+      const result = await check({ root })
+
+      expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+      expect(result.findings.map(finding => finding.rule)).toContain('no-debugger')
+    }
+  )
 
   it('adds ESLint next to Biome for frameworks Biome does not fully lint, and sets up CI and agents on request', async () => {
     const root = project({
@@ -236,7 +295,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     ])
     expect(plan.notes.join(' ')).toContain('covers all 1 package.')
 
-    applyInit(plan)
+    applyPlan(plan)
     expect(readFileSync(join(root, 'eslint.config.js'), 'utf8')).toContain("import { eslint } from '@santi020k/pawl'")
     const workflow = readFileSync(join(root, '.github/workflows/pawl.yml'), 'utf8')
 
@@ -369,10 +428,192 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       })
     })
 
+    test("explains pawl's own rules and guards, by the names its findings carry", () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module', dependencies: { openai: '^5.0.0' } }
+      })
+
+      link(root)
+
+      expect(run(root, 'explain', 'pawl/ai-keys')).toEqual({
+        code: 0,
+        stderr: '',
+        stdout: [
+          'pawl/ai-keys',
+          '  The AI client keys guard: imports and code that pawl refuses, with no plugin.',
+          '',
+          '  On here:     yes',
+          '  Level here:  error',
+          '  Checked by:  the code patterns by Biome, as rules pawl writes, or by ESLint',
+          '',
+          '  It refuses:',
+          '    - Do not write an API key in the code. Read it from the environment or a secret store.',
+          '    - dangerouslyAllowBrowser sends your API key to every visitor. Call the model from a server.',
+          ''
+        ].join('\n')
+      })
+      expect(run(root, 'explain', 'hono').stdout).toContain(
+        'On here:     no. It switches on when the project depends on hono'
+      )
+      expect(run(root, 'explain', 'de-morgan').stdout).toContain(
+        'On here:     no. Switch it on with "pawl add de-morgan"'
+      )
+      expect(run(root, 'explain', 'pawl/sort-package-json').stdout).toContain('How to fix:  Run "pawl fix".')
+      expect(run(root, 'explain', 'pawl/no-new-disable').code).toBe(0)
+      expect(run(root, 'explain', 'pawl/docker-no-root').code).toBe(0)
+      expect(run(root, 'explain', 'not-a-rule')).toMatchObject({ code: 1, stderr: '' })
+      // The names of an engine's own diagnostics, with no rule of the catalog behind them.
+      expect(run(root, 'explain', 'eslint:parse').stdout).toContain('ESLint cannot parse the file')
+      expect(run(root, 'explain', 'oxlint:parse').stdout).toContain('Oxlint cannot parse the file')
+      expect(run(root, 'explain', 'biome:fs/cantRead')).toMatchObject({ code: 0 })
+      expect(run(root, 'explain', 'biome:style/noDefaultExport').stdout).toContain(
+        'Read more:   https://biomejs.dev/linter/rules/no-default-export/'
+      )
+      expect(run(root, 'explain', 'oxlint:react-perf/jsx-no-new-object-as-prop').stdout).toContain(
+        'Read more:   https://oxc.rs/docs/guide/usage/linter/rules/react_perf/jsx-no-new-object-as-prop.html'
+      )
+      expect(run(root, 'explain', 'oxlint:jsx-a11y/alt-text').stdout).toMatch(/^jsx-a11y\/alt-text\n/)
+      expect(run(root, 'explain', 'oxlint:unicorn/no-unknown-rule').stdout).toContain(
+        'rules/unicorn/no-unknown-rule.html'
+      )
+      // The names the output prints for a rule of the catalog lead to that rule.
+      for (const name of [
+        'oxlint:typescript/no-floating-promises',
+        'typescript/no-floating-promises',
+        'eslint:@typescript-eslint/no-floating-promises'
+      ]) {
+        expect(run(root, 'explain', name).stdout, name).toMatch(/^@typescript-eslint\/no-floating-promises\n/)
+      }
+
+      expect(run(root, 'explain', 'oxlint:no-debugger').stdout).toMatch(/^no-debugger\n/)
+      expect(run(root, 'explain', 'biome:suspicious/noDebugger').stdout).toMatch(/^no-debugger\n/)
+    })
+
+    test('names the values a choice takes when it gets one it does not know', () => {
+      const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+
+      expect(run(root, 'init', '--mode', 'weird', '--no-install')).toEqual({
+        code: 2,
+        stdout: '',
+        stderr: 'pawl: Unknown mode "weird". Use auto, keep or biome.\n'
+      })
+      expect(run(root, 'init', '--formatter', 'dprint', '--no-install').stderr).toBe(
+        'pawl: Unknown formatter "dprint". Use biome or prettier.\n'
+      )
+    })
+
+    test('reads every option before it changes a file', () => {
+      const unformatted = 'export const a = {b:1}\n'
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': unformatted
+      })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+
+      expect(run(root, 'fix', '--format', 'nope')).toEqual({
+        code: 2,
+        stdout: '',
+        stderr: 'pawl: Unknown format "nope". Use pretty, agent or json.\n'
+      })
+      expect(run(root, 'fix', '--max-warnings', 'none').code).toBe(2)
+      expect(readFileSync(join(root, 'src/a.js'), 'utf8')).toBe(unformatted)
+
+      expect(run(root, 'fix').code).toBe(0)
+      expect(readFileSync(join(root, 'src/a.js'), 'utf8')).toBe('export const a = { b: 1 }\n')
+    })
+
+    test('takes any CI value but an empty one, 0 and false to mean CI', () => {
+      const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      // The policy changes and "pawl sync" does not run: drift, which fails only in CI.
+      write(root, { 'pawl.config.json': { rules: { 'no-console': 'error' } } })
+
+      const inCi = (value: string): number | null =>
+        spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'check'], {
+          cwd: root,
+          env: { ...process.env, CI: value, NO_COLOR: '1' }
+        }).status
+
+      for (const value of ['true', '1', 'True']) expect(inCi(value), value).toBe(2)
+
+      for (const value of ['', '0', 'false']) expect(inCi(value), value).toBe(0)
+    })
+
+    test('checks every file with --changed outside a git repository', () => {
+      const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      write(root, { 'src/a.js': 'debugger\n' })
+
+      const result = run(root, 'check', '--changed', '--format', 'agent')
+
+      // No repository can say what changed. Passing with nothing checked would hide the finding.
+      expect(result.code).toBe(1)
+      expect(JSON.parse(result.stdout)).toMatchObject({ file: 'src/a.js', rule: 'biome:suspicious/noDebugger' })
+    })
+
+    test('checks only what a branch changed since a ref, and exits 2 when the ref is unknown', () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': 'export const a = 1\n'
+      })
+      const git = (...args: string[]): void => {
+        spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: root })
+      }
+
+      link(root)
+      git('init', '-q', '-b', 'main')
+      write(root, { '.gitignore': 'node_modules\n' })
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      git('add', '-A')
+      git('commit', '-qm', 'init')
+      git('checkout', '-qb', 'feature')
+
+      expect(run(root, 'check', '--since', 'main')).toMatchObject({ code: 0, stdout: 'No files to check.\n' })
+
+      write(root, { 'src/b.js': 'debugger\n' })
+      git('add', '-A')
+      git('commit', '-qm', 'add b')
+
+      // What main gained after the branch left it is not the branch's work.
+      git('checkout', '-q', 'main')
+      write(root, { 'src/c.js': 'debugger\n' })
+      git('add', '-A')
+      git('commit', '-qm', 'add c')
+      git('checkout', '-q', 'feature')
+
+      const result = run(root, 'check', '--since', 'main', '--format', 'agent')
+
+      expect(result.code).toBe(1)
+      expect(JSON.parse(result.stdout)).toMatchObject({ file: 'src/b.js', rule: 'biome:suspicious/noDebugger' })
+
+      const unknown = run(root, 'check', '--since', 'origin/missing')
+
+      expect(unknown.code).toBe(2)
+      expect(unknown.stdout).toContain('--since: git does not know "origin/missing".')
+      expect(unknown.stdout).toContain('The check did not complete.')
+
+      expect(run(root, 'check', '--since', 'main', '--changed')).toMatchObject({
+        code: 2,
+        stderr: 'pawl: Use --since or --changed, not both.\n'
+      })
+      expect(run(root, 'check', '--since', 'main', 'src/a.js')).toMatchObject({
+        code: 2,
+        stderr: 'pawl: Use --since or a list of files, not both.\n'
+      })
+    })
+
     test('reports usage errors on stderr with exit code 2', () => {
       const root = project()
 
       expect(run(root, 'nope')).toMatchObject({ code: 2, stderr: 'pawl: Unknown command "nope". Run "pawl --help".\n' })
+      // A name every object has is not a command either.
+      expect(run(root, 'constructor')).toMatchObject({ code: 2, stderr: expect.stringContaining('Unknown command') })
       expect(run(root, 'check')).toMatchObject({ code: 2, stdout: expect.stringContaining('No biome.json found.') })
       expect(run(root, '--version').stdout).toMatch(/^\d+\.\d+\.\d+/)
     })
@@ -402,7 +643,7 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET] })
     expect(json(root, 'apps/web/biome.json')).toEqual({
       root: false,
-      extends: ['../../biome.json', BIOME_REACT_PRESET]
+      extends: ['../../biome.json', biomeTechPreset('react')]
     })
     expect(json(root, BASELINE_FILE)).toMatchObject({
       findings: { 'apps/web/src/a.js': { 'react-hooks/rules-of-hooks': 1 } }
@@ -438,7 +679,7 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
     expect(plan.actions.find(action => action.path === 'biome.json')).toBeDefined()
     expect(plan.actions.some(action => action.path.startsWith('apps/web/biome'))).toBe(false)
     expect(plan.notes.join(' ')).toContain('apps/web/biome.jsonc has comments')
-    applyInit(plan)
+    applyPlan(plan)
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET, '@santi020k/pawl/biome/turbo'] })
   })
 
@@ -450,7 +691,7 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
     })
     const plan = await planInit({ root, install: false, editor: false })
 
-    applyInit(plan)
+    applyPlan(plan)
 
     expect(json(root, 'package.json')).toMatchObject({
       scripts: { check: 'tsc --noEmit', 'pawl:check': 'pawl check', fix: 'pawl fix' }
@@ -470,7 +711,7 @@ describe('hooks and agent instructions', () => {
     const root = project({ 'package.json': { name: 'fixture' }, '.husky/pre-commit': 'pnpm test\n' })
     const plan = await planInit({ root, install: false, editor: false, hooks: true })
 
-    applyInit(plan)
+    applyPlan(plan)
     expect(readFileSync(join(root, '.husky/pre-commit'), 'utf8')).toBe('pnpm test\nnpx pawl check --changed\n')
     expect((await planInit({ root, install: false, editor: false, hooks: true })).actions).toEqual([])
   })
@@ -486,7 +727,7 @@ describe('hooks and agent instructions', () => {
   it('writes agent instructions into a marked block and keeps the rest of AGENTS.md', async () => {
     const root = project({ 'package.json': { name: 'fixture' }, 'AGENTS.md': '# Our repo\n\nBe kind.\n' })
 
-    applyInit(await planInit({ root, install: false, editor: false, agents: true }))
+    applyPlan(await planInit({ root, install: false, editor: false, agents: true }))
 
     const written = readFileSync(join(root, 'AGENTS.md'), 'utf8')
 
@@ -496,7 +737,7 @@ describe('hooks and agent instructions', () => {
 
     // An older block is replaced in place.
     write(root, { 'AGENTS.md': '# Our repo\n\n<!-- pawl:start -->\nold\n<!-- pawl:end -->\n\n## After\n' })
-    applyInit(await planInit({ root, install: false, editor: false, agents: true }))
+    applyPlan(await planInit({ root, install: false, editor: false, agents: true }))
 
     const updated = readFileSync(join(root, 'AGENTS.md'), 'utf8')
 
@@ -570,7 +811,7 @@ describe("the tools are the project's choice", { timeout: 60_000 }, () => {
     expect(plan.formatter).toBe('prettier')
     expect(plan.actions.map(action => action.path)).toEqual(['pawl.config.ts', 'package.json'])
     expect(plan.notes.join(' ')).toContain(".prettierrc.json differs from the standard's style")
-    applyInit(plan)
+    applyPlan(plan)
     expect(readFileSync(join(root, 'pawl.config.ts'), 'utf8')).toContain("engine: 'eslint',\n  formatter: 'prettier'")
     expect(existsSync(join(root, 'biome.json'))).toBe(false)
 
@@ -605,7 +846,7 @@ describe("the tools are the project's choice", { timeout: 60_000 }, () => {
       '.prettierrc.json',
       'package.json'
     ])
-    applyInit(plan)
+    applyPlan(plan)
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET], formatter: { enabled: false } })
     expect(json(root, '.prettierrc.json')).toEqual({
       printWidth: 120,
@@ -637,7 +878,7 @@ describe("the tools are the project's choice", { timeout: 60_000 }, () => {
     const add = await planAdd(root, ['zod', 'unicorn'], false)
 
     expect(add.actions.map(action => action.path)).toEqual(['eslint.config.js', 'pawl.config.ts', 'package.json'])
-    applyInit(add)
+    applyPlan(add)
     expect(readFileSync(join(root, 'pawl.config.ts'), 'utf8')).toContain("packs: ['unicorn']")
     expect(json(root, 'package.json')).toMatchObject({
       devDependencies: { eslint: '^10.0.0', 'eslint-plugin-zod': '^5.0.0', 'eslint-plugin-unicorn': '^77.0.0' }
@@ -658,7 +899,7 @@ describe('guards for the libraries a project uses, with the real Biome', { timeo
 
     const plan = await planInit({ root, install: false, editor: false })
 
-    applyInit(plan)
+    applyPlan(plan)
 
     const result = await check({ root })
     const restricted = result.findings.filter(finding => finding.engineRule.endsWith('noRestrictedImports'))
@@ -702,7 +943,7 @@ export const built = { apiKey: \`\${process.env.PREFIX}-suffix-long\` }
 
     const plan = await planInit({ root, install: false, editor: false })
 
-    applyInit(plan)
+    applyPlan(plan)
 
     expect(plan.actions.map(action => action.path)).toEqual(
       expect.arrayContaining(['.pawl/rules/ai-keys.grit', '.pawl/rules/hono.grit', '.pawl/rules/de-morgan.grit'])
@@ -731,7 +972,7 @@ export const built = { apiKey: \`\${process.env.PREFIX}-suffix-long\` }
     })
 
     link(root)
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     expect(existsSync(join(root, 'apps/web/.pawl/rules/ai-keys.grit'))).toBe(true)
 

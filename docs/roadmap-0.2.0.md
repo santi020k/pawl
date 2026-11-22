@@ -18,15 +18,16 @@ The work planned on `release/v0.2.0`. The branch starts from `release/v0.1.0`. T
 - [x] The `typescript` pack on typescript-eslint's strict and stylistic type-checked presets.
 - [x] `migrate` through shared configs, and onto a company policy with `--extends`.
 - [x] `@santi020k/pawl-policy`: no new warnings, the console in scripts, `func-style` off.
+- [x] `check --since <ref>`: only the files a branch changed, for pull requests and gradual adoption.
 
 ## Candidates
 
 Taken from "What is left" and "Not built yet" in the README and from `docs/rules-from-eslint-config-basic.md`. None is committed to this release until someone starts it.
 
-- [ ] Oxlint's type-aware rules.
+- [x] Oxlint's type-aware rules. They run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects on Oxlint, and `pawl doctor` names the rules Oxlint leaves to it.
 - [ ] Move the strict-only rules into the default standard as Biome marks them stable. Biome 2.6.8 is still the newest release, so nothing can move yet.
-- [ ] Bring the comparison table in the README up to date. It counts 20 strict-only rules and 7 left out on purpose; the rules document counts 24 and 18.
-- [ ] Give more of the 60 rules with no home a check without a plugin. The largest groups: Stencil (18), Angular, typescript-eslint and ESLint core (6 each), Testing Library and Zod (4 each).
+- [x] Bring the comparison table in the README up to date. It now counts 26 strict-only rules and 18 left out on purpose, as the rules document does.
+- [ ] Give more of the 55 rules with no home a check without a plugin. The largest groups: Stencil (18), Angular, typescript-eslint and ESLint core (6 each), Testing Library and Zod (2 each). Angular needs a parser for decorators, which ESLint without typescript-eslint does not have.
 - [ ] Packs for Vite and Slidev.
 - [ ] Decide on `profile`, `snapshot` and `diff`, and the ESLint MCP scaffold. The README lists them as not planned.
 

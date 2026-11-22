@@ -1,0 +1,4 @@
+# Points the Doppler CLI at this repository's project: run `doppler setup` once.
+setup:
+  - project: pawl
+    config: dev

@@ -1,7 +1,8 @@
 ---
 
 title: Choosing tools
-description: Lint with Biome, Oxlint or ESLint, format with Biome or Prettier. One standard either way.
+description: "Lint with Biome, Oxlint or ESLint and format with Biome or Prettier. Pawl compiles one rule standard for the engine in use and reports what it cannot enforce."
+head: [{ tag: title, content: "Choosing tools: Biome, Oxlint, ESLint or Prettier | pawl" }]
 ---
 
 Pawl has no dependencies. Every tool is an optional peer, and `init` installs the ones you pick.
@@ -33,6 +34,7 @@ eqeqeq
 
   Level here:  error (default standard)
   Biome:       suspicious/noDoubleEquals  https://biomejs.dev/linter/rules/no-double-equals
+  Oxlint:      eqeqeq
   ESLint:      eqeqeq
 ```
 
@@ -50,9 +52,13 @@ A project's `biome.json` extends `@santi020k/pawl/biome` and holds only what its
 
 Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases.
 
+In a `.vue`, `.svelte` or `.astro` file Biome reads the script and not the template. Four rules judge a name by how the script alone uses it, so the standard switches them off for those files, as Biome's own guide does: `no-unused-vars`, `unused-imports/no-unused-imports`, `prefer-const` and `@typescript-eslint/consistent-type-imports`. Left on, they report an import the template uses as unused, and the fix for a type-only import turns a value the template needs into `import type`. A policy that has switched on Biome's full support for these files can have them back with an entry in [`overrides`](/reference/config/#overrides).
+
 ### Oxlint
 
-Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
+Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Nine more rules of the standard need type information, such as `@typescript-eslint/no-floating-promises`. Oxlint runs them through the separate `oxlint-tsgolint` package. `pawl init` adds it to the devDependencies of a TypeScript project that lints with Oxlint. When the root `package.json` depends on it (Oxlint runs at the root, so a workspace package's copy does not count), pawl writes those rules and `"options": { "typeAware": true }` into `.oxlintrc.json`. Findings carry the standard's names, such as `@typescript-eslint/no-floating-promises`, in the baseline and the agent format, and `pawl explain` takes Oxlint's own name, `typescript/no-floating-promises`, too. The config follows `package.json`, as it does for every other tool, so it does not change when the install runs; until it has, `pawl check` stops with a setup problem and exit code 2 rather than skip the rules. Without the package, pawl leaves them out, because Oxlint fails when a type-aware rule has no tsgolint to run it, and `pawl doctor` names the package to install. `pawl sync` adds or removes the option as the dependency comes and goes. tsgolint brings its own TypeScript compiler, so it does not depend on the project's `typescript` version, and it reads the project's `tsconfig.json` when there is one.
+
+Oxlint skips `node_modules` only where a `.gitignore` lists it, so pawl names the folder in `.oxlintrc.json` itself. For Vue, Svelte and Astro projects pawl also declares the names the compiler gives a component, such as `defineProps`, `$state` and `Astro`, so `no-undef` does not report them.
 
 ### ESLint
 

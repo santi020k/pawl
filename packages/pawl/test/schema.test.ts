@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { POLICY_KEYS, POLICY_SCHEMA } from '../src/schema.ts'
+import { POLICY_KEYS, POLICY_SCHEMA } from '../src/policy/schema.ts'
 import { PACKAGE_ROOT } from './helpers.ts'
 
 const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')) as {
@@ -10,7 +10,7 @@ const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'ut
 }
 
 describe('the policy schema', () => {
-  it('is in step with src/schema.ts (run "pnpm run schema" if this fails)', () => {
+  it('is in step with src/policy/schema.ts (run "pnpm run schema" if this fails)', () => {
     expect(JSON.parse(readFileSync(join(PACKAGE_ROOT, 'pawl.config.schema.json'), 'utf8'))).toEqual(POLICY_SCHEMA)
   })
 

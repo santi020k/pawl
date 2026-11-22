@@ -1,18 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { GATED_TAGS } from '../src/catalog/rules.ts'
 import {
   BIOME_PRESET,
-  BIOME_REACT_PRESET,
   biomeConfig,
   biomePackageConfig,
   biomeProjectConfig,
   biomeTechConfig,
-  biomeTechPreset,
-  checkBiomeConfig
-} from '../src/engines/biome.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
-import { GATED_TAGS } from '../src/rules.ts'
+  biomeTechPreset
+} from '../src/engines/biome/config.ts'
+import { checkBiomeConfig } from '../src/engines/biome/state.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { PACKAGE_ROOT, project } from './helpers.ts'
 
 const preset = (name: string): unknown => JSON.parse(readFileSync(join(PACKAGE_ROOT, 'presets', name), 'utf8'))
@@ -62,7 +61,7 @@ describe('biomeProjectConfig', () => {
   it('is a single extends line on the default standard', () => {
     expect(biomeProjectConfig(defaultPolicy())).toEqual({ extends: [BIOME_PRESET] })
     expect(biomeProjectConfig(defaultPolicy(), { technologies: ['react'] })).toEqual({
-      extends: [BIOME_PRESET, BIOME_REACT_PRESET]
+      extends: [BIOME_PRESET, biomeTechPreset('react')]
     })
   })
 

@@ -1,7 +1,8 @@
 ---
 
 title: Packs
-description: Optional sets of ESLint rules for what only a plugin can check. Pawl holds the rules; your project installs the plugin.
+description: "50 optional packs of ESLint plugin rules, for Vitest, Testing Library, Zod, unicorn and more. Pawl holds the rules; your project installs the plugin."
+head: [{ tag: title, content: "Packs: optional ESLint plugin rules | pawl" }]
 ---
 
 A pack is a set of ESLint rules for one plugin. For libraries that need no plugin, see [Guards](/guide/guards/). Pawl ships each pack as data, its rules and levels, and your project installs the plugin. There are 50, each checked against its real plugin.
@@ -27,7 +28,7 @@ pawl doctor                    # shows which packs are active
 - A pack for something your project depends on switches on as soon as its plugin is installed. `init` tells you which ones fit.
 - The rule packs and formats are opt-in: `pawl add` records them under `packs` in the policy.
 - A pack starts from the plugin's own recommended rules, then applies the standard's levels, then your policy's `rules`.
-- The `typescript` pack starts from typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets, so it needs type information: promises that nobody awaits, values of type `any` that reach typed code and conditions that are always true are errors.
+- The `typescript` pack starts from typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets, so it needs type information: promises that nobody awaits, values of type `any` that reach typed code and assertions that change nothing are errors.
 - Where Biome is the linter, it keeps the rules it already enforces, so nothing is reported twice.
 - The `jsx-a11y` standard is in the catalog, so Biome and Oxlint enforce it without the plugin. Under ESLint its rules come with the pack, and are not reported as missing while the pack is off.
 - A rule the installed plugin does not have is left out and listed by `pawl doctor`, so an older plugin does not break the run.

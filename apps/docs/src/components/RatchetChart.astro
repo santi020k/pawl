@@ -3,6 +3,10 @@
  * How the ratchet behaves over a run of commits: the count the baseline allows only steps down,
  * findings stay at or under it, and a change that adds findings fails instead of landing.
  * Illustrative numbers. Colors come from the brand tokens, so it follows the theme.
+ *
+ * Inside a Lumen ScrollReveal, the chart draws itself once as it scrolls into view: the lines run
+ * left to right and each commit's marks appear as the lines reach it. Without the reveal, without
+ * JavaScript, or with reduced motion, it is drawn complete.
  */
 
 interface Props {
@@ -42,6 +46,9 @@ const findingsPath = findings.map((value, index) => `${index === 0 ? 'M' : 'L'}$
 
 const gridValues = [0, 10, 20]
 const rejectedFrom = findings[rejectedAt - 1] ?? 0
+
+// Where each commit falls on the drawing timeline, from 0 to 1.
+const at = (index: number): string => `--at: ${(index / (allowed.length - 1)).toFixed(3)}`
 ---
 
 <figure class:list={['ratchet-chart', 'not-content', className]}>
@@ -69,34 +76,37 @@ const rejectedFrom = findings[rejectedAt - 1] ?? 0
     }
 
     <path class="allowed-area" d={`${stepPath} V${bottom} H${x(0)} Z`}></path>
-    <path class="allowed" d={stepPath}></path>
-    <path class="findings" d={findingsPath}></path>
+    <path class="allowed" d={stepPath} pathLength="1"></path>
+    <path class="findings" d={findingsPath} pathLength="1"></path>
 
-    {findings.map((value, index) => <circle class="finding" cx={x(index)} cy={y(value)} r="3.5" />)}
+    {findings.map((value, index) => <circle class="finding" cx={x(index)} cy={y(value)} r="3.5" style={at(index)} />)}
 
     {
       locks.map(index => (
         <g class="lock" transform={`translate(${x(index)} ${y(allowed[index] ?? 0)})`}>
-          <circle r="5" />
+          <circle r="5" style={at(index)} />
         </g>
       ))
     }
 
-    <g class="rejected">
+    <g class="rejected" style={at(rejectedAt)}>
       <path d={`M${x(rejectedAt - 1)} ${y(rejectedFrom)} L${x(rejectedAt)} ${y(rejectedValue)}`}></path>
       <g transform={`translate(${x(rejectedAt)} ${y(rejectedValue)})`}>
-        <circle r="9"></circle>
-        <path d="M-3.5 -3.5 L3.5 3.5 M3.5 -3.5 L-3.5 3.5"></path>
+        <g class="rejected__mark">
+          <circle r="9"></circle>
+          <path d="M-3.5 -3.5 L3.5 3.5 M3.5 -3.5 L-3.5 3.5"></path>
+        </g>
       </g>
-      <text x={x(rejectedAt) + 16} y={y(rejectedValue) - 6}>New findings: check fails</text>
+      <text class="label--wide" x={x(rejectedAt) + 16} y={y(rejectedValue) - 6}>New findings: check fails</text>
+      <text class="label--narrow" x={x(rejectedAt) + 16} y={y(rejectedValue) - 6}>check fails</text>
     </g>
 
-    <text class="note" x={x(3) + 10} y={y(allowed[3] ?? 0) - 12}>pawl baseline</text>
+    <text class="note" x={x(3) + 10} y={y(allowed[3] ?? 0) - 12} style={at(3)}>pawl baseline</text>
 
     <text class="axis" x={right} y={height - 14} text-anchor="end">commits →</text>
   </svg>
 
-  <figcaption>
+  <figcaption data-pagefind-ignore>
     <span class="key key--allowed">Allowed by the baseline</span>
     <span class="key key--findings">Findings</span>
     <span class="key key--rejected">Blocked change</span>
@@ -105,9 +115,11 @@ const rejectedFrom = findings[rejectedAt - 1] ?? 0
 
 <style>
   .ratchet-chart {
+    --draw: 1.6s;
     margin: 0;
     display: grid;
     gap: 0.75rem;
+    container-type: inline-size;
   }
 
   svg {
@@ -184,6 +196,156 @@ const rejectedFrom = findings[rejectedAt - 1] ?? 0
   .rejected text {
     fill: hsl(var(--danger));
     font-size: 11px;
+  }
+
+  .rejected .label--narrow {
+    display: none;
+  }
+
+  /* On a phone the chart is drawn at under half size: larger text and marks, and a shorter label. */
+  @container (max-width: 34rem) {
+    .grid text,
+    .axis,
+    .note,
+    .rejected text {
+      font-size: 28px;
+    }
+
+    .note {
+      transform: translateY(-6px);
+    }
+
+    .rejected .label--wide {
+      display: none;
+    }
+
+    .rejected .label--narrow {
+      display: inline;
+    }
+
+    .allowed {
+      stroke-width: 5;
+    }
+
+    .findings,
+    .finding {
+      stroke-width: 2.5;
+    }
+
+    .finding {
+      r: 6px;
+    }
+
+    .lock circle {
+      r: 8px;
+    }
+
+    .rejected path {
+      stroke-width: 2.5;
+    }
+
+    .rejected__mark {
+      transform: scale(1.5);
+    }
+  }
+
+  /*
+   * The drawing, keyed to Lumen's ScrollReveal: hidden while it waits, played once when revealed.
+   * Screen only, so a printed page always has the whole chart.
+   */
+  @media screen and (prefers-reduced-motion: no-preference) {
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound]:not(.is-revealed)) .allowed,
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound]:not(.is-revealed)) .findings {
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+    }
+
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound]:not(.is-revealed)) .allowed-area,
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound]:not(.is-revealed)) .finding,
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound]:not(.is-revealed)) .lock,
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound]:not(.is-revealed)) .rejected,
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound]:not(.is-revealed)) .note {
+      opacity: 0;
+    }
+
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound].is-revealed) .allowed,
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound].is-revealed) .findings {
+      animation: ratchet-draw var(--draw) linear backwards;
+    }
+
+    /* The shaded area follows the line across. */
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound].is-revealed) .allowed-area {
+      animation: ratchet-wipe var(--draw) linear backwards;
+    }
+
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound].is-revealed) .finding,
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound].is-revealed) .rejected__mark circle {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: ratchet-pop 240ms ease-out backwards;
+      animation-delay: calc(var(--draw) * var(--at));
+    }
+
+    /* Each step down of the baseline locks in with a click. */
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound].is-revealed) .lock circle {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: ratchet-click 420ms cubic-bezier(0.3, 1.6, 0.5, 1) backwards;
+      animation-delay: calc(var(--draw) * var(--at));
+    }
+
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound].is-revealed) .rejected,
+    :global(.ui-scroll-reveal[data-ui-scroll-reveal-bound].is-revealed) .note {
+      animation: ratchet-fade 320ms ease-out backwards;
+      animation-delay: calc(var(--draw) * var(--at));
+    }
+  }
+
+  @keyframes ratchet-draw {
+    from {
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+    }
+
+    to {
+      stroke-dasharray: 1;
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes ratchet-wipe {
+    from {
+      clip-path: inset(0 100% 0 0);
+    }
+
+    to {
+      clip-path: inset(0);
+    }
+  }
+
+  @keyframes ratchet-fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes ratchet-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+  }
+
+  @keyframes ratchet-click {
+    from {
+      opacity: 0;
+      transform: scale(0.2);
+    }
+
+    60% {
+      opacity: 1;
+      transform: scale(1.4);
+    }
   }
 
   figcaption {

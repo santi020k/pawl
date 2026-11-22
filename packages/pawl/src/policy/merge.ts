@@ -174,7 +174,10 @@ const requireLevels = (policy: Policy): void => {
  * checks and the guards. A lock keeps them at it, as it keeps a catalog rule at its default.
  */
 const ownLevel = (policy: Policy, name: string): Level | undefined => {
-  const guard = name.startsWith('pawl/') ? getGuard(name.slice('pawl/'.length)) : undefined
+  // Only the full name is one of pawl's own: without `pawl/` it names nothing, so there is nothing to keep.
+  if (!name.startsWith('pawl/')) return undefined
+
+  const guard = getGuard(name.slice('pawl/'.length))
   // An opt-in guard the policy has not switched on is off, so there is nothing to keep.
   const guardOn = guard !== undefined && (!guard.optIn || policy.packs.includes(guard.name))
 

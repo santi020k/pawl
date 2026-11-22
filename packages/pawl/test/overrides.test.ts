@@ -256,6 +256,13 @@ describe("overrides for pawl's own checks", () => {
 
     expect(optIn([])).toEqual([])
     expect(optIn(['de-morgan'])).toEqual(['pawl/de-morgan'])
+    // Without `pawl/` the name is not one of pawl's own checks, so there is no level to keep.
+    expect(
+      mergeLayers([
+        { source: 'company', input: { locked: ['markdown-no-empty-links'] } },
+        { source: 'repo', input: { rules: { 'markdown-no-empty-links': 'off' } } }
+      ]).lockViolations
+    ).toEqual([])
   })
 })
 

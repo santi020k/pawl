@@ -68,6 +68,15 @@ The policy, or the files in the repo, call for a tool that is not in `node_modul
 
 For Biome, install the exact version pawl pins. `pawl doctor` prints it.
 
+### A tool for Rust, Swift or Kotlin is not installed
+
+```txt
+setup  Rust is in the policy, but cargo is not installed.
+       Install Rust with rustup, then run "rustup component add clippy rustfmt".
+```
+
+The policy names the language in `languages`, so pawl runs its tools, and they are not on the `PATH`. They are not npm packages, so pawl does not install them: follow the line under the problem, or take the language out of `languages`. In CI, install them in the job before `pawl check`. `pawl baseline` records nothing until they run, so the baseline cannot lose what it allowed. See [Rust, Swift and Kotlin](/guide/languages/#installing-the-tools).
+
 ### The check did not complete
 
 ```txt

@@ -34,8 +34,10 @@ export {
   biomeTechPreset,
   checkBiomeConfig
 } from './engines/biome.ts'
-export type { EslintOptions, EslintPlan, EslintPlanOptions, FlatConfig } from './engines/eslint.ts'
+export type { EslintOptions, EslintPlan, EslintPlanOptions, FlatConfig, PackageScope } from './engines/eslint.ts'
 export { eslint, eslintPlan, eslintPlanFor } from './engines/eslint.ts'
+export type { LanguageCheckOptions, LanguageCheckResult } from './engines/languages.ts'
+export { checkLanguages } from './engines/languages.ts'
 export type { OxlintContext } from './engines/oxlint.ts'
 export { checkOxlintConfig, oxlintConfig, oxlintCovers } from './engines/oxlint.ts'
 export { OXLINT_RULES, OXLINT_VERSION } from './engines/oxlint-rules.ts'
@@ -43,6 +45,8 @@ export { checkPrettierConfig, prettierConfig } from './engines/prettier.ts'
 export { ALWAYS_IGNORED, DEFAULT_IGNORES } from './ignores.ts'
 export type { InitAction, InitMode, InitOptions, InitPlan } from './init.ts'
 export { applyInit, formatWritten, planAdd, planInit, planPrettierConfig, recordBaseline } from './init.ts'
+export type { Language, LanguageInfo, LanguageProject } from './languages.ts'
+export { LANGUAGE_INFO, LANGUAGES } from './languages.ts'
 export type { MigrateOptions, MigratePlan, RuleChange } from './migrate.ts'
 export { describeMigration, MIGRATION_REPORT, planMigrate } from './migrate.ts'
 export type { OutputFormat } from './output.ts'
@@ -75,6 +79,9 @@ export type {
   FormatterChoice,
   FormatterName,
   Framework,
+  LanguageEngine,
+  LanguagesInput,
+  LanguageTools,
   Level,
   LockViolation,
   Override,

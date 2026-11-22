@@ -34,6 +34,7 @@ import { OXLINT_VERSION } from './engines/oxlint-rules.ts'
 import { checkPrettierConfig, prettierConfig } from './engines/prettier.ts'
 import { readJson, readJsonc, toList, writeJson, writeText } from './fs-utils.ts'
 import { getGuard } from './guards.ts'
+import { LANGUAGE_INFO, type Language, languagesOf } from './languages.ts'
 import { getPack, PACKS, suggestedPacks } from './packs.ts'
 import { findConfigFile, loadPolicy } from './policy.ts'
 import { ESLINT_CONFIG_FILES } from './tools.ts'
@@ -933,6 +934,25 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
 
     notes.push(
       `Optional packs that fit this project: ${names}. Each needs an ESLint plugin. Add them with "pawl add ${names}".`
+    )
+  }
+
+  // Code in other languages is left alone until the policy names the language.
+  const unchecked = languagesOf(detection.languages).filter(language => policy.languages[language] === undefined)
+
+  if (unchecked.length > 0) {
+    const where = (language: Language): string =>
+      detection.languages
+        .filter(project => project.language === language)
+        .map(project => project.dir || 'the root')
+        .join(', ')
+    const parts = unchecked.map(language => `${LANGUAGE_INFO[language].title} in ${where(language)}`)
+    const found = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts.join('')
+    const named = unchecked.map(language => `'${language}'`).join(', ')
+    const [them, their] = unchecked.length === 1 ? ['it', 'its'] : ['them', 'their']
+
+    notes.push(
+      `Found ${found}. Pawl leaves ${them} to ${their} own tools. To check ${them} with pawl and the baseline, add languages: [${named}] to the policy.`
     )
   }
 

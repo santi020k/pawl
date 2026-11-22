@@ -1,17 +1,18 @@
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { allTechnologies, detect } from '../detect.ts'
+import { allTechnologies, detect, packageTechnologies, technologies as repoTechnologies } from '../detect.ts'
 import { toList, toPosix } from '../fs-utils.ts'
 import { IMPORTS_RULE, importRestrictions, SYNTAX_RULE, syntaxRestrictions } from '../guards.ts'
 import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../ignores.ts'
 import { PACKS, type Pack } from '../packs.ts'
 import { effectiveRules, findProjectRoot, loadPolicy, overrideRules, resolveSpecifier } from '../policy.ts'
-import { getRule, type Technology } from '../rules.ts'
+import { getRule, isGated, type Technology } from '../rules.ts'
 import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../runtime.ts'
 import { toolset } from '../tools.ts'
 import { type Finding, type Policy, type Runtime } from '../types.ts'
 import { type EngineRun, type RunOptions } from './biome.ts'
+import { isLanguageRule } from './languages.ts'
 import { oxlintCovers } from './oxlint.ts'
 import { EngineError, runNode } from './run.ts'
 
@@ -67,6 +68,115 @@ export interface EslintPlanOptions {
   dependencies?: readonly string[]
   /** Where the code runs, for the globals ESLint knows. Node and the browser when not given. */
   runtimes?: readonly Runtime[]
+  /** Patterns to skip that detection found, such as the target folder of a Rust project. */
+  ignores?: readonly string[]
+  /**
+   * The technologies the whole repo uses. A rule for any other technology in `technologies`
+   * runs only in the packages that use it. Defaults to `technologies`.
+   */
+  sharedTechnologies?: readonly Technology[]
+  /** For a monorepo: each package's own technologies and dependencies, by package directory. */
+  packages?: Record<string, PackageScope>
+  /** The dependencies of the root package.json. A pack the root needs is repo-wide. */
+  rootDependencies?: readonly string[]
+}
+
+/** What one package of a monorepo uses beyond the rest of the repo. */
+export interface PackageScope {
+  technologies: readonly Technology[]
+  dependencies: readonly string[]
+}
+
+/**
+ * File patterns limited to one folder: `**\/*.ts` in apps/web is `apps/web/**\/*.ts`. A pattern
+ * already in that folder stays as it is, and one in another of `dirs` is left out.
+ */
+const within = (files: readonly unknown[], dir: string, dirs: readonly string[] = []): unknown[] =>
+  files.flatMap((file): unknown[] => {
+    // A list inside `files` means every pattern in it must match, so the folder joins it.
+    if (typeof file !== 'string') return [[`${dir}/**`, ...toList(file as string | readonly string[])]]
+
+    const pattern = file.replace(/^\.?\//, '')
+
+    if (pattern.startsWith(`${dir}/`)) return [pattern]
+
+    return dirs.some(other => pattern.startsWith(`${other}/`)) ? [] : [`${dir}/${pattern}`]
+  })
+
+/**
+ * The packages a pack is for, when only some packages of a monorepo depend on what it is for.
+ * Undefined means the whole repo: the policy named it, the root depends on it, or it has its own files.
+ */
+const packDirs = (
+  pack: Pack,
+  reason: 'named' | 'auto' | 'suggested',
+  options: EslintPlanOptions
+): string[] | undefined => {
+  const packages = Object.entries(options.packages ?? {})
+
+  if (reason !== 'suggested' || pack.spread || packages.length === 0) return undefined
+
+  if (pack.when.some(name => (options.rootDependencies ?? []).includes(name))) return undefined
+
+  const dirs = packages.flatMap(([dir, scope]) =>
+    pack.when.some(name => scope.dependencies.includes(name)) ? [dir] : []
+  )
+
+  return dirs.length > 0 ? dirs : undefined
+}
+
+/**
+ * Move the rules for a technology only some packages use into blocks for those packages, so
+ * React rules run in the React app and not in the Vue one next to it. Biome does the same with
+ * a biome.json per package.
+ */
+const scopeTechnologies = (config: FlatConfig[], options: EslintPlanOptions): FlatConfig[] => {
+  const packages = Object.entries(options.packages ?? {})
+
+  if (packages.length === 0) return config
+
+  const shared = options.sharedTechnologies ?? options.technologies ?? []
+  const dirs = packages.map(([dir]) => dir)
+  const usedIn = (technology: Technology): string[] =>
+    packages.flatMap(([dir, scope]) => (scope.technologies.includes(technology) ? [dir] : []))
+  const scoped: FlatConfig[] = []
+
+  for (const block of config) {
+    scoped.push(block)
+
+    if (!isRecord(block.rules)) continue
+
+    const moved = new Map<string, Rules>()
+
+    for (const [name, value] of Object.entries(block.rules)) {
+      const tag = getRule(name)?.tag
+
+      if (!tag || !isGated(tag) || shared.includes(tag)) continue
+
+      delete block.rules[name]
+
+      for (const dir of usedIn(tag)) moved.set(dir, { ...moved.get(dir), [name]: value })
+    }
+
+    for (const [dir, rules] of moved) {
+      const { name, files, ignores, plugins, languageOptions } = block
+      // A block a pack already gave to some packages keeps to them.
+      const scopedFiles = within(Array.isArray(files) ? files : ['**'], dir, dirs)
+
+      if (scopedFiles.length === 0) continue
+
+      scoped.push({
+        name: `${typeof name === 'string' ? name : 'pawl/block'}/${dir}`,
+        files: scopedFiles,
+        ...(ignores ? { ignores } : {}),
+        ...(plugins ? { plugins } : {}),
+        ...(languageOptions ? { languageOptions } : {}),
+        rules
+      })
+    }
+  }
+
+  return scoped
 }
 
 /** Plugins whose package name does not follow the eslint-plugin-<prefix> convention. */
@@ -213,7 +323,12 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
   const packRules = new Map<string, Rules>()
   /** The policy's options, less the two rules the guards build themselves. */
   const remainingOptions: Record<string, unknown[]> = { ...policy.options }
-  const packBlocks: Array<{ pack: Pack; plugin: Record<string, unknown>; fromPlugin: Set<string> }> = []
+  const packBlocks: {
+    pack: Pack
+    plugin: Record<string, unknown>
+    fromPlugin: Set<string>
+    dirs: string[] | undefined
+  }[] = []
   let needsTypes = false
 
   // TypeScript files need the typescript-eslint parser even when no TypeScript rule is on.
@@ -255,14 +370,19 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     else if (pack.name === 'typescript') Object.assign(tsRules, rules)
     else {
       packRules.set(pack.name, rules)
-      packBlocks.push({ pack, plugin: loaded.module, fromPlugin: new Set(Object.keys(preset)) })
+      packBlocks.push({
+        pack,
+        plugin: loaded.module,
+        fromPlugin: new Set(Object.keys(preset)),
+        dirs: packDirs(pack, reason, options)
+      })
     }
 
     needsTypes ||= pack.typeAware === true
   }
 
   for (const [name, level] of effectiveRules(policy, { typescript, technologies })) {
-    if (name.startsWith('biome:') || name.startsWith('pawl/')) continue
+    if (name.startsWith('biome:') || name.startsWith('pawl/') || isLanguageRule(name)) continue
 
     const def = getRule(name)
 
@@ -359,7 +479,10 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
 
   // The defaults, the root .gitignore and the policy's own patterns, in that order, as pawl reads them.
   const ignores = [
-    ...new Set([...ALWAYS_IGNORED.map(dir => `**/${dir}/**`), ...allIgnores(root, policy).flatMap(toEslintIgnores)])
+    ...new Set([
+      ...ALWAYS_IGNORED.map(dir => `**/${dir}/**`),
+      ...allIgnores(root, policy, options.ignores).flatMap(toEslintIgnores)
+    ])
   ]
   const config: FlatConfig[] = [{ name: 'pawl/ignores', ignores }]
   const otherPlugins = Object.fromEntries(
@@ -395,7 +518,7 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     notEnforced.push({ rule: 'TypeScript files', needs: needs('typescript-eslint', loadedTs) })
   }
 
-  for (const { pack, plugin, fromPlugin } of packBlocks) {
+  for (const { pack, plugin, fromPlugin, dirs } of packBlocks) {
     const rules = packRules.get(pack.name) ?? {}
 
     const known = isRecord(plugin.rules) ? plugin.rules : undefined
@@ -433,9 +556,12 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
         plugin
       )
 
+      const files = pack.files ?? SCRIPT_FILES
+
       config.push({
         name: `pawl/pack/${pack.name}`,
-        files: pack.files ?? SCRIPT_FILES,
+        // A pack for what only some packages depend on runs in those packages.
+        files: dirs ? dirs.flatMap(dir => within(files, dir)) : files,
         ...(pack.ignores ? { ignores: pack.ignores } : {}),
         ...(pack.parser && parser ? { languageOptions: { parser } } : {}),
         plugins: { [pack.prefix]: plugin },
@@ -443,6 +569,10 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
       })
     }
   }
+
+  const blocks = scopeTechnologies(config, options)
+
+  config.splice(0, config.length, ...blocks)
 
   // Overrides go last, so they win over the base rules and the packs for the files they name.
   const loadedPlugins = new Map<string, unknown>([
@@ -458,7 +588,14 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
     const entries = overrideRules(override, { typescript, technologies }, policy)
 
     for (const [name, level] of entries) {
-      if (name.startsWith('biome:') || name.startsWith('oxlint:') || name.startsWith('pawl/') || covered(name)) continue
+      if (
+        name.startsWith('biome:') ||
+        name.startsWith('oxlint:') ||
+        name.startsWith('pawl/') ||
+        isLanguageRule(name) ||
+        covered(name)
+      )
+        continue
 
       const def = getRule(name)
       const eslintName = name.startsWith('eslint:') ? name.slice('eslint:'.length) : name
@@ -538,10 +675,23 @@ export const eslintPlanFor = async (root: string, policy?: Policy): Promise<Esli
     biomeActive: toolset(root, resolved).linter === 'biome',
     oxlintActive: toolset(root, resolved).linter === 'oxlint',
     typescript: detection.typescript,
-    // One ESLint config covers the whole repo, so it takes every technology in it.
+    // One ESLint config covers the whole repo. It takes every technology in it, and gives the
+    // rules for a technology only some packages use to those packages.
     technologies: allTechnologies(detection),
+    sharedTechnologies: repoTechnologies(detection),
+    packages: Object.fromEntries(
+      detection.workspace.packages.map(dir => [
+        dir,
+        {
+          technologies: packageTechnologies(detection)[dir] ?? [],
+          dependencies: detection.workspace.dependencies[dir] ?? []
+        }
+      ])
+    ),
+    rootDependencies: detection.rootDependencies,
     dependencies: detection.dependencies,
-    runtimes: detection.runtimes
+    runtimes: detection.runtimes,
+    ignores: detection.ignores
   })
 }
 

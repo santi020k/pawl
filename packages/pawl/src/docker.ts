@@ -300,11 +300,13 @@ export interface DockerOptions {
   policy: Policy
   /** Only look at these files, relative to the root. */
   files?: readonly string[]
+  /** Patterns to skip that detection found, such as the target folder of a Rust project. */
+  ignores?: readonly string[]
 }
 
 /** Check every Dockerfile and Compose file in the project. */
-export const checkDocker = ({ root, policy, files }: DockerOptions): Finding[] => {
-  const ignored = ignoreMatcher(root, policy)
+export const checkDocker = ({ root, policy, files, ignores }: DockerOptions): Finding[] => {
+  const ignored = ignoreMatcher(root, policy, ignores)
   const findings: Finding[] = []
 
   for (const file of (files ?? listFiles(root)).filter(name => isDockerFile(name) && !ignored(name))) {

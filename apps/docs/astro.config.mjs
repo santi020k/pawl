@@ -80,6 +80,7 @@ export default defineConfig({
             { label: 'CI and hooks', slug: 'guide/ci' },
             { label: 'With Quality', slug: 'guide/quality' },
             { label: 'Monorepos', slug: 'guide/monorepos' },
+            { label: 'Rust, Swift and Kotlin', slug: 'guide/languages' },
             { label: 'Troubleshooting', slug: 'guide/troubleshooting' }
           ]
         },

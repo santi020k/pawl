@@ -1,7 +1,19 @@
 import { type Dirent, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isGitRepo, readJson, toPosix } from './fs-utils.ts'
-import { WALK_SKIP } from './ignores.ts'
+import { ignoreMatcher, WALK_SKIP } from './ignores.ts'
+import {
+  isBuildFolder,
+  LANGUAGE_INFO,
+  LANGUAGES,
+  type LanguageProject,
+  languageIgnores,
+  languageProjects,
+  languagesOf,
+  type Marker,
+  markerLanguage,
+  XCODE_BUNDLE
+} from './languages.ts'
 import { GATED_TAGS, type Technology } from './rules.ts'
 import { type Detectable, type Framework, type Policy, type Runtime } from './types.ts'
 
@@ -27,9 +39,17 @@ export interface Detection {
     packages: string[]
     /** The frameworks each package depends on itself, by package directory. */
     frameworks: Record<string, Framework[]>
+    /** The dependencies each package names itself, by package directory. */
+    dependencies: Record<string, string[]>
   }
   /** The frameworks the root package.json depends on. */
   rootFrameworks: Framework[]
+  /** The dependencies the root package.json names. */
+  rootDependencies: string[]
+  /** Projects in other languages, such as a Cargo workspace, an Xcode app or a Gradle build, by folder. */
+  languages: LanguageProject[]
+  /** Patterns to skip that detection found: the build folders of those projects. */
+  ignores: string[]
   /** Where the code runs: what the policy names, else what the dependencies and files say. */
   runtimes: Runtime[]
   /** File formats found near the top of the repo, each of which a pack can lint. */
@@ -190,14 +210,17 @@ const FORMAT_EXTENSIONS: readonly [RegExp, FileFormat][] = [
 interface Probe {
   formats: Set<FileFormat>
   astro: boolean
+  /** Files and folders that may mark a project in another language. */
+  markers: Marker[]
 }
 
 /**
- * A shallow look at the files: which formats a pack could lint, and Astro components.
- * Folders nothing is checked in are skipped, and so are hidden ones but `.github`.
+ * A shallow look at the files: which formats a pack could lint, Astro components, and the
+ * manifests of projects in other languages. Folders nothing is checked in are skipped, and so
+ * are hidden ones but `.github`, Xcode's bundles and the build folders of Cargo and Maven.
  */
 const probeFiles = (root: string): Probe => {
-  const probe: Probe = { formats: new Set(), astro: false }
+  const probe: Probe = { formats: new Set(), astro: false, markers: [] }
   let budget = PROBE_LIMIT
   const visit = (dir: string, depth: number): void => {
     let entries: Dirent[]
@@ -208,13 +231,19 @@ const probeFiles = (root: string): Probe => {
       return
     }
 
+    const names = entries.map(entry => entry.name)
+
     for (const entry of entries) {
       if (--budget < 0) return
 
+      if (markerLanguage(entry.name, entry.isDirectory())) probe.markers.push({ dir, name: entry.name })
+
       if (entry.isDirectory()) {
         const hidden = entry.name.startsWith('.') && entry.name !== '.github'
+        const skipped =
+          hidden || WALK_SKIP.has(entry.name) || XCODE_BUNDLE.test(entry.name) || isBuildFolder(entry.name, names)
 
-        if (depth < PROBE_DEPTH && !hidden && !WALK_SKIP.has(entry.name)) visit(join(dir, entry.name), depth + 1)
+        if (depth < PROBE_DEPTH && !skipped) visit(toPosix(join(dir, entry.name)), depth + 1)
       } else if (entry.isFile()) {
         if (entry.name.endsWith('.astro')) probe.astro = true
 
@@ -265,10 +294,14 @@ const detectRuntimes = (
   return runtimes
 }
 
-/** Every framework and the Turborepo rules: what `detect.exclude` takes, and what `detect: false` leaves out. */
+/**
+ * Every framework, the Turborepo rules and the other languages: what `detect.exclude` takes,
+ * and what `detect: false` leaves out.
+ */
 export const DETECTABLE: readonly Detectable[] = [
   ...new Set(FRAMEWORK_PACKAGES.map(([, framework]) => framework)),
-  'turbo'
+  'turbo',
+  ...LANGUAGES
 ]
 
 const firstExisting = (root: string, names: readonly string[]): string | undefined =>
@@ -372,8 +405,8 @@ const detectWorkspaceTool = (root: string): WorkspaceTool | undefined => {
 
 const WORKSPACE_TOOL_NAMES: Record<WorkspaceTool, string> = { turbo: 'Turborepo', nx: 'Nx' }
 
-/** What a policy says about detection. */
-export type DetectOptions = Partial<Pick<Policy, 'detect' | 'runtime'>>
+/** What a policy says about detection, and the files it skips, which detection skips too. */
+export type DetectOptions = Partial<Pick<Policy, 'detect' | 'runtime' | 'ignore' | 'gitignore' | 'defaultIgnores'>>
 
 /**
  * Look at a project and report what it is built with. Reads files only; runs nothing but git.
@@ -382,14 +415,25 @@ export type DetectOptions = Partial<Pick<Policy, 'detect' | 'runtime'>>
 export const detect = (root: string, options: DetectOptions = {}): Detection => {
   const manifest = readJson<Manifest>(join(root, 'package.json'))
   const packages = workspacePackages(root, manifest)
-  const manifests = [manifest, ...packages.map(dir => readJson<Manifest>(join(root, dir, 'package.json')))]
-  const dependencies = new Set(manifests.flatMap(dependencyNames))
+  const packageDependencies = Object.fromEntries(
+    packages.map(dir => [dir, dependencyNames(readJson<Manifest>(join(root, dir, 'package.json'))).sort()])
+  )
+  const dependencies = new Set([...dependencyNames(manifest), ...Object.values(packageDependencies).flat()])
   const tool = detectWorkspaceTool(root)
   const tools: Detection['tools'] = {}
   const enabled = options.detect?.enabled !== false
   const excluded: Detectable[] = enabled ? [...(options.detect?.exclude ?? [])] : [...DETECTABLE]
   const keep = (frameworks: Framework[]): Framework[] => frameworks.filter(framework => !excluded.includes(framework))
-  const probe = enabled ? probeFiles(root) : { formats: new Set<FileFormat>(), astro: false }
+  const probe: Probe = enabled ? probeFiles(root) : { formats: new Set(), astro: false, markers: [] }
+  const skipped = ignoreMatcher(root, {
+    defaultIgnores: options.defaultIgnores ?? true,
+    gitignore: options.gitignore ?? true,
+    ignore: options.ignore ?? []
+  })
+  // A project the repo ignores is generated, such as the ios and android folders of an Expo prebuild.
+  const languages = languageProjects(root, probe.markers).filter(
+    project => !excluded.includes(project.language) && (project.dir === '' || !skipped(project.dir))
+  )
   // Astro components with no package that declares Astro: then the files are the only sign of it.
   const astroFromFiles = probe.astro && !frameworksIn(dependencies).includes('astro')
   const withFiles = (frameworks: Framework[]): Framework[] => (astroFromFiles ? [...frameworks, 'astro'] : frameworks)
@@ -417,12 +461,8 @@ export const detect = (root: string, options: DetectOptions = {}): Detection => 
     workspace: {
       tool,
       packages,
-      frameworks: Object.fromEntries(
-        packages.map(dir => [
-          dir,
-          keep(frameworksIn(dependencyNames(readJson<Manifest>(join(root, dir, 'package.json')))))
-        ])
-      )
+      frameworks: Object.fromEntries(packages.map(dir => [dir, keep(frameworksIn(packageDependencies[dir] ?? []))])),
+      dependencies: packageDependencies
     },
     typescript:
       dependencies.has('typescript') ||
@@ -432,8 +472,11 @@ export const detect = (root: string, options: DetectOptions = {}): Detection => 
     frameworks,
     // Astro components found in the files count for the root: Astro's rules then apply repo-wide.
     rootFrameworks: keep(withFiles(frameworksIn(dependencyNames(manifest)))),
+    rootDependencies: dependencyNames(manifest).sort(),
     runtimes: runtimesFor(),
     formats: [...probe.formats].sort(),
+    languages,
+    ignores: languageIgnores(languages),
     excluded,
     tools
   }
@@ -522,7 +565,9 @@ export const needsEslint = (detection: Detection): boolean =>
 
 /** A one-line description for humans, such as "TypeScript, React, Turborepo with 6 packages, pnpm". */
 export const describe = (detection: Detection): string => {
-  const parts: string[] = [detection.typescript ? 'TypeScript' : 'JavaScript']
+  // A repo with no package.json at all and code in another language has no JavaScript to name.
+  const noJavaScript = !detection.typescript && !detection.packageManager && detection.languages.length > 0
+  const parts: string[] = noJavaScript ? [] : [detection.typescript ? 'TypeScript' : 'JavaScript']
   const names: Record<Framework, string> = {
     react: 'React',
     next: 'Next.js',
@@ -548,6 +593,7 @@ export const describe = (detection: Detection): string => {
   }
 
   parts.push(...detection.frameworks.map(framework => names[framework]))
+  parts.push(...languagesOf(detection.languages).map(language => LANGUAGE_INFO[language].title))
 
   const count = detection.workspace.packages.length
   const toolName = detection.workspace.tool ? WORKSPACE_TOOL_NAMES[detection.workspace.tool] : undefined

@@ -41,6 +41,8 @@ export interface BiomeContext {
   vcs?: boolean
   /** Where the code runs. Biome knows the Node and browser globals; the others are named for it. */
   runtimes?: readonly Runtime[]
+  /** Patterns to skip that detection found, such as the target folder of a Rust project. */
+  ignores?: readonly string[]
 }
 
 /** Biome reads the .gitignore when the policy wants it and there is a .gitignore or a git repo to read. */
@@ -69,7 +71,8 @@ export const biomeContextFor = (
   lint: tools.linter === 'biome',
   format: tools.formatter === 'biome',
   vcs: biomeVcs(root, policy),
-  runtimes: detection.runtimes
+  runtimes: detection.runtimes,
+  ignores: detection.ignores
 })
 
 export const BIOME_CONFIG_FILES = ['biome.json', 'biome.jsonc']
@@ -167,7 +170,15 @@ const biomeOverrides = (policy: Policy, include: (tag: RuleTag) => boolean): Jso
  */
 export const biomeConfig = (
   policy: Policy,
-  { technologies = [], lint = true, format = true, dependencies = [], vcs = false, runtimes = [] }: BiomeContext = {}
+  {
+    technologies = [],
+    lint = true,
+    format = true,
+    dependencies = [],
+    vcs = false,
+    runtimes = [],
+    ignores = []
+  }: BiomeContext = {}
 ): JsonObject => {
   const { style } = policy
   const include = (tag: RuleTag): boolean => !isGated(tag) || technologies.includes(tag)
@@ -189,7 +200,7 @@ export const biomeConfig = (
     $schema: `https://biomejs.dev/schemas/${BIOME_VERSION}/schema.json`,
     ...vcsConfig(policy, vcs),
     files: {
-      includes: ['**', ...configIgnores(policy).map(toBiomeIgnore)]
+      includes: ['**', ...configIgnores(policy, ignores).map(toBiomeIgnore)]
     },
     formatter: {
       enabled: format,
@@ -383,8 +394,11 @@ export const biomeProjectConfig = (
     biomeConfig(defaultPolicy(), { technologies: context.technologies ?? [] })
   )
   // A later pattern wins in Biome, so the preset's ignores are undone by naming the folders again.
+  // The build folders detection found, such as a Rust project's target, are the project's own.
   const includes = [
-    ...(policy.defaultIgnores ? [] : DEFAULT_IGNORES.map(pattern => toBiomeIgnore(`!${pattern}`))),
+    ...(policy.defaultIgnores
+      ? (context.ignores ?? []).map(toBiomeIgnore)
+      : DEFAULT_IGNORES.map(pattern => toBiomeIgnore(`!${pattern}`))),
     ...policy.ignore.map(toBiomeIgnore)
   ]
 

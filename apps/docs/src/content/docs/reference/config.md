@@ -63,6 +63,7 @@ After changing the policy, run `pawl sync` to rewrite the Biome, Oxlint and Pret
 | `defaultIgnores` | `boolean`                                                       | `true`    |
 | `runtime`        | `'node'`, `'browser'`, `'bun'`, `'deno'`, `'worker'`, or a list | detected  |
 | `detect`         | `boolean` or `{ exclude: string[] }`                            | `true`    |
+| `languages`      | A list of languages, or [their tools](#languages)               | none      |
 
 ### extends
 
@@ -178,7 +179,7 @@ Skip what the root `.gitignore` lists, including its `!` lines. Biome reads the 
 
 ### defaultIgnores
 
-Skip what no project wants checked: build output and caches (`dist`, `build`, `coverage`, `.turbo`, `.next`, `.open-next`, `.astro`, `.nuxt`, `.svelte-kit`, `.output`, `.vercel`, `.wrangler`), test reports (`playwright-report`, `test-results`), `*.tsbuildinfo`, lockfiles, the folders of AI coding tools (`.agent`, `.agents`, `.aider*`, `.claude`, `.clinerules`, `.codex`, `.copilot`, `.cursor`, `.gemini`, `.kiro`, `.opencode`, `.roo`, `.windsurf`) and generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`). `false` checks them. `node_modules`, `.git` and `.pawl` are always skipped.
+Skip what no project wants checked: build output and caches (`dist`, `build`, `coverage`, `.turbo`, `.next`, `.open-next`, `.astro`, `.nuxt`, `.svelte-kit`, `.output`, `.vercel`, `.wrangler`), test reports (`playwright-report`, `test-results`), `*.tsbuildinfo`, lockfiles, the folders of AI coding tools (`.agent`, `.agents`, `.aider*`, `.claude`, `.clinerules`, `.codex`, `.copilot`, `.cursor`, `.gemini`, `.kiro`, `.opencode`, `.roo`, `.windsurf`), generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`), and what the tools of other languages write: `Cargo.lock`, `Package.resolved`, `.build`, `.swiftpm`, `DerivedData`, `xcuserdata`, `Pods`, `*.xcassets`, `*.xcodeproj`, `*.xcworkspace`, `.gradle`, `.kotlin`, `.cxx`, and the `target` folder next to each Rust or Maven project. `false` checks them. `node_modules`, `.git` and `.pawl` are always skipped.
 
 ### runtime
 
@@ -196,22 +197,41 @@ Biome knows the Node and browser globals by itself, so `biome.json` names only t
 
 ### detect
 
-Detection works out the frameworks and technologies from the dependencies and a shallow look at the files, and with them which technology rules apply. `false` turns it off: no technology rules apply and the runtimes are Node and the browser. `{ exclude: [...] }` leaves some out: any framework pawl detects, such as `'tailwind'` or `'next'`, or `'turbo'` for the Turborepo rules. Packs and guards still follow the dependencies either way.
+Detection works out the frameworks and technologies from the dependencies and a shallow look at the files, and with them which technology rules apply. `false` turns it off: no technology rules apply and the runtimes are Node and the browser. `{ exclude: [...] }` leaves some out: any framework pawl detects, such as `'tailwind'` or `'next'`, `'turbo'` for the Turborepo rules, or `'rust'`, `'swift'` or `'kotlin'` for the projects in those languages. Packs and guards still follow the dependencies either way.
+
+### languages
+
+Other languages to check with their own tools, in the projects detection finds: `'rust'` with Clippy and rustfmt, `'swift'` with SwiftLint and SwiftFormat or swift-format, `'kotlin'` with ktlint. None is checked unless the policy names it, so a repo that checks them another way, such as with Quality, does not check them twice.
+
+```ts title="pawl.config.ts"
+export default definePolicy({
+  languages: ['rust', 'kotlin']
+})
+```
+
+An object picks the tools: `true` runs both, `false` neither, and `{ lint, format }` one of them. Kotlin has one tool, ktlint, which runs when either is on.
+
+```ts
+languages: { rust: true, swift: { format: false } }
+```
+
+Each tool runs with the project's own config. `rules` and `overrides` set the level of a tool's rule by the name pawl reports it under, such as `'clippy:unwrap_used'` or `'swiftlint:force_cast'`. See [Rust, Swift and Kotlin](/guide/languages/).
 
 ## How layers merge
 
 The default standard comes first, then each `extends` entry, then the config file. A later layer wins, with these rules:
 
-| Option                                   | When two layers set it                                         |
-| ---------------------------------------- | -------------------------------------------------------------- |
-| `engine`, `formatter`                    | The later one wins                                             |
-| `strict`                                 | Once on, it stays on                                           |
-| `maxWarnings`                            | The lower limit wins                                           |
-| `style`                                  | Keys merge; a later key wins                                   |
-| `rules`                                  | A later level wins, unless the rule is locked and it is looser |
-| `options`                                | A later entry replaces the earlier one for that rule           |
-| `gitignore`, `defaultIgnores`, `runtime` | The later one wins                                             |
-| `detect`                                 | A later `true` or `false` wins; the exclusions add up          |
-| `packs`, `locked`, `ignore`, `overrides` | The lists add up                                               |
+| Option                                   | When two layers set it                                                |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| `engine`, `formatter`                    | The later one wins                                                    |
+| `strict`                                 | Once on, it stays on                                                  |
+| `maxWarnings`                            | The lower limit wins                                                  |
+| `style`                                  | Keys merge; a later key wins                                          |
+| `rules`                                  | A later level wins, unless the rule is locked and it is looser        |
+| `options`                                | A later entry replaces the earlier one for that rule                  |
+| `gitignore`, `defaultIgnores`, `runtime` | The later one wins                                                    |
+| `detect`                                 | A later `true` or `false` wins; the exclusions add up                 |
+| `languages`                              | A name adds a language; `false` removes it; an object picks its tools |
+| `packs`, `locked`, `ignore`, `overrides` | The lists add up                                                      |
 
 A looser level for a locked rule is ignored. The stricter level is kept, and `pawl check` and `pawl doctor` report the attempt. With `--ci`, that fails the check with exit code 2.

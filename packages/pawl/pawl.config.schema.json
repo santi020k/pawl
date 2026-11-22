@@ -225,10 +225,95 @@
                   "react-router",
                   "tanstack-start",
                   "vite",
-                  "turbo"
+                  "turbo",
+                  "rust",
+                  "swift",
+                  "kotlin"
                 ]
               },
               "uniqueItems": true
+            }
+          }
+        }
+      ]
+    },
+    "languages": {
+      "description": "Other languages to check with their own tools: Rust (Clippy, rustfmt), Swift (SwiftLint, SwiftFormat or swift-format), Kotlin (ktlint). Off unless named.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["rust", "swift", "kotlin"]
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rust": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "lint": {
+                      "type": "boolean",
+                      "description": "Run the language's linter."
+                    },
+                    "format": {
+                      "type": "boolean",
+                      "description": "Check the formatting with the language's formatter."
+                    }
+                  }
+                }
+              ]
+            },
+            "swift": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "lint": {
+                      "type": "boolean",
+                      "description": "Run the language's linter."
+                    },
+                    "format": {
+                      "type": "boolean",
+                      "description": "Check the formatting with the language's formatter."
+                    }
+                  }
+                }
+              ]
+            },
+            "kotlin": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "lint": {
+                      "type": "boolean",
+                      "description": "Run the language's linter."
+                    },
+                    "format": {
+                      "type": "boolean",
+                      "description": "Check the formatting with the language's formatter."
+                    }
+                  }
+                }
+              ]
             }
           }
         }

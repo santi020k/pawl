@@ -5,9 +5,11 @@ import { installedVersion, satisfies } from './compat.ts'
 import { describe, detect, filePacks } from './detect.ts'
 import { BIOME_VERSION, biomeContextFor, biomeInstalled, checkBiomeConfig } from './engines/biome.ts'
 import { eslintInstalled, eslintPlanFor } from './engines/eslint.ts'
+import { toolStates } from './engines/languages.ts'
 import { checkOxlintConfig, OXLINT_CONFIG_FILE, oxlintContextFor, oxlintInstalled } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled } from './engines/prettier.ts'
 import { activeGuards } from './guards.ts'
+import { LANGUAGE_INFO, type Language } from './languages.ts'
 import { getPack } from './packs.ts'
 import { findConfigFile, loadPolicy } from './policy.ts'
 import { toolset } from './tools.ts'
@@ -57,6 +59,17 @@ export interface DoctorReport {
     }
   }
   compatibility: Compatibility[]
+  /** Projects in other languages, and whether pawl checks them. */
+  languages: {
+    language: Language
+    /** The folder, relative to the root. Empty for the root itself. */
+    dir: string
+    manifest: string
+    /** True when the policy names the language, so `pawl check` runs its tools. */
+    checked: boolean
+    /** The tools that run for it, and whether each is on the PATH. Empty when it is not checked. */
+    tools: Array<{ name: string; installed: boolean }>
+  }[]
   /** Packs the repo's files call for that are not switched on, and the command that adds them. */
   suggestedPacks: string[]
   guards: string[]
@@ -180,6 +193,22 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     for (const { rule, needs } of plan.notEnforced) problems.push(`Not enforced by ESLint: ${rule} (install ${needs}).`)
   }
 
+  const languages: DoctorReport['languages'] = detection.languages.map(({ language, dir, manifest }) => {
+    const chosen = policy.languages[language]
+
+    return { language, dir, manifest, checked: chosen !== undefined, tools: chosen ? toolStates(language, chosen) : [] }
+  })
+
+  for (const language of new Set(languages.flatMap(entry => (entry.checked ? [entry.language] : [])))) {
+    const missing = languages.find(entry => entry.language === language)?.tools.filter(tool => !tool.installed) ?? []
+
+    if (missing.length > 0) {
+      problems.push(
+        `${LANGUAGE_INFO[language].title} is in the policy, but ${missing.map(tool => tool.name).join(' and ')} ${missing.length === 1 ? 'is' : 'are'} not installed. ${LANGUAGE_INFO[language].install}`
+      )
+    }
+  }
+
   for (const entry of compat) {
     if (entry.ok || entry.installed === undefined) continue
 
@@ -219,6 +248,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     formatter: tools.formatter,
     engines,
     compatibility: compat,
+    languages,
     suggestedPacks: filePacks(detection).filter(pack => !named.has(pack)),
     guards: guards.map(guard => guard.name),
     // Biome runs the code patterns as rules of pawl's own. ESLint runs them as selectors. Oxlint cannot.
@@ -272,6 +302,17 @@ export const formatDoctor = (report: DoctorReport): string => {
         `          available for this project: ${engines.eslint.availablePacks.join(', ')} (pawl add ${engines.eslint.availablePacks.join(' ')})`
       )
     }
+  }
+
+  for (const entry of report.languages) {
+    const { title } = LANGUAGE_INFO[entry.language]
+    const where = `${entry.dir || 'the root'} (${entry.manifest})`
+    const missing = entry.tools.filter(tool => !tool.installed).map(tool => tool.name)
+    const checked = `checked with ${entry.tools.map(tool => tool.name).join(' and ')}${missing.length > 0 ? ` (${missing.join(' and ')} not installed)` : ''}`
+
+    lines.push(
+      `${`${title}:`.padEnd(10)}${where}, ${entry.checked ? checked : `not checked (add "${entry.language}" to languages in the policy, or check it with Quality)`}`
+    )
   }
 
   if (report.suggestedPacks.length > 0) {

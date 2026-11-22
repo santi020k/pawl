@@ -1,8 +1,25 @@
+import { type Language } from './languages.ts'
+
 /** Severity a rule runs at. */
 export type Level = 'off' | 'warn' | 'error'
 
 /** Engines pawl can compile a policy for. */
 export type EngineName = 'biome' | 'oxlint' | 'eslint'
+
+/**
+ * The tools of other languages, which pawl runs with the project's own config. `rustc` is the
+ * Rust compiler, whose warnings arrive with Clippy's.
+ */
+export type LanguageEngine = 'clippy' | 'rustc' | 'rustfmt' | 'swiftlint' | 'swiftformat' | 'swift-format' | 'ktlint'
+
+/** Which of a language's tools run: its linter, its formatter, or both. */
+export interface LanguageTools {
+  lint: boolean
+  format: boolean
+}
+
+/** The languages to check, by name, or with some of their tools turned off. */
+export type LanguagesInput = readonly Language[] | Partial<Record<Language, boolean | Partial<LanguageTools>>>
 
 export type EngineChoice = 'auto' | EngineName
 
@@ -48,8 +65,8 @@ export type Framework =
   | 'tanstack-start'
   | 'vite'
 
-/** What detection can be told to leave out: a framework, or Turborepo's rules. */
-export type Detectable = Framework | 'turbo'
+/** What detection can be told to leave out: a framework, Turborepo's rules, or another language. */
+export type Detectable = Framework | 'turbo' | Language
 
 /** Rule levels and options for some files only. */
 export interface OverrideInput {
@@ -112,6 +129,12 @@ export interface PolicyInput {
    * `false` turns detection off; `{ exclude }` leaves some technologies out.
    */
   detect?: boolean | { exclude?: readonly Detectable[] }
+  /**
+   * Other languages to check with their own tools: Rust with Clippy and rustfmt, Swift with
+   * SwiftLint and SwiftFormat or swift-format, Kotlin with ktlint. Off unless named, so a repo that already
+   * checks them another way, such as with Quality, does not check them twice.
+   */
+  languages?: LanguagesInput
 }
 
 /** An override, merged. */
@@ -152,6 +175,8 @@ export interface Policy {
   runtime: Runtime[] | undefined
   /** Detection on, off, or with some technologies left out. */
   detect: { enabled: boolean; exclude: Detectable[] }
+  /** The other languages pawl checks, and which of their tools run. */
+  languages: Partial<Record<Language, LanguageTools>>
   /** Undefined means warnings never fail the check. */
   maxWarnings: number | undefined
   lockViolations: LockViolation[]
@@ -165,7 +190,7 @@ export interface Finding {
   file: string
   line: number
   column: number
-  engine: EngineName | 'prettier' | 'pawl'
+  engine: EngineName | LanguageEngine | 'prettier' | 'pawl'
   /** The rule name as the engine reports it. */
   engineRule: string
   /** The neutral name when the rule is in the catalog, else `engine:rule`. */
@@ -193,6 +218,7 @@ export interface SetupIssue {
     | 'pack-missing'
     | 'locked-rule'
     | 'engine-failed'
+    | 'language-tool-missing'
     | 'since-unresolved'
   message: string
   fix?: string

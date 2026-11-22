@@ -17,6 +17,7 @@ import {
   runBiome
 } from './engines/biome.ts'
 import { eslintInstalled, runEslint } from './engines/eslint.ts'
+import { checkLanguages } from './engines/languages.ts'
 import { checkOxlintConfig, oxlintContextFor, oxlintInstalled, runOxlint } from './engines/oxlint.ts'
 import { checkPrettierConfig, prettierInstalled, runPrettier } from './engines/prettier.ts'
 import { EngineError } from './engines/run.ts'
@@ -25,7 +26,7 @@ import { ignoreMatcher } from './ignores.ts'
 import { checkMarkdown } from './markdown.ts'
 import { loadPolicy } from './policy.ts'
 import { toolset } from './tools.ts'
-import { type EngineName, type Finding, type Policy, type SetupIssue } from './types.ts'
+import { type EngineName, type Finding, type LanguageEngine, type Policy, type SetupIssue } from './types.ts'
 
 export interface CheckOptions {
   root: string
@@ -52,7 +53,8 @@ export interface CheckResult {
   baselined: number
   /** Problems with the setup itself. */
   setup: SetupIssue[]
-  engines: EngineName[]
+  /** The engines that ran, and the tools of the other languages the policy names. */
+  engines: (EngineName | LanguageEngine)[]
   /** The engine commands that ran, as a person would type them. */
   commands: string[]
   hasBaseline: boolean
@@ -77,7 +79,8 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'oxlint-missing',
   'oxlint-config-missing',
   'biome-config-missing',
-  'since-unresolved'
+  'since-unresolved',
+  'language-tool-missing'
 ]
 
 /** True when the result has more new warnings than its limit allows. */
@@ -149,8 +152,9 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const policy = options.policy ?? (await loadPolicy(root))
   const setup: SetupIssue[] = []
   const commands: string[] = []
-  const engines: EngineName[] = []
-  const ignored = ignoreMatcher(root, policy)
+  const engines: (EngineName | LanguageEngine)[] = []
+  const detection = detect(root, policy)
+  const ignored = ignoreMatcher(root, policy, detection.ignores)
   const scoped = options.files ?? scopedFiles(root, options, setup)
   const files = scoped?.filter(file => !ignored(file))
   const empty = files !== undefined && files.length === 0
@@ -165,7 +169,6 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
   const findings: Finding[] = []
   const tools = toolset(root, policy)
-  const detection = detect(root, policy)
   const scope = files ? { files } : {}
   const write = options.fix === true
 
@@ -252,7 +255,19 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   }
 
   // Pawl's own checks for the files no engine reads.
-  if (!empty) findings.push(...checkDocker({ root, policy, ...scope }), ...checkMarkdown({ root, policy, ...scope }))
+  if (!empty) {
+    const own = { root, policy, ignores: detection.ignores, ...scope }
+
+    findings.push(...checkDocker(own), ...checkMarkdown(own))
+
+    // The other languages the policy names, each with its own tools.
+    const languages = await checkLanguages({ root, policy, detection, ignored, write, ...scope })
+
+    engines.push(...languages.engines)
+    commands.push(...languages.commands)
+    setup.push(...languages.setup)
+    findings.push(...languages.findings)
+  }
 
   const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
   const limit = maxWarnings === undefined ? {} : { maxWarnings }
@@ -261,8 +276,12 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const kept = findings.filter(finding => !ignored(finding.file))
   const suppressions = empty ? [] : scanSuppressions(root, ignored, files)
 
+  // Part of the check did not run, so what it found is not the whole picture of the code.
+  const incomplete = setup.some(issue => BLOCKING.includes(issue.code))
+
   if (options.updateBaseline) {
-    writeBaseline(root, createBaseline(kept, suppressions))
+    // A baseline recorded without, say, Clippy would forget every Rust finding it allowed.
+    if (!incomplete) writeBaseline(root, createBaseline(kept, suppressions))
 
     return {
       findings: [],
@@ -287,8 +306,8 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     engines,
     commands,
     hasBaseline: baseline !== undefined,
-    // A partial run cannot tell whether findings elsewhere are gone.
-    canShrinkBaseline: files === undefined && canShrink,
+    // A partial run cannot tell whether findings elsewhere are gone, nor can a run where an engine failed.
+    canShrinkBaseline: files === undefined && !incomplete && canShrink,
     nothingToCheck: empty,
     ...limit
   }

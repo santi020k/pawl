@@ -2,7 +2,6 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { DEFAULT_STYLE } from '../../policy/merge.ts'
 import { expandBraces, makeIgnore } from '../../project/ignores.ts'
 import { type StyleOptions } from '../../types.ts'
 import { readJson, readJsonc } from '../../utils/json.ts'
@@ -130,8 +129,15 @@ const commasOf = (value: unknown): StyleOptions['trailingCommas'] | undefined =>
   return setting === 'never' || setting === 'none' ? 'none' : 'all'
 }
 
-/** Read the formatting style out of the old formatting rules, then out of a Prettier config when there is one. */
-export const styleFrom = (formatting: RuleMap, prettier: PrettierOptions | undefined): Partial<StyleOptions> => {
+/**
+ * Read the formatting style out of the old formatting rules, then out of a Prettier config when
+ * there is one. `base` is the style the policy starts from.
+ */
+export const styleFrom = (
+  formatting: RuleMap,
+  prettier: PrettierOptions | undefined,
+  base: StyleOptions
+): Partial<StyleOptions> => {
   const style: { [Key in keyof StyleOptions]?: StyleOptions[Key] | undefined } = {}
   const option = (short: string): unknown => first(formatting, short)?.options[0]
   const quotes = option('quotes')
@@ -164,10 +170,8 @@ export const styleFrom = (formatting: RuleMap, prettier: PrettierOptions | undef
   // A wider line than Biome formats to means no limit in practice, and the policy refuses one.
   if (style.lineWidth !== undefined) style.lineWidth = Math.min(style.lineWidth, WIDEST_LINE)
 
-  // Only what differs from the standard is worth writing down.
+  // Only what differs from what the policy starts from is worth writing down.
   return Object.fromEntries(
-    Object.entries(style).filter(
-      ([key, value]) => value !== undefined && value !== DEFAULT_STYLE[key as keyof StyleOptions]
-    )
+    Object.entries(style).filter(([key, value]) => value !== undefined && value !== base[key as keyof StyleOptions])
   ) as Partial<StyleOptions>
 }

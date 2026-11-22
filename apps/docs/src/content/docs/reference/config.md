@@ -182,7 +182,7 @@ Skip what the root `.gitignore` lists, including its `!` lines, its character cl
 
 ### defaultIgnores
 
-Skip what no project wants checked: build output and caches (`dist`, `build`, `coverage`, `.turbo`, `.next`, `.open-next`, `.astro`, `.nuxt`, `.svelte-kit`, `.output`, `.vercel`, `.wrangler`), test reports (`playwright-report`, `test-results`), `*.tsbuildinfo`, lockfiles, `.changeset`, the folders of AI coding tools (`.agent`, `.agents`, `.aider*`, `.claude`, `.clinerules`, `.codex`, `.copilot`, `.cursor`, `.gemini`, `.kiro`, `.opencode`, `.roo`, `.windsurf`) and generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`). `false` checks them. `node_modules`, `.git` and `.pawl` are always skipped.
+Skip what no project wants checked: build output and caches (`dist`, `build`, `coverage`, `.turbo`, `.next`, `.open-next`, `.astro`, `.nuxt`, `.svelte-kit`, `.output`, `.vercel`, `.wrangler`, `.build`, `.swiftpm`, `.pnpm-store`), test reports (`playwright-report`, `test-results`), `*.tsbuildinfo`, lockfiles, `.changeset`, the folders of AI coding tools (`.agent`, `.agents`, `.aider*`, `.claude`, `.clinerules`, `.codex`, `.copilot`, `.cursor`, `.gemini`, `.kiro`, `.opencode`, `.roo`, `.windsurf`), generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`, `next-env.d.ts`, `worker-configuration.d.ts`, `cloudflare-env.d.ts`) and `CHANGELOG.md`, which the release tool writes. `false` checks them. `node_modules`, `.git` and `.pawl` are always skipped.
 
 ### runtime
 

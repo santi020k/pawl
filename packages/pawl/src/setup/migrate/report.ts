@@ -36,6 +36,18 @@ export const reportFile = (plan: Omit<MigratePlan, 'actions'>, backup: string | 
         ]
       : ['None.']),
     '',
+    ...(plan.policyKept.length > 0
+      ? [
+          "## Kept at the policy's level",
+          '',
+          'The old config had these looser. The policy this repo now extends decides their level, so they are not in the policy file. Unless the policy locks a rule, you can still loosen it under `rules`.',
+          '',
+          '| Rule | Policy | Old config |',
+          '| --- | --- | --- |',
+          ...plan.policyKept.map(change => `| \`${change.rule}\` | ${change.standard} | ${change.kept} |`),
+          ''
+        ]
+      : []),
     '## Options Biome does not take',
     '',
     'The policy carries the options of these rules for ESLint and Oxlint. Where Biome is the linter, it enforces them with its own options.',
@@ -75,6 +87,9 @@ export const describeMigration = (plan: MigratePlan): string[] => {
       plan.changed.length,
       `kept at the old level (${stricter} stricter than the standard, ${plan.changed.length - stricter} looser)`
     ],
+    ...(plan.policyKept.length > 0
+      ? [[plan.policyKept.length, "looser in the old config, now at the policy's level"] satisfies [number, string]]
+      : []),
     [plan.formatting.length, 'formatting rules, now done by the formatter'],
     [plan.importSorting.length, 'import ordering rules, now done by import sorting'],
     [plan.added.length, 'rules the standard adds (their existing findings go to the baseline)']

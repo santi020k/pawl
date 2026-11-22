@@ -20,6 +20,8 @@ export interface Pack {
   when: string[]
   /** Where the plugin keeps its recommended rules or flat config. */
   preset?: string[]
+  /** More of the plugin's presets, laid over the first in this order. */
+  morePresets?: string[][]
   /** The preset is a flat config that brings its own parser or file patterns, so it is used whole. */
   spread?: boolean
   /** Limit the pack's own rules to these files. */
@@ -64,16 +66,21 @@ export const PACKS: readonly Pack[] = [
     range: '>=8.0.0',
     prefix: '@typescript-eslint',
     when: [],
-    preset: ['configs', 'recommended'],
+    // The strict and stylistic presets with type information: what a codebase that bans `any` needs.
+    preset: ['configs', 'strictTypeChecked'],
+    morePresets: [['configs', 'stylisticTypeChecked']],
     files: ['**/*.{ts,mts,cts,tsx}'],
     auto: 'linter-ts',
     typeAware: true,
     rules: {
+      '@typescript-eslint/no-dynamic-delete': 'warn',
       '@typescript-eslint/no-unnecessary-condition': 'off',
       '@typescript-eslint/no-unsafe-argument': 'warn',
       '@typescript-eslint/no-unsafe-assignment': 'error',
       '@typescript-eslint/no-unsafe-call': 'error',
       '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+      '@typescript-eslint/prefer-nullish-coalescing': 'warn',
       '@typescript-eslint/restrict-template-expressions': 'warn',
       '@typescript-eslint/unbound-method': 'warn'
     }

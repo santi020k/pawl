@@ -66,11 +66,12 @@ head: [{ tag: title, content: "CLI reference: every pawl command and option | pa
 
 ## Options for migrate
 
-`migrate` takes the options for `init`, and one of its own.
+`migrate` takes the options for `init`, and two of its own.
 
-| Option          | Meaning                                                 |
-| --------------- | ------------------------------------------------------- |
-| `--keep-config` | Write the policy and leave the ESLint config file alone |
+| Option               | Meaning                                                                     |
+| -------------------- | --------------------------------------------------------------------------- |
+| `--keep-config`      | Write the policy and leave the ESLint config file alone                     |
+| `--extends <policy>` | Build on a policy package or file, and carry over only what differs from it |
 
 ## Exit codes
 

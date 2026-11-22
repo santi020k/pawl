@@ -1,14 +1,14 @@
 import { readFileSync, renameSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { getPack, PACKS } from '../../catalog/packs.ts'
-import { getRule, type RuleDef } from '../../catalog/rules.ts'
+import { canonicalName, defaultLevel, getRule, type RuleDef } from '../../catalog/rules.ts'
 import { importFromProject } from '../../engines/eslint/load.ts'
 import { eslintPlan } from '../../engines/eslint/plan.ts'
 import { effectiveRules, type RuleContext } from '../../policy/levels.ts'
-import { findConfigFile, resolvePolicy } from '../../policy/load.ts'
+import { findConfigFile, resolvePolicy, resolveSpecifier } from '../../policy/load.ts'
 import { ESLINT_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
 import { allTechnologies, type Detection, detect } from '../../project/detect.ts'
-import { type Level, type PolicyInput } from '../../types.ts'
+import { type Level, type Policy, type PolicyInput } from '../../types.ts'
 import { writeText } from '../../utils/fs.ts'
 import { sameJson } from '../../utils/json.ts'
 import { plural } from '../../utils/text.ts'
@@ -30,6 +30,7 @@ import {
   readLegacyIgnores,
   resolveSide,
   type Side,
+  sharedConfigRoots,
   splitName
 } from './read.ts'
 import { reportFile } from './report.ts'
@@ -119,51 +120,72 @@ interface Migration {
   eslint: EslintClasses
   old: Side
   policyPath: string
+  /** What every policy of this migration starts from: nothing, or the policy it extends. */
+  base: PolicyInput
+  /** The policy it extends, resolved, or the standard when it extends none. */
+  basePolicy: Policy
+  /** The policy it extends, as it was asked for. */
+  parent: string | undefined
+  /** The folders of the shared configs the old setup got its plugins from. */
+  pluginRoots: readonly string[]
 }
 
-/** Resolve what pawl would hand ESLint for a policy, were ESLint the only linter. */
-const pawlSide = async (
-  { root, detection, context, eslint, old, policyPath }: Migration,
-  input: PolicyInput
-): Promise<{ side: Side; notEnforced: MigratePlan['notEnforced'] }> => {
-  const plan = await eslintPlan({
+/** What pawl would hand ESLint for a policy, were ESLint the only linter, loading plugins from these folders too. */
+const planFor = async (
+  { root, detection, context, policyPath }: Migration,
+  input: PolicyInput,
+  pluginRoots: readonly string[]
+): ReturnType<typeof eslintPlan> =>
+  eslintPlan({
     root,
     policy: await resolvePolicy(input, policyPath),
     biomeActive: false,
     typescript: detection.typescript,
     ...context,
-    dependencies: detection.dependencies
+    dependencies: detection.dependencies,
+    pluginRoots
   })
+
+/** Resolve the rules of a policy with the plugins the old config had, its shared configs' own included. */
+const pawlSide = async (migration: Migration, input: PolicyInput): Promise<Side> => {
+  const { root, eslint, old } = migration
+  const plan = await planFor(migration, input, migration.pluginRoots)
 
   if (!eslint.Flat) throw new Error(`ESLint ${eslint.major} cannot load a flat config`)
 
   const flat = new eslint.Flat({ cwd: root, overrideConfigFile: true, overrideConfig: plan.config })
 
-  return {
-    side: await resolveSide(
-      flat,
-      old.samples.map(file => [file]),
-      eslint.core
-    ),
-    notEnforced: plan.notEnforced
-  }
+  return resolveSide(
+    flat,
+    old.samples.map(file => [file]),
+    eslint.core
+  )
 }
 
 /** A pack for every plugin the old config turns rules on from, and the ones the policy has to name. */
-const choosePacks = async ({ root, detection, old }: Migration): Promise<{ packs: string[]; namedPacks: string[] }> => {
+const choosePacks = async ({
+  root,
+  detection,
+  old,
+  basePolicy,
+  pluginRoots
+}: Migration): Promise<{ packs: string[]; namedPacks: string[] }> => {
   // Packs: one for every plugin the old config has rules on from.
   const prefixes = new Set(on(old.rules).map(name => splitName(name).prefix))
   const packs: string[] = []
   const namedPacks: string[] = []
 
   for (const pack of PACKS.filter(candidate => prefixes.has(candidate.prefix))) {
-    const fit = await packFit(root, pack, old.rules)
+    const fit = await packFit(root, pluginRoots, pack, old.rules)
 
     if (fit === 'none') continue
 
     const entry = fit === 'recommended' ? `${pack.name}/recommended` : pack.name
 
     packs.push(entry)
+
+    // The policy it extends already names this one.
+    if (basePolicy.packs.includes(entry)) continue
 
     // A pack whose trigger the project depends on switches on by itself and needs no line in the policy.
     if (entry !== pack.name || !pack.when.some(name => detection.dependencies.includes(name))) namedPacks.push(entry)
@@ -175,18 +197,46 @@ const choosePacks = async ({ root, detection, old }: Migration): Promise<{ packs
 interface Levels {
   rules: Record<string, Level>
   changed: RuleChange[]
+  policyKept: RuleChange[]
   importSorting: string[]
   added: string[]
   same: number
 }
 
-/** The rule levels the policy carries over: the ones that differ from the standard. */
-const compareLevels = (old: Side, standard: Side, comparable: boolean, effective: Map<string, Level>): Levels => {
+/**
+ * The rule levels the policy carries over: the ones that differ from the standard. With a policy to
+ * extend (`onto`), a level the old config had looser than that policy is not carried: it is listed.
+ */
+const compareLevels = (
+  old: Side,
+  standard: Side,
+  comparable: boolean,
+  effective: Map<string, Level>,
+  onto: Policy | undefined
+): Levels => {
   const rules: Record<string, Level> = {}
   const changed: RuleChange[] = []
+  const policyKept: RuleChange[] = []
   const importSorting: string[] = []
   const catalog = new Map<string, Level>()
   let same = 0
+  /** Carry a level that differs, unless there is a policy to extend and the old level is looser than its level. */
+  const keep = (rule: string, standardLevel: Level, kept: Level): void => {
+    if (onto) {
+      const name = canonicalName(rule)
+      // The floor of a locked rule, as pawl works it out when it merges the policies.
+      const floor = onto.locked.includes(name) ? (onto.rules[name] ?? defaultLevel(name, onto.strict)) : standardLevel
+
+      if (rank(kept) < rank(floor)) {
+        policyKept.push({ rule, standard: floor, kept })
+
+        return
+      }
+    }
+
+    rules[rule] = kept
+    changed.push({ rule, standard: standardLevel, kept })
+  }
 
   for (const [name, { level }] of old.rules) {
     if (IMPORT_SORTING.has(name)) {
@@ -214,8 +264,7 @@ const compareLevels = (old: Side, standard: Side, comparable: boolean, effective
       continue
     }
 
-    rules[name] = level
-    changed.push({ rule: name, standard: pawlLevel, kept: level })
+    keep(name, pawlLevel, level)
   }
 
   for (const [name, level] of catalog) {
@@ -227,8 +276,7 @@ const compareLevels = (old: Side, standard: Side, comparable: boolean, effective
       continue
     }
 
-    rules[name] = level
-    changed.push({ rule: name, standard: pawlLevel, kept: level })
+    keep(name, pawlLevel, level)
   }
 
   const added = [
@@ -239,8 +287,9 @@ const compareLevels = (old: Side, standard: Side, comparable: boolean, effective
   ].sort()
 
   changed.sort((a, b) => a.rule.localeCompare(b.rule))
+  policyKept.sort((a, b) => a.rule.localeCompare(b.rule))
 
-  return { rules, changed, importSorting: importSorting.sort(), added, same }
+  return { rules, changed, policyKept, importSorting: importSorting.sort(), added, same }
 }
 
 /** With the levels settled, the rules that cannot run and the options that differ from what pawl would set. */
@@ -257,14 +306,17 @@ const compareOptions = async (
 
   try {
     const final = await pawlSide(migration, { ...policy, packs: [...packs] })
+    // What cannot run is asked of the project alone. A plugin that only the old shared config
+    // brings is gone once that config is, so the project has to install it.
+    const alone = await planFor(migration, { ...policy, packs: [...packs] }, [])
 
     // Only what the migration brought in: the standard's own gaps are for "pawl doctor" to report.
     const packTitles = new Set(packs.map(entry => `The ${getPack(entry)?.title} pack`))
 
-    notEnforced = final.notEnforced.filter(item => item.rule in rules || packTitles.has(item.rule))
+    notEnforced = alone.notEnforced.filter(item => item.rule in rules || packTitles.has(item.rule))
 
     for (const [name, resolved] of old.rules) {
-      const mine = final.side.rules.get(name)
+      const mine = final.rules.get(name)
       const def = catalogRule(name)
 
       if (resolved.level === 'off' || !mine || mine.level === 'off') continue
@@ -324,8 +376,37 @@ const planEslintFile = (
   return { actions, backup }
 }
 
+/** The package a specifier names: `@acme/policy/strict` is in `@acme/policy`. */
+const packageOf = (specifier: string): string =>
+  specifier
+    .split('/')
+    .slice(0, specifier.startsWith('@') ? 2 : 1)
+    .join('/')
+
+/** The package of the policy to extend, having made sure the project can load it. Undefined for a path. */
+const policyPackageOf = (parent: string | undefined, policyPath: string): string | undefined => {
+  if (parent === undefined || /^[./]/.test(parent)) return undefined
+
+  const name = packageOf(parent)
+
+  try {
+    resolveSpecifier(parent, policyPath)
+  } catch (cause) {
+    throw new Error(
+      `Cannot find the policy "${parent}" from this project. Install ${name} here first, then migrate again.`,
+      { cause }
+    )
+  }
+
+  return name
+}
+
 /** Read an existing ESLint flat config and work out the pawl policy that keeps its rules. */
-export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions): Promise<MigratePlan> => {
+export const planMigrate = async ({
+  root,
+  keepConfig = false,
+  extends: parent
+}: MigrateOptions): Promise<MigratePlan> => {
   const source = findSource(root)
   const eslint = await loadEslint(root, source)
   const detection = detect(root)
@@ -340,13 +421,27 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
 
   const notes: string[] = []
   const policyPath = join(root, 'pawl.config.ts')
-  const migration: Migration = { root, detection, context, eslint, old, policyPath }
+  const base: PolicyInput = parent === undefined ? {} : { extends: parent }
+  const policyPackage = policyPackageOf(parent, policyPath)
+  const basePolicy = await resolvePolicy(base, policyPath)
+  const migration: Migration = {
+    root,
+    detection,
+    context,
+    eslint,
+    old,
+    policyPath,
+    base,
+    basePolicy,
+    parent,
+    pluginRoots: sharedConfigRoots(root)
+  }
   const { packs, namedPacks } = await choosePacks(migration)
   let standard: Side = { rules: new Map(), formatting: new Map(), samples: [] }
   let comparable = true
 
   try {
-    standard = (await pawlSide(migration, { packs })).side
+    standard = await pawlSide(migration, { ...base, packs })
   } catch (cause) {
     comparable = false
     notes.push(
@@ -354,12 +449,18 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
     )
   }
 
-  const effective = effectiveRules(await resolvePolicy({ packs }, policyPath), context)
-  const { rules, changed, importSorting, added, same } = compareLevels(old, standard, comparable, effective)
+  const effective = effectiveRules(await resolvePolicy({ ...base, packs }, policyPath), context)
+  const { rules, changed, policyKept, importSorting, added, same } = compareLevels(
+    old,
+    standard,
+    comparable,
+    effective,
+    parent === undefined ? undefined : basePolicy
+  )
   const configured = readPrettier(root)
   // Prettier's CLI reads .editorconfig for what its own config leaves out.
   const prettier = configured && { ...readEditorconfig(root), ...configured }
-  const style = styleFrom(old.formatting, prettier)
+  const style = styleFrom(old.formatting, prettier, basePolicy.style)
 
   if (detection.tools.prettier && !prettier) {
     notes.push(
@@ -368,8 +469,11 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
   }
 
   const read = source.legacy ? readLegacyIgnores(root) : await readIgnores(source.path)
-  const ignore = read && policyIgnores(root, read, notes)
+  /** The policy it extends does not skip this already. */
+  const fresh = (pattern: string): boolean => !basePolicy.ignore.includes(pattern)
+  const ignore = read && policyIgnores(root, read.filter(fresh), notes).filter(fresh)
   const policy: PolicyInput = {
+    ...base,
     ...(namedPacks.length > 0 ? { packs: namedPacks } : {}),
     ...(Object.keys(style).length > 0 ? { style } : {}),
     ...(ignore && ignore.length > 0 ? { ignore } : {}),
@@ -398,6 +502,8 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
     same,
     changed,
     added,
+    policyKept,
+    ...(policyPackage ? { policyPackage } : {}),
     formatting,
     importSorting,
     packs,
@@ -405,6 +511,7 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
     notEnforced
   }
   const carried = [
+    parent === undefined ? '' : `extends ${parent}`,
     changed.length > 0 ? plural(changed.length, 'rule level') : '',
     policy.options ? `options for ${plural(Object.keys(policy.options).length, 'rule')}` : '',
     namedPacks.length > 0 ? plural(namedPacks.length, 'pack') : '',
@@ -431,6 +538,11 @@ export const planMigrate = async ({ root, keepConfig = false }: MigrateOptions):
   if (biomeOptions.length > 0)
     notes.push(
       `${plural(biomeOptions.length, 'rule')} had options that only ESLint and Oxlint take. Where Biome is the linter it uses its own. See ${MIGRATION_REPORT}.`
+    )
+
+  if (policyKept.length > 0)
+    notes.push(
+      `${plural(policyKept.length, 'rule')} the old config had looser ${policyKept.length === 1 ? 'stays' : 'stay'} at the level ${parent} gives ${policyKept.length === 1 ? 'it' : 'them'}. See ${MIGRATION_REPORT}.`
     )
 
   if (notEnforced.length > 0)

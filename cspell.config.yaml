@@ -13,6 +13,7 @@ words:
   - classlist
   - clinerules
   - cntrl
+  - codegen
   - commitprompt
   - Containerfile
   - darraghor
@@ -58,6 +59,7 @@ words:
   - Slidev
   - spinbutton
   - stylesheet
+  - swiftpm
   - tabindex
   - textnodes
   - Titlebar

@@ -12,8 +12,9 @@ import { isRecord } from '../../utils/json.ts'
 import { toList } from '../../utils/list.ts'
 import { oxlintCovers, tsgolintInstalled } from '../oxlint/config.ts'
 import {
+  follow,
   importFromProject,
-  importPlugin,
+  importVia,
   type Loaded,
   needs,
   pluginPackage,
@@ -77,6 +78,11 @@ export interface EslintPlanOptions {
   dependencies?: readonly string[]
   /** Where the code runs, for the globals ESLint knows. Node and the browser when not given. */
   runtimes?: readonly Runtime[]
+  /**
+   * More folders to look for a plugin in when the project root does not have it. `migrate` names the
+   * shared configs the old setup got its plugins from, so the comparison sees the same plugins.
+   */
+  pluginRoots?: readonly string[]
 }
 
 const splitRule = (name: string): string | undefined => {
@@ -135,14 +141,14 @@ interface Build {
 /** Load the plugin of every pack the project wants, and start each pack from its preset. */
 const loadPacks = async (build: Build): Promise<void> => {
   const { options, ts, notEnforced, availablePacks, activePacks, coreRules, tsRules, packRules, packBlocks } = build
-  const { root, policy } = options
+  const { root, policy, pluginRoots = [] } = options
 
   for (const pack of PACKS) {
     const reason = wants(pack, options)
 
     if (!reason) continue
 
-    const loaded = pack.name === 'typescript' ? ts : await importPlugin(root, pack.plugin)
+    const loaded = pack.name === 'typescript' ? ts : await importVia(root, pluginRoots, pack.plugin)
 
     if (!loaded.module) {
       if (reason === 'suggested' && !loaded.error) availablePacks.push(pack.name)
@@ -181,7 +187,7 @@ const loadPacks = async (build: Build): Promise<void> => {
 const placeRules = async (build: Build): Promise<void> => {
   const { options, covered, ts, plugins, coreRules, pluginRules, tsRules, packRules, packBlocks } = build
   const { coveredByBiome, notEnforced } = build
-  const { root, policy, biomeActive, typescript, technologies = [] } = options
+  const { root, policy, biomeActive, typescript, technologies = [], pluginRoots = [] } = options
 
   for (const [name, level] of effectiveRules(policy, { typescript, technologies })) {
     // Names another engine runs, and pawl's own rules, are not ESLint's to run.
@@ -205,6 +211,10 @@ const placeRules = async (build: Build): Promise<void> => {
     )
     const holders = withPrefix.filter(rules => eslintName in rules)
     const inPack = holders.length > 0 ? holders : withPrefix.slice(0, 1)
+
+    // A rule the catalog holds back because Biome's version is unstable is stable in its ESLint
+    // plugin, so the level a pack's preset gave it stands unless the policy sets one.
+    if (level === 'off' && def?.nursery === true && policy.rules[name] === undefined) continue
 
     // A rule that is off only needs saying where a preset may have turned it on.
     if (level === 'off' && holders.length === 0 && !(eslintName in coreRules) && !(eslintName in tsRules)) continue
@@ -237,7 +247,7 @@ const placeRules = async (build: Build): Promise<void> => {
     if (policy.rules[name] === undefined && PACKS.some(pack => pack.prefix === prefix && pack.withPack === true))
       continue
 
-    if (!plugins.has(prefix)) plugins.set(prefix, await importFromProject(root, pluginPackage(prefix)))
+    if (!plugins.has(prefix)) plugins.set(prefix, await importVia(root, pluginRoots, pluginPackage(prefix)))
 
     const loaded = plugins.get(prefix) as Loaded
 
@@ -375,10 +385,7 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced }: Build): Fl
         rules
       })
     } else {
-      const parser = (pack.parser ?? []).reduce<unknown>(
-        (value, key) => (isRecord(value) ? value[key] : undefined),
-        plugin
-      )
+      const parser = follow(plugin, pack.parser ?? [])
 
       config.push({
         name: `pawl/pack/${pack.name}`,
@@ -397,7 +404,7 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced }: Build): Fl
 /** The policy's overrides. They go last, so they win over the base rules and the packs for the files they name. */
 const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
   const { options, covered, ts, plugins, packBlocks, notEnforced } = build
-  const { root, policy, typescript, technologies = [] } = options
+  const { root, policy, typescript, technologies = [], pluginRoots = [] } = options
   const config: FlatConfig[] = []
   const tseslint = ts.module
   const loadedPlugins = new Map<string, unknown>([
@@ -423,7 +430,7 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
 
       if (prefix) {
         if (!loadedPlugins.has(prefix)) {
-          const loaded = await importFromProject(root, pluginPackage(prefix))
+          const loaded = await importVia(root, pluginRoots, pluginPackage(prefix))
 
           if (!loaded.module) {
             notEnforced.push({ rule: name, needs: needs(pluginPackage(prefix), loaded) })
@@ -476,7 +483,7 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
 /** Work out the ESLint configuration for a policy, and what it cannot cover. */
 export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan> => {
   const { root, biomeActive, typescript } = options
-  const ts: Loaded = typescript ? await importFromProject(root, 'typescript-eslint') : {}
+  const ts: Loaded = typescript ? await importVia(root, options.pluginRoots ?? [], 'typescript-eslint') : {}
   const build: Build = {
     options,
     covered: name =>

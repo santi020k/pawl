@@ -45,6 +45,7 @@ Options for init
 
 Options for migrate (it also takes the options for init)
   --keep-config         Write the policy and leave the ESLint config file alone
+  --extends <policy>    Build on a policy package or file, and carry over only what differs from it
 
   -h, --help            Show this help
   -v, --version         Show the version
@@ -69,6 +70,7 @@ export const OPTIONS = {
   'no-editor': { type: 'boolean' },
   'no-install': { type: 'boolean' },
   'keep-config': { type: 'boolean' },
+  extends: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'v' }
 } as const

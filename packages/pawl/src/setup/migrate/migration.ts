@@ -10,6 +10,8 @@ export interface MigrateOptions {
   root: string
   /** Leave the ESLint config file as it is and only write the policy. */
   keepConfig?: boolean
+  /** A policy to build on: a package name or a relative path. Only what differs from it is carried over. */
+  extends?: string
 }
 
 export interface RuleChange {
@@ -34,6 +36,14 @@ export interface MigratePlan {
   same: number
   /** Rules whose level the policy carries over because it differs from the standard. */
   changed: RuleChange[]
+  /**
+   * Rules the old config had looser than the policy this one extends. Moving onto a policy means
+   * taking its levels, so they stay at the policy's level (`standard`) and the old level (`kept`)
+   * is not written. A stricter level is still carried over.
+   */
+  policyKept: RuleChange[]
+  /** The package of the policy this one extends, for the install. Not set for a path. */
+  policyPackage?: string
   /** Rules that are on in the standard and its packs and were not in the old config. */
   added: string[]
   /** Formatting rules. The formatter does their job. */

@@ -1,10 +1,10 @@
 /** Reading an ESLint config the way ESLint resolves it: the rules it turns on for sample files, and its ignores. */
 
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { type Pack } from '../../catalog/packs.ts'
-import { importPlugin, packPreset, pluginPreset } from '../../engines/eslint/load.ts'
+import { importVia, packPreset, pluginPreset } from '../../engines/eslint/load.ts'
 import { ESLINT_LEGACY_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
 import { listFiles } from '../../project/files.ts'
 import { ALWAYS_IGNORED, DEFAULT_IGNORES, literalBrackets, makeIgnore, WALK_SKIP } from '../../project/ignores.ts'
@@ -196,9 +196,46 @@ export const on = (map: RuleMap): string[] => [...map].flatMap(([name, { level }
 export const first = (rules: RuleMap, short: string): Resolved | undefined =>
   [...rules].find(([name, { level }]) => level !== 'off' && splitName(name).short === short)?.[1]
 
-/** The folders the old config skips everywhere, read from its global `ignores`. */
+/** The defaults with a wildcard, such as `*.tsbuildinfo`, as tests for one file or folder name. */
+const COVERED_GLOBS = [...COVERED]
+  .filter(name => name.includes('*'))
+  .map(name => new RegExp(`^${name.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*')}$`))
+
+/**
+ * Whether pawl already skips what an old ignore pattern names. A default such as `dist` matches at
+ * any depth, so a pattern with that name as one of its segments adds nothing: `packages/a/**\/dist`,
+ * one copy for each workspace, is the usual case.
+ */
+const isCovered = (pattern: string): boolean =>
+  pattern.split('/').some(segment => COVERED.has(segment) || COVERED_GLOBS.some(glob => glob.test(segment)))
+
+/**
+ * The old ignore patterns worth writing down: each one once, without those the defaults cover, and
+ * without a copy for one workspace (`apps/web/**\/generated`) of a pattern for every folder (`**\/generated`).
+ */
+export const keptIgnores = (patterns: readonly string[]): string[] => {
+  const kept = [
+    ...new Set(
+      patterns
+        .map(pattern => pattern.replace(/\/\*\*(\/\*)?$/, '').replace(/\/$/, ''))
+        .filter(pattern => pattern.length > 0 && !isCovered(pattern))
+    )
+  ]
+  const everywhere = new Set(kept.filter(pattern => pattern.startsWith('**/')))
+
+  return kept.filter(pattern => {
+    const at = pattern.indexOf('/**/')
+
+    return at <= 0 || !everywhere.has(pattern.slice(at + 1))
+  })
+}
+
+/**
+ * The folders the old config skips everywhere, read from its global `ignores`. Node imports a
+ * TypeScript config by itself as long as its syntax is erasable; one it cannot import is not read.
+ */
 export const readIgnores = async (file: string): Promise<string[] | undefined> => {
-  if (!/\.[cm]?js$/.test(file)) return undefined
+  if (!/\.[cm]?[jt]s$/.test(file)) return undefined
 
   try {
     const loaded = (await import(pathToFileURL(file).href)) as { default?: unknown }
@@ -213,16 +250,80 @@ export const readIgnores = async (file: string): Promise<string[] | undefined> =
       .flatMap(entry => entry.ignores as unknown[])
       .filter((pattern): pattern is string => typeof pattern === 'string' && !pattern.startsWith('!'))
 
-    return [
-      ...new Set(
-        patterns
-          .map(pattern => pattern.replace(/\/\*\*(\/\*)?$/, '').replace(/\/$/, ''))
-          .filter(pattern => pattern.length > 0 && !COVERED.has(pattern.replace(/^\*\*\//, '')))
-      )
-    ]
+    return keptIgnores(patterns)
   } catch {
     return undefined
   }
+}
+
+interface Manifest {
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
+}
+
+/** Package names that are an ESLint shared config or plugin. */
+const LINT_PACKAGE = /eslint-(config|plugin)|^typescript-eslint$/
+
+/** How many shared configs deep to look: a config that extends a config that brings the plugin, and a little more. */
+const ROOT_DEPTH = 4
+
+/** The real folder of a package as a folder sees it: its own node_modules first, then each one above. */
+const packageDir = (name: string, from: string): string | undefined => {
+  let dir = from
+
+  while (!existsSync(join(dir, 'node_modules', name, 'package.json'))) {
+    const parent = dirname(dir)
+
+    if (parent === dir) return undefined
+
+    dir = parent
+  }
+
+  try {
+    // pnpm links a package into node_modules. Its own dependencies sit beside the real folder.
+    return realpathSync(join(dir, 'node_modules', name))
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The folders of the shared configs and plugins the old setup lints with, nearest first. A project
+ * that takes its rules from a shared config often does not list the plugins: they are that config's
+ * dependencies, and with pnpm only the config can load them. The comparison looks there too.
+ */
+export const sharedConfigRoots = (root: string): string[] => {
+  const found = new Set<string>()
+  let level = [root]
+
+  for (let depth = 0; depth < ROOT_DEPTH && level.length > 0; depth++) {
+    const next: string[] = []
+
+    for (const dir of level) {
+      const manifest = readJson<Manifest>(join(dir, 'package.json'))
+      const names = Object.keys({
+        ...manifest?.dependencies,
+        ...(depth === 0 ? manifest?.devDependencies : {}),
+        ...manifest?.peerDependencies,
+        ...manifest?.optionalDependencies
+      })
+
+      for (const name of names.filter(candidate => LINT_PACKAGE.test(candidate))) {
+        const target = packageDir(name, dir)
+
+        if (!target || found.has(target)) continue
+
+        found.add(target)
+        next.push(target)
+      }
+    }
+
+    level = next
+  }
+
+  return [...found]
 }
 
 /** How many rules of a preset the old config has to share, at the same level, to count as following it. */
@@ -232,13 +333,18 @@ const PRESET_MATCHES = 20
  * How the old config relates to a pack whose plugin it uses: the pack as it is (`plain`), the pack
  * started from the plugin's own recommended preset (`recommended`), or not at all (`none`).
  */
-export const packFit = async (root: string, pack: Pack, rules: RuleMap): Promise<'plain' | 'recommended' | 'none'> => {
+export const packFit = async (
+  root: string,
+  pluginRoots: readonly string[],
+  pack: Pack,
+  rules: RuleMap
+): Promise<'plain' | 'recommended' | 'none'> => {
   // A base pack brings a whole preset with it. A few rules of its plugin do not call for that.
   const isBase = pack.auto !== undefined
 
   if (pack.preset && !isBase) return 'plain'
 
-  const plugin = (await importPlugin(root, pack.plugin)).module
+  const plugin = (await importVia(root, pluginRoots, pack.plugin)).module
 
   if (!plugin) return isBase ? 'none' : 'plain'
 
@@ -269,7 +375,7 @@ export const readLegacyIgnores = (root: string): string[] => {
   return readFileSync(file, 'utf8')
     .split(/\r?\n/)
     .map(line => line.trim().replace(/^\//, '').replace(/\/$/, ''))
-    .filter(line => line.length > 0 && !line.startsWith('#') && !line.startsWith('!') && !COVERED.has(line))
+    .filter(line => line.length > 0 && !line.startsWith('#') && !line.startsWith('!') && !isCovered(line))
 }
 
 /** How many patterns one ignore pattern of the old config may be listed out into. */

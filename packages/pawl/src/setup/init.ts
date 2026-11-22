@@ -44,6 +44,8 @@ export interface InitOptions {
   formatter?: FormatterName
   /** Optional packs to switch on. Their ESLint plugins are added to the install. */
   packs?: readonly string[]
+  /** More packages the policy needs, such as the policy package it extends. Added to the install. */
+  packages?: readonly string[]
   /**
    * The caller will run the install command. On by default.
    * When off, pawl is written into devDependencies for the next install to pick up.
@@ -142,13 +144,14 @@ const planEslintConfig = (
   return undefined
 }
 
-/** What has to be installed: pawl, the chosen tools, and the plugin of every requested pack, less what is listed. */
+/** What has to be installed: pawl, the chosen tools, the plugin of every requested pack and `more`, less what is listed. */
 const missingPackages = (
   root: string,
   choice: Choice,
   detection: Detection,
   packs: readonly string[],
-  present: ReadonlySet<string>
+  present: ReadonlySet<string>,
+  more: readonly string[] = []
 ): string[] => {
   if (!existsSync(join(root, 'package.json'))) return []
 
@@ -160,7 +163,8 @@ const missingPackages = (
     ...(choice.eslint ? ['eslint'] : []),
     ...(linter === 'eslint' ? ['@eslint/js', ...(detection.typescript ? ['typescript-eslint'] : [])] : []),
     ...(formatter === 'prettier' ? ['prettier'] : []),
-    ...packs.flatMap(name => getPack(name)?.plugin ?? [])
+    ...packs.flatMap(name => getPack(name)?.plugin ?? []),
+    ...more
   ]
 
   return [...new Set(wanted)].filter(name => !present.has(name))
@@ -239,7 +243,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   }
 
   const present = listed(root)
-  const packages = missingPackages(root, choice, detection, requested, present)
+  const packages = missingPackages(root, choice, detection, requested, present, options.packages)
   const suggestion = packSuggestions(detection, policy, requested, present)
 
   if (suggestion) notes.push(suggestion)

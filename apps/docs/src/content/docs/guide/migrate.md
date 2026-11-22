@@ -32,12 +32,35 @@ Then it runs `init`, which installs the tools and records the baseline.
 - When your config follows a plugin's own recommended preset, the pack starts from it, as in `unicorn/recommended`.
 - Rules the standard adds apply from now on. Their existing findings go into the baseline, so nothing fails on day one.
 
+## Shared configs
+
+When your config comes from a shared config package, the plugins are often that package's dependencies and not your project's. `migrate` looks for them there too, so a plugin rule at the level its pack sets is not written down.
+
+Once the shared config is gone your project needs those plugins itself. `migrate` lists them under "Rules that cannot run yet" in the report, and the `init` that follows installs the plugin of every pack it switched on.
+
+## Ignores
+
+The ignore patterns of your config are carried over, from a JavaScript or a TypeScript config. A pattern pawl already skips by default is left out, also when it is repeated for each workspace, as in `packages/a/**/dist`. A path of your own, such as `apps/web/public/archive`, is kept.
+
+## Onto a company policy
+
+```sh
+npx @santi020k/pawl migrate --extends @acme/pawl-policy
+```
+
+With `--extends`, the new `pawl.config.ts` builds on that policy, and `migrate` compares your config with the standard plus the policy. Only what differs from the policy is written down: rule levels, style and ignores.
+
+Moving onto a policy means taking its levels. Where your old config had a rule looser than the policy, `migrate` leaves it out and lists it in the report as kept at the policy's level; a rule your config had stricter is still carried over. You can loosen a rule again under `rules`, unless the policy locks it.
+
+Install the policy package first: `migrate` has to read it to compare. A relative path to a policy file works too.
+
 ## Options
 
 | Option          | Meaning                                                 |
 | --------------- | ------------------------------------------------------- |
 | `--dry-run`     | Show the plan and change nothing                        |
 | `--keep-config` | Write the policy and leave the ESLint config file alone |
+| `--extends`     | Build on a policy and carry over only what differs      |
 | `--yes`         | Do not ask before writing                               |
 
 `pawl init` does not read an ESLint config: with an `.eslintrc` it says so and points here, because migrating is the only way that file's rules reach the policy. Run `pawl migrate` first, in place of `init`.

@@ -134,7 +134,7 @@ Rule names are ESLint's names. Use `biome:group/name` for a rule only Biome has.
 
 ### What pawl skips
 
-Every engine skips the same files: build output and caches, test reports, lockfiles, the folders AI coding tools keep (`.claude`, `.cursor` and others), generated code (`__generated__`, `*.gen.*`, `.prisma`), what the root `.gitignore` lists, and your `ignore` list. Biome reads the `.gitignore` through its git integration, pawl turns it into ESLint's patterns, and Oxlint reads it itself.
+Every engine skips the same files: build output and caches, test reports, lockfiles, the folders AI coding tools keep (`.claude`, `.cursor` and others), generated code (`__generated__`, `*.gen.*`, `.prisma`), `CHANGELOG.md`, what the root `.gitignore` lists, and your `ignore` list. Biome reads the `.gitignore` through its git integration, pawl turns it into ESLint's patterns, and Oxlint reads it itself.
 
 ### Runtimes
 
@@ -235,6 +235,7 @@ pawl doctor                    # shows which packs are active
 - A pack for something your project depends on switches on as soon as its plugin is installed. `init` tells you which ones fit.
 - The rule packs and formats are opt-in: `pawl add` records them under `packs` in the policy.
 - A pack starts from the plugin's own recommended rules, then applies the standard's levels, then your policy's `rules`.
+- The `typescript` pack starts from typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets, so it needs type information.
 - Where Biome is the linter, it keeps the rules it already enforces, so nothing is reported twice.
 - `unicorn/recommended` in `packs` starts the unicorn pack from the plugin's own recommended preset. Any pack takes a preset name this way.
 - A rule the installed plugin does not have is left out and listed by `pawl doctor`, so an older plugin does not break the run.

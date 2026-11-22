@@ -10,7 +10,11 @@ import { confirm } from '../prompt.ts'
 import { runInit } from './init.ts'
 
 export const runMigrate = async (root: string, flags: Flags): Promise<number> => {
-  const plan = await planMigrate({ root, keepConfig: flags['keep-config'] === true })
+  const plan = await planMigrate({
+    root,
+    keepConfig: flags['keep-config'] === true,
+    ...(flags.extends ? { extends: flags.extends } : {})
+  })
 
   out(describeMigration(plan).join('\n'))
 
@@ -36,5 +40,11 @@ export const runMigrate = async (root: string, flags: Flags): Promise<number> =>
   // The packs the old config relied on come along, so their plugins are installed where they are missing.
   const packs = [...new Set([...packList(flags.packs), ...plan.packs])].join(',')
 
-  return runInit(root, packs.length > 0 ? { ...flags, packs } : flags, true)
+  // So does the policy package the new policy extends, when the project does not list it yet.
+  return runInit(
+    root,
+    packs.length > 0 ? { ...flags, packs } : flags,
+    true,
+    plan.policyPackage ? [plan.policyPackage] : []
+  )
 }

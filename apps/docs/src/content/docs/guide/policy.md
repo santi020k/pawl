@@ -88,7 +88,7 @@ A locked rule cannot be loosened for some files either: the stricter level is ke
 
 Every engine skips the same files:
 
-- **The defaults**: build output (`dist`, `build`, `coverage`, `.next`, `.vercel`, `.wrangler` and the like), test reports, `*.tsbuildinfo`, lockfiles, the folders AI coding tools keep for themselves (`.claude`, `.cursor`, `.codex` and others), and generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`). Set `defaultIgnores: false` to check them.
+- **The defaults**: build output (`dist`, `build`, `coverage`, `.next`, `.vercel`, `.wrangler` and the like), test reports, `*.tsbuildinfo`, lockfiles, the folders AI coding tools keep for themselves (`.claude`, `.cursor`, `.codex` and others), generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`, the type declarations Next.js and Wrangler write), and `CHANGELOG.md`. Set `defaultIgnores: false` to check them.
 - **The root `.gitignore`**: Biome reads it through its git integration, pawl turns it into ESLint's ignore patterns, and Oxlint reads it by itself. Set `gitignore: false` to check what git ignores. Oxlint always reads it.
 - **Your `ignore` list**, on top of both.
 

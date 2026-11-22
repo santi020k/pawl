@@ -66,8 +66,16 @@ export const chooseMode = async (root: string, flags: Flags): Promise<Chosen> =>
   return { mode: 'auto', asked: true, engine: linter, formatter: format }
 }
 
-/** `migrated`: `pawl migrate` runs this right after it carried the old config into the policy. */
-export const runInit = async (root: string, flags: Flags, migrated = false): Promise<number> => {
+/**
+ * `migrated`: `pawl migrate` runs this right after it carried the old config into the policy.
+ * `packages`: more packages to install, such as the policy package the migration extends.
+ */
+export const runInit = async (
+  root: string,
+  flags: Flags,
+  migrated = false,
+  packages: readonly string[] = []
+): Promise<number> => {
   const { mode, asked, ...choice } = await chooseMode(root, flags)
   const install = flags['no-install'] !== true
   const plan = await planInit({
@@ -79,6 +87,7 @@ export const runInit = async (root: string, flags: Flags, migrated = false): Pro
     agents: flags.agents === true,
     hooks: flags.hooks === true,
     install,
+    packages,
     ...choice,
     ...(flags.packs ? { packs: packList(flags.packs) } : {})
   })

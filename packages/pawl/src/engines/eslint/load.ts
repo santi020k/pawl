@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { PACKS, type Pack } from '../../catalog/packs.ts'
 import { resolveSpecifier } from '../../policy/load.ts'
 import { isRecord } from '../../utils/json.ts'
+import { toList } from '../../utils/list.ts'
 
 export const TS_PREFIX = '@typescript-eslint'
 
@@ -65,6 +66,21 @@ export const importPlugin = async (root: string, specifier: string): Promise<Loa
   }
 }
 
+/** Import a plugin from the project, or failing that from the first of the other folders that has it. */
+export const importVia = async (root: string, others: readonly string[], specifier: string): Promise<Loaded> => {
+  const loaded = await importPlugin(root, specifier)
+
+  if (loaded.module || loaded.error) return loaded
+
+  for (const other of others) {
+    const found = await importFromProject(other, specifier)
+
+    if (found.module) return found
+  }
+
+  return loaded
+}
+
 /** What a missing or broken plugin needs, in words a person can act on. */
 export const needs = (packageName: string, loaded: Loaded): string =>
   loaded.error ? `${packageName}, which is installed but failed to load: ${loaded.error}` : packageName
@@ -91,11 +107,20 @@ export const presetRules = (value: unknown): Rules => {
 /** The rules a pack starts from: the part of the plugin's exports the pack points at. */
 export const packPreset = (pack: Pack, plugin: Record<string, unknown>): Rules => presetRules(presetOf(pack, plugin))
 
-export const presetOf = (pack: Pack, plugin: Record<string, unknown>): unknown =>
-  (pack.preset ?? []).reduce<unknown>(
-    (value, key) => (isRecord(value) ? value[key] : undefined),
-    pack.preset ? plugin : undefined
-  )
+/** Follow a path of keys into a plugin's exports. */
+export const follow = (plugin: Record<string, unknown>, path: readonly string[]): unknown =>
+  path.reduce<unknown>((value, key) => (isRecord(value) ? value[key] : undefined), plugin)
+
+/** The pack's preset, and after it the other presets the pack lays over it. */
+export const presetOf = (pack: Pack, plugin: Record<string, unknown>): unknown => {
+  if (!pack.preset) return undefined
+
+  const first = follow(plugin, pack.preset)
+
+  if (!pack.morePresets) return first
+
+  return [first, ...pack.morePresets.map(path => follow(plugin, path))].flatMap(value => toList(value))
+}
 
 /** The rules of one of a plugin's own presets, by name. Only the plugin's own rules: a preset may also switch core rules off. */
 export const pluginPreset = (plugin: Record<string, unknown>, name: string, prefix: string): Rules | undefined => {

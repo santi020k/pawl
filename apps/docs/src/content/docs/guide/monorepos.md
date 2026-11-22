@@ -1,7 +1,8 @@
 ---
 
 title: Monorepos
-description: One run from the root covers every package, and each package gets only the rules for what it uses.
+description: "One pawl run from the root covers pnpm, npm and yarn workspaces, Turborepo and Nx. Each package gets only the rules for the technologies it uses."
+head: [{ tag: title, content: "Monorepos: workspaces, Turborepo and Nx | pawl" }]
 ---
 
 Pawl detects pnpm, npm, yarn and Bun workspaces, Turborepo and Nx. It runs once from the root and covers every package.

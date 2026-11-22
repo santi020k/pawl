@@ -1,7 +1,8 @@
 ---
 
 title: CI and hooks
-description: Run pawl in GitHub Actions and before each commit.
+description: "Run pawl in CI and before each commit: --ci fails on new findings and on config drift, and init can write a GitHub Actions workflow and a pre-commit hook."
+head: [{ tag: title, content: "CI and hooks: GitHub Actions and pre-commit | pawl" }]
 ---
 
 ## In CI

@@ -1,7 +1,8 @@
 ---
 
 title: Packs
-description: Optional sets of ESLint rules for what only a plugin can check. Pawl holds the rules; your project installs the plugin.
+description: "50 optional packs of ESLint plugin rules, for Vitest, Testing Library, Zod, unicorn and more. Pawl holds the rules; your project installs the plugin."
+head: [{ tag: title, content: "Packs: optional ESLint plugin rules | pawl" }]
 ---
 
 A pack is a set of ESLint rules for one plugin. For libraries that need no plugin, see [Guards](/guide/guards/). Pawl ships each pack as data, its rules and levels, and your project installs the plugin. There are 50, each checked against its real plugin.

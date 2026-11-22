@@ -1,7 +1,8 @@
 ---
 
 title: Guards and file checks
-description: Checks that need no plugin, for the libraries a project uses and for its Docker and Markdown files.
+description: "Checks that need no plugin: guards for AI SDKs, Zod, Hono and Testing Library, 17 checks for Dockerfiles and Compose files, and checks for Markdown files."
+head: [{ tag: title, content: "Guards, Docker and Markdown checks | pawl" }]
 ---
 
 ## Guards

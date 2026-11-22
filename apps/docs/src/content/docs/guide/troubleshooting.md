@@ -1,7 +1,8 @@
 ---
 
 title: Troubleshooting
-description: What pawl doctor checks, what each exit code means, and fixes for common setup problems.
+description: "Fix common pawl setup problems: what pawl doctor checks, what each exit code means, missing engines, failures only in CI, packs that do not run, and more."
+head: [{ tag: title, content: "Troubleshooting: pawl doctor and exit codes | pawl" }]
 ---
 
 Start with `pawl doctor`. Most problems below show up there first.

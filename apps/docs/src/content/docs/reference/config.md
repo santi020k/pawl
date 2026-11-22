@@ -1,7 +1,8 @@
 ---
 
 title: Configuration
-description: Every option of pawl.config.ts, its type, its default, and how layers merge.
+description: "Every option of pawl.config.ts: engine, formatter, packs, strict, rules, overrides, locked rules, ignores and more, with types, defaults, and how layers merge."
+head: [{ tag: title, content: "Configuration reference: pawl.config.ts | pawl" }]
 ---
 
 This page lists every option. For what a policy is and how a company shares one, see [The policy](/guide/policy/).

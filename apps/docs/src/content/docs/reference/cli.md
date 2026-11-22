@@ -1,7 +1,8 @@
 ---
 
 title: CLI
-description: Every pawl command and option.
+description: "Every pawl command and option: init, check, fix, sync, add, migrate, baseline, explain and doctor, with their flags, output formats and exit codes."
+head: [{ tag: title, content: "CLI reference: every pawl command and option | pawl" }]
 ---
 
 | Command               | What it does                                                   |

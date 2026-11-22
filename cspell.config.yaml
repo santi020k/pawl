@@ -30,6 +30,7 @@ words:
   - lede
   - linejoin
   - llamaindex
+  - llms
   - lockfiles
   - menuitemcheckbox
   - menuitemradio
@@ -41,6 +42,7 @@ words:
   - noopener
   - noreferrer
   - opencontainers
+  - pagefind
   - opencode
   - proptypes
   - Qwik

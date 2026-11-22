@@ -58,18 +58,17 @@ body {
   text-wrap: pretty;
 }
 
-.kicker {
+/* A short label over a section heading. Scoped under .band-head to win over .band-head p. */
+.band-head .kicker {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   margin: 0;
-  font: 500 0.75rem / 1 var(--pawl-font-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font: 500 0.875rem / 1 var(--pawl-font-mono);
   color: hsl(var(--brand));
 }
 
-.kicker::before {
+.band-head .kicker::before {
   content: "";
   width: 0.5rem;
   height: 0.5rem;

@@ -1,0 +1,6 @@
+{
+  "rules": 200,
+  "packs": 50,
+  "dockerChecks": 17,
+  "guards": 18
+}

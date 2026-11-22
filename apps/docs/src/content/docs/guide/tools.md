@@ -1,7 +1,8 @@
 ---
 
 title: Choosing tools
-description: Lint with Biome, Oxlint or ESLint, format with Biome or Prettier. One standard either way.
+description: "Lint with Biome, Oxlint or ESLint and format with Biome or Prettier. Pawl compiles one rule standard for the engine in use and reports what it cannot enforce."
+head: [{ tag: title, content: "Choosing tools: Biome, Oxlint, ESLint or Prettier | pawl" }]
 ---
 
 Pawl has no dependencies. Every tool is an optional peer, and `init` installs the ones you pick.

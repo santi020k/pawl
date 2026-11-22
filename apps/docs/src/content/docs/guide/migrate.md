@@ -1,7 +1,8 @@
 ---
 
 title: Coming from ESLint
-description: Turn an existing ESLint config into a pawl policy with one command.
+description: "Move an existing ESLint config to pawl with one command. pawl migrate reads eslint.config.js or .eslintrc and writes down only what differs from the standard."
+head: [{ tag: title, content: "Migrate an ESLint config to pawl | pawl" }]
 ---
 
 ```sh

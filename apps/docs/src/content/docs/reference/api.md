@@ -1,13 +1,14 @@
 ---
 
 title: API
-description: Everything the CLI does is exported from @santi020k/pawl.
+description: "The @santi020k/pawl API: definePolicy and the eslint() config for config files, and everything else the CLI does, exported for tools that build on pawl."
+head: [{ tag: title, content: "API reference: @santi020k/pawl exports | pawl" }]
 ---
 
 Everything the CLI does is exported, so other tools can build on it. The package is ESM and has no dependencies.
 
-:::caution[Early]
-The API may still change before the first release. The source of truth is [`src/index.ts`](https://github.com/santi020k/pawl/blob/main/packages/pawl/src/index.ts).
+:::note[Before 1.0]
+Pawl is still 0.x, so the API may change before 1.0. The source of truth is [`src/index.ts`](https://github.com/santi020k/pawl/blob/main/packages/pawl/src/index.ts).
 :::
 
 ## In config files

@@ -1,7 +1,8 @@
 ---
 
 title: Changelog
-description: Where pawl's releases and release notes are published.
+description: "Where pawl's release notes are published: the changelog in the repo and GitHub Releases, one tag per version. Pawl is before 1.0, so read them before upgrading."
+head: [{ tag: title, content: "Changelog and releases | pawl" }]
 ---
 
 Every release of `@santi020k/pawl` is recorded in [`packages/pawl/CHANGELOG.md`](https://github.com/santi020k/pawl/blob/main/packages/pawl/CHANGELOG.md), written from the changesets merged since the release before it.

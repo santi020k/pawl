@@ -1,0 +1,9 @@
+---
+"@santi020k/pawl": minor
+---
+
+In a policy's `ignore` and in the `files` of an override, `[` and `]` are the characters themselves, so `src/app/[slug]` names that route folder in every engine. Before, Biome refused the whole config, and ESLint and Oxlint read the brackets as a character class. 
+
+Breaking: a policy that used a class there, such as `**/*.min.[jc]s`, has to list the names now, as `**/*.min.js` and `**/*.min.cs`: `pawl doctor` names such a pattern when its brackets match no file, and `pawl migrate` lists out the classes of the ignore patterns it copies from ESLint.
+
+A `.gitignore` line with a leading slash, such as `/build`, skips only that path at the root, as git reads it; pawl's own checks and ESLint used to skip every `build` folder. Character classes in `.gitignore` lines, such as `*.py[cod]` and `[[:digit:]]`, are read as git reads them, and a line git cannot match anything with, such as one with a `[` that does not close, matches nothing. Braces in those patterns, as in `**/*.{gen,auto}.ts`, now work the same in every engine: pawl lists them out, where before Biome read them as a glob and ESLint as the characters themselves.

@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { listFiles } from '../project/files.ts'
 import { type Finding, type SetupIssue } from '../types.ts'
 import { readJson, sortKeys, writeJson } from '../utils/json.ts'
+import { type TestCounts } from './tests.ts'
 
 export const BASELINE_FILE = '.pawl/baseline.json'
 
@@ -16,6 +17,11 @@ export interface Baseline {
   findings: Record<string, Record<string, number>>
   /** Comments that switch a check off, counted per file. */
   suppressions: Record<string, number>
+  /**
+   * Assertions and skipped tests, counted per test file. Absent in a baseline an earlier version
+   * of pawl wrote: then the tests have no floor until "pawl baseline" runs again.
+   */
+  tests?: Record<string, TestCounts>
 }
 
 export interface Suppression {
@@ -157,7 +163,11 @@ const countBy = (suppressions: readonly Suppression[]): Record<string, number> =
   return counts
 }
 
-export const createBaseline = (findings: readonly Finding[], suppressions: readonly Suppression[]): Baseline => {
+export const createBaseline = (
+  findings: readonly Finding[],
+  suppressions: readonly Suppression[],
+  tests?: Record<string, TestCounts>
+): Baseline => {
   const byFile: Record<string, Record<string, number>> = {}
 
   for (const { file, rule } of findings) {
@@ -168,7 +178,8 @@ export const createBaseline = (findings: readonly Finding[], suppressions: reado
   return {
     version: 1,
     findings: sortKeys(Object.fromEntries(Object.entries(byFile).map(([file, rules]) => [file, sortKeys(rules)]))),
-    suppressions: sortKeys(countBy(suppressions))
+    suppressions: sortKeys(countBy(suppressions)),
+    ...(tests ? { tests: sortKeys(tests) } : {})
   }
 }
 

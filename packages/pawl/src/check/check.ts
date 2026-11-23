@@ -21,6 +21,7 @@ import {
   writeBaseline
 } from './baseline.ts'
 import { type CheckResult, isBlocked } from './result.ts'
+import { scanTests, testCounts, weakerTests } from './tests.ts'
 
 export interface CheckOptions {
   root: string
@@ -218,13 +219,14 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   // findings follow the ignores of its scans, which read agent rules files the engines skip.
   const kept = findings.filter(finding => !(finding.engine === 'pawl' ? ownIgnored : ignored)(finding.file))
   const suppressions = idle ? [] : scanSuppressions(root, ignored, scoped?.files)
+  const tests = idle ? [] : scanTests(root, ignored, scoped?.files)
 
   if (options.updateBaseline) {
     // A check that did not complete knows only some of the findings. Recorded as the baseline,
     // they would make every finding it missed fail later as new, so the file is left as it is.
     const complete = !isBlocked(setup)
 
-    if (complete) writeBaseline(root, createBaseline(kept, suppressions))
+    if (complete) writeBaseline(root, createBaseline(kept, suppressions, testCounts(tests)))
 
     return {
       findings: [],
@@ -241,16 +243,26 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
   const baseline = readBaseline(root)
   const { fresh, baselined, canShrink } = applyBaseline(kept, baseline)
+  const whole = scoped === undefined && !isBlocked(setup)
+  const ratchet = weakerTests(tests, baseline?.tests, { policy, whole, ignored })
+  const uncounted = baseline !== undefined && baseline.tests === undefined && testCounts(tests)
+
+  // A new skipped test the ratchet fails is the one the engine's own skipped-test rule warns about.
+  const skips = new Set(ratchet.findings.map(finding => `${finding.file}:${finding.line}`))
+  const engineFresh = fresh.filter(
+    finding => !(finding.rule === 'vitest/no-disabled-tests' && skips.has(`${finding.file}:${finding.line}`))
+  )
 
   return {
-    findings: [...fresh, ...newSuppressions(suppressions, baseline)].sort(byPosition),
+    findings: [...engineFresh, ...newSuppressions(suppressions, baseline), ...ratchet.findings].sort(byPosition),
     baselined,
     setup,
     engines,
     commands,
     hasBaseline: baseline !== undefined,
     // A partial run cannot tell whether findings elsewhere are gone, nor can a run where an engine failed.
-    canShrinkBaseline: scoped === undefined && !isBlocked(setup) && canShrink,
+    canShrinkBaseline: whole && (canShrink || ratchet.canTighten),
+    ...(uncounted && Object.keys(uncounted).length > 0 ? { testsUncounted: true } : {}),
     nothingToCheck: empty,
     ...limit
   }

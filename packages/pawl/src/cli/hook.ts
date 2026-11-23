@@ -186,6 +186,9 @@ export const readStdin = async (
 /** Claude Code and Copilot cap what a hook adds to the context at 10,000 characters. */
 const CONTEXT_LIMIT = 9000
 
+/** The most the "and more" line takes. */
+const MORE_LINE = 100
+
 /** What the agent reads: what pawl did, then one JSON line per problem, as `--format agent` prints them. */
 export const hookMessage = (result: CheckResult, fixed: boolean): string | undefined => {
   // After a fix, what is still marked fixable needs an unsafe fix: "run pawl fix" would go round in circles.
@@ -203,10 +206,11 @@ export const hookMessage = (result: CheckResult, fixed: boolean): string | undef
       : `pawl found ${count} in the files you just edited:`
   ]
   const tail = [
-    'Fix them in the code. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore): new ones fail the check.'
+    'Fix them in the code. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore), weaken a test or skip one: those fail the check too.'
   ]
   const kept: string[] = []
-  let length = [...head, ...tail].join('\n').length
+  // Room for the line that says how many more there are, which goes in when not every line fits.
+  let length = [...head, ...tail].join('\n').length + MORE_LINE
 
   for (const line of lines) {
     if (length + line.length + 1 > CONTEXT_LIMIT) break

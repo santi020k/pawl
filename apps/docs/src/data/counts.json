@@ -1,5 +1,5 @@
 {
-  "rules": 200,
+  "rules": 201,
   "packs": 50,
   "dockerChecks": 17,
   "guards": 20

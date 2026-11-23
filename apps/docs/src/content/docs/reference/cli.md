@@ -27,24 +27,29 @@ head: [{ tag: title, content: "CLI reference: every pawl command and option | pa
 | `--ci`               | Also fail when the setup has drifted from the policy                    |
 | `--max-warnings <n>` | Fail when there are more than `n` new warnings                          |
 | `--verbose`          | Show the engine commands that ran                                       |
+| `--hook`             | For a coding agent's post-edit hook: see below                          |
 
 `[files]` are files and folders, each relative to the folder pawl runs in or absolute, as lint-staged passes them; a folder stands for every file in it, and a path outside the project is left out. Outside a git repository nothing can say what changed, so `--changed` checks every file. `--since` takes the place of `--changed` and of a list of files; see [Only what a pull request changed](/guide/ci/#only-what-a-pull-request-changed). `--ci` is on automatically when the `CI` environment variable is set, as CI services set it; an empty value, `0` and `false` mean it is not. `--max-warnings` counts only warnings the baseline does not allow, and fails with exit code 1; when the policy sets [`maxWarnings`](/reference/config/#maxwarnings), the lower limit wins. `--format agent` prints one JSON line per finding, errors first, with a `fix` where pawl has one; see [Coding agents](/guide/agents/). `--format json` prints the whole result as one document.
 
+`--hook` is for a coding agent's post-edit hook. Pawl reads the files the agent edited from the hook's input on stdin, fixes and checks those files only, and prints what is left in the shape that agent reads back. It always exits with 0 unless the check could not run; then it prints the problem to stderr and exits with 1, so the person sees it and the agent does not. It takes no list of files, `--changed`, `--since` or `--format`. See [Hooks that fix each edit](/guide/agents/#hooks-that-fix-each-edit).
+
 ## Options for init
 
-| Option               | Meaning                                                               |
-| -------------------- | --------------------------------------------------------------------- |
-| `--mode <mode>`      | `auto` (default), `keep` or `biome`                                   |
-| `--engine <name>`    | The linter: `biome`, `oxlint` or `eslint`                             |
-| `--formatter <name>` | The formatter: `biome` or `prettier`                                  |
-| `--packs <a,b>`      | Optional packs to switch on                                           |
-| `--yes`              | Accept the plan without asking                                        |
-| `--dry-run`          | Show the plan and change nothing                                      |
-| `--workflow`         | Add a GitHub Actions workflow that also keeps the doctor report       |
-| `--agents`           | Add hooks for Claude Code and Cursor, and instructions in `AGENTS.md` |
-| `--hooks`            | Add a pre-commit hook that checks changed files                       |
-| `--no-editor`        | Skip editor settings                                                  |
-| `--no-install`       | Do not run the package manager                                        |
+| Option               | Meaning                                                         |
+| -------------------- | --------------------------------------------------------------- |
+| `--mode <mode>`      | `auto` (default), `keep` or `biome`                             |
+| `--engine <name>`    | The linter: `biome`, `oxlint` or `eslint`                       |
+| `--formatter <name>` | The formatter: `biome` or `prettier`                            |
+| `--packs <a,b>`      | Optional packs to switch on                                     |
+| `--yes`              | Accept the plan without asking                                  |
+| `--dry-run`          | Show the plan and change nothing                                |
+| `--workflow`         | Add a GitHub Actions workflow that also keeps the doctor report |
+| `--agents`           | Set up coding agents: see below                                 |
+| `--hooks`            | Add a pre-commit hook that checks changed files                 |
+| `--no-editor`        | Skip editor settings                                            |
+| `--no-install`       | Do not run the package manager                                  |
+
+`--agents` adds hooks that fix each edit and hand back what is left, for Claude Code, and for Cursor, Codex and Copilot where the repo uses them; instructions in `AGENTS.md`, with an import in `CLAUDE.md` and an entry in Gemini CLI's settings so those read them too; and a pawl skill. See [Coding agents](/guide/agents/#set-it-up).
 
 ## Options for doctor
 

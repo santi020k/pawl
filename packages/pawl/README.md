@@ -20,7 +20,7 @@ npx @santi020k/pawl init
 | `keep`           | Stay on the engine the repo uses today and add the ratchet on top.  |
 | `biome`          | Biome only. Pawl stops running ESLint.                              |
 
-Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (a Claude Code hook, a Cursor hook where `.cursor` exists, and instructions in `AGENTS.md`), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`.
+Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (hooks that fix each edit for Claude Code, and for Cursor, Codex and Copilot where the repo uses them; instructions in `AGENTS.md` that Claude Code and Gemini CLI read too; a pawl skill), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`.
 
 `init` writes:
 
@@ -93,6 +93,8 @@ One JSON object per line, errors first, and nothing at all when there is nothing
 ```
 
 `--format json` prints the whole result as one document.
+
+In a coding agent's post-edit hook, `pawl fix --hook` reads the files the agent edited from the hook's input, fixes and checks only those, and hands what is left back to the agent in the shape its tool reads: Claude Code, Codex and Copilot put it in front of the model, Cursor reads nothing back. `pawl init --agents` writes these hooks. See [Coding agents](https://pawl.santi020k.com/guide/agents/).
 
 ## The policy
 

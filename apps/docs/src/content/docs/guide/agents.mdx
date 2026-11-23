@@ -1,7 +1,7 @@
 ---
 title: Coding agents
-description: "Lint guardrails for AI coding agents: findings as JSON lines with fixes, hooks for Claude Code and Cursor, AGENTS.md instructions, and no new disable comments."
-head: [{ tag: title, content: "Coding agents: lint hooks for Claude Code and Cursor | pawl" }]
+description: "Lint guardrails for AI coding agents: hooks that fix each edit and hand back what is left in Claude Code, Codex, Copilot and Cursor, findings as JSON lines, AGENTS.md instructions, a skill, and no new disable comments."
+head: [{ tag: title, content: "Coding agents: lint hooks for Claude Code, Codex, Copilot and Cursor | pawl" }]
 ---
 
 import Terminal from '../../../components/Terminal.astro'
@@ -45,9 +45,26 @@ A file that gains `biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignor
 npx @santi020k/pawl init --agents
 ```
 
-`--agents` adds up to three things.
+`--agents` sets up three things: a hook for each agent the repo uses, instructions every agent reads, and a skill.
 
-**A Claude Code hook**, so Claude Code sees the findings after every edit. It goes in `.claude/settings.json`, next to any hooks you already have:
+### Hooks that fix each edit
+
+After every edit an agent makes, its hook runs:
+
+```sh
+npx pawl fix --hook
+```
+
+Pawl reads the files the agent just edited from the hook's input, applies the safe fixes and formatting to those files and no others, and checks them. What is left goes back to the agent in the shape its tool reads, as `--format agent` lines under a line that says what pawl did. With nothing left, the hook prints nothing.
+
+| Agent                                  | File                      | Written when the repo has                                                  | What the agent hears                                          |
+| -------------------------------------- | ------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Claude Code                            | `.claude/settings.json`   | Always                                                                     | What is left, next to the result of its edit                  |
+| Codex                                  | `.codex/hooks.json`       | A `.codex` folder                                                          | What is left, as developer context                            |
+| GitHub Copilot, the CLI and the agent  | `.github/hooks/pawl.json` | `.github/copilot-instructions.md`, `.github/instructions` or `.github/hooks` | What is left, after the result of its edit                    |
+| Cursor                                 | `.cursor/hooks.json`      | A `.cursor` folder                                                         | Nothing: Cursor does not read a hook's output back            |
+
+The hook goes in next to any hooks you already have. This is the one for Claude Code:
 
 ```json title=".claude/settings.json"
 {
@@ -58,7 +75,7 @@ npx @santi020k/pawl init --agents
         "hooks": [
           {
             "type": "command",
-            "command": "npx pawl check --changed --format agent"
+            "command": "npx pawl fix --hook"
           }
         ]
       }
@@ -67,22 +84,15 @@ npx @santi020k/pawl init --agents
 }
 ```
 
-**A Cursor hook**, in repos that already have a `.cursor` folder. Cursor does not read a hook's output back, so this hook applies safe fixes and formatting after each edit, and the `AGENTS.md` instructions tell the agent to run the check:
+Codex matches `apply_patch`, the tool it makes every edit with, and runs a project's hooks only once you trust them: review pawl's in Codex's `/hooks`. Copilot runs its hooks after every tool, so pawl skips the tools that edit nothing. Under Cursor the hook only fixes, and the `AGENTS.md` instructions tell the agent to run the check.
 
-```json title=".cursor/hooks.json"
-{
-  "version": 1,
-  "hooks": {
-    "afterFileEdit": [
-      {
-        "command": "npx pawl fix --changed"
-      }
-    ]
-  }
-}
-```
+When part of the check cannot run, such as an engine that is not installed, the hook tells you and not the agent: it prints the problem and exits with 1, which the agent's tool shows you and goes past. An agent told that Biome is missing would go and install it.
 
-**Instructions in `AGENTS.md`**, for every agent. Pawl writes them between `<!-- pawl:start -->` and `<!-- pawl:end -->` markers, so running `init` again updates its block and leaves the rest of the file alone:
+Older versions of pawl wrote other hook commands, `npx pawl check --changed --format agent` for Claude Code and `npx pawl fix --changed` for Cursor. Running `init --agents` again swaps them for `npx pawl fix --hook` in place.
+
+### Instructions every agent reads
+
+Pawl writes instructions into `AGENTS.md` between `<!-- pawl:start -->` and `<!-- pawl:end -->` markers, so running `init` again updates its block and leaves the rest of the file alone:
 
 ```md title="AGENTS.md"
 ## Code quality
@@ -95,12 +105,22 @@ It prints one JSON line per problem, each with a `fix`. No output means there is
 Run `npx pawl fix` to apply formatting and safe fixes.
 
 Do not silence a problem with a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`).
-New ones fail the check. Fix the code instead.
+New ones fail the check. Fix the code instead. Do not run `pawl baseline` to make findings go
+away either: it accepts them as they are, and that is for a person to decide.
 ```
 
-### Codex
+Codex, Copilot, Cursor and most other agents read `AGENTS.md` on their own. Two need a pointer:
 
-Codex reads `AGENTS.md` at the start of every session, so the block above is all it needs: it runs `pawl check --changed --format agent` after it edits code and fixes what it reports. Pawl does not write a Codex hook. Codex ignores the plain output of a `PostToolUse` hook, so a hook that runs the check would not reach the model.
+- **Claude Code** reads `CLAUDE.md`, not `AGENTS.md`. Pawl adds `@AGENTS.md` to the end of your `CLAUDE.md`, or `@../AGENTS.md` to `.claude/CLAUDE.md`, so Claude Code loads it. Without either, it writes a `CLAUDE.md` that only imports `AGENTS.md`. A `CLAUDE.md` that already imports it, or is a link to it, is left alone.
+- **Gemini CLI** reads `GEMINI.md` unless its settings name other files. In a repo with a `.gemini` folder, pawl adds `AGENTS.md` to `context.fileName` in `.gemini/settings.json`, after the files it already lists.
+
+### A skill
+
+Pawl writes a skill, the same file in `.claude/skills/pawl/SKILL.md` for Claude Code and in `.agents/skills/pawl/SKILL.md`, where Codex and Copilot look. An agent loads it when it needs it: what to run after an edit, how to read the findings and the exit codes, how to look up a rule with `pawl explain`, and what not to do, such as adding a disable comment or running `pawl baseline`. Running `init --agents` again updates pawl's copy. To keep a version of your own, delete the line that says pawl wrote it.
+
+## The hook from your own setup
+
+`--hook` works in any agent's post-edit hook, not only the ones `init` writes. It reads the file paths Claude Code, Codex, Copilot, VS Code, Cursor and Windsurf send, and answers each in its own shape: `hookSpecificOutput.additionalContext` for a `PostToolUse` hook, `additionalContext` for Copilot, nothing for Cursor. A file outside the project, a file that is gone, and a payload pawl cannot read all mean nothing to do. `pawl check --hook` reports without fixing.
 
 ## Running init under an agent
 

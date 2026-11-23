@@ -82,7 +82,7 @@ Pawl never deletes or overwrites a tool config you already have. It tells you wh
 | `keep`           | Stay on the engine the repo uses today and add the ratchet on top.  |
 | `biome`          | Biome only. Pawl stops running ESLint.                              |
 
-Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (a Claude Code hook, a Cursor hook where `.cursor` exists, and instructions in `AGENTS.md`), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`. The [CLI reference](/reference/cli/) lists them all.
+Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (hooks that fix each edit for Claude Code, and for Cursor, Codex and Copilot where the repo uses them; instructions in `AGENTS.md` that Claude Code and Gemini CLI read too; a pawl skill), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`. The [CLI reference](/reference/cli/) lists them all.
 
 Already on ESLint? [`pawl migrate`](/guide/migrate/) turns your config into a pawl policy first.
 

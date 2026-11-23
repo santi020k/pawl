@@ -52,7 +52,7 @@ const agentFiles = [
         "hooks": [
           {
             "type": "command",
-            "command": "npx pawl check --changed --format agent"
+            "command": "npx pawl fix --hook"
           }
         ]
       }
@@ -69,7 +69,7 @@ const agentFiles = [
   "hooks": {
     "afterFileEdit": [
       {
-        "command": "npx pawl fix --changed"
+        "command": "npx pawl fix --hook"
       }
     ]
   }
@@ -89,7 +89,8 @@ It prints one JSON line per problem, each with a \`fix\`. No output means there 
 Run \`npx pawl fix\` to apply formatting and safe fixes.
 
 Do not silence a problem with a disable comment (\`biome-ignore\`, \`eslint-disable\`, \`@ts-ignore\`).
-New ones fail the check. Fix the code instead.`
+New ones fail the check. Fix the code instead. Do not run \`pawl baseline\` to make findings go
+away either: it accepts them as they are, and that is for a person to decide.`
   }
 ]
 
@@ -383,9 +384,9 @@ const facts = [
             <h2 id="agents-title">Findings an agent can act on.</h2>
             <p>
               <code>--format agent</code> prints one compact JSON line per finding, with the fix, and nothing at all when there is
-              nothing to do. <code>pawl init --agents</code> adds a Claude Code hook that runs it after every edit, a Cursor hook
-              that fixes what it can, and instructions in <code>AGENTS.md</code>, which Codex and most other agents read on their
-              own.
+              nothing to do. <code>pawl init --agents</code> adds hooks that fix each edit and hand what is left back to Claude Code,
+              Codex and Copilot, a Cursor hook that fixes what it can, instructions in <code>AGENTS.md</code> that every agent
+              reads, and a pawl skill.
             </p>
             <ButtonLink href="/guide/agents/" variant="inline" showArrow>Set up agents</ButtonLink>
           </div>

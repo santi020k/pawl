@@ -7,9 +7,11 @@ words:
   - alnum
   - astrojs
   - baselined
+  - bidi
   - biomejs
   - bunfig
   - bunx
+  - CHOSEONG
   - classlist
   - clinerules
   - clippy
@@ -17,6 +19,7 @@ words:
   - codegen
   - commitprompt
   - Containerfile
+  - cursorrules
   - darraghor
   - detekt
   - distroless
@@ -27,10 +30,13 @@ words:
   - fflate
   - fontsource
   - genai
+  - HALFWIDTH
   - heredocs
   - Hono
   - Instantiator
   - isnan
+  - JUNGSEONG
+  - keycaps
   - kiro
   - knip
   - ktlint
@@ -58,6 +64,7 @@ words:
   - proptypes
   - punct
   - Qwik
+  - replit
   - rustc
   - rustup
   - santi
@@ -84,13 +91,18 @@ words:
   - Vitest
   - WCAG
   - wildmatch
+  - windsurfrules
   - workerd
   - xcassets
   - xcframework
   - xcodeproj
   - xcuserdata
   - xcworkspace
+  - xdescribe
   - xdigit
+  - xtest
+  - ZWNJ
+  - ZWSP
 ignorePaths:
   - node_modules
   - dist

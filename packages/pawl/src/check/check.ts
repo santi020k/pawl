@@ -6,7 +6,8 @@ import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../policy/project.ts'
 import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
 import { configIgnores, ignoreMatcher } from '../project/ignores.ts'
-import { runScans } from '../scans/registry.ts'
+import { runScans, scansReadIgnored } from '../scans/registry.ts'
+import { scanIgnores } from '../scans/scan.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
 import { mapAsync } from '../utils/list.ts'
@@ -130,12 +131,16 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const commands: string[] = []
   const engines: CheckResult['engines'] = []
   const ignored = ignoreMatcher(root, policy, detection.ignores)
+  // Pawl's own scans also read agent rules files in the folders the default ignores skip.
+  const ownIgnored = scanIgnores(root, policy, detection.ignores, scansReadIgnored)
   const asked = options.files ? namedScope(root, options.files) : gitScope(root, options, setup)
   const scoped = asked && {
     targets: asked.targets.filter(file => !ignored(file)),
-    files: asked.files.filter(file => !ignored(file))
+    files: asked.files.filter(file => !ownIgnored(file))
   }
-  const empty = scoped !== undefined && scoped.targets.length === 0
+  // Nothing for the engines: they do not run, though pawl's own scans may still have files.
+  const noTargets = scoped !== undefined && scoped.targets.length === 0
+  const empty = noTargets && scoped.files.length === 0
   // Without its baseline a check would report every old finding as new, so it does not run at all.
   const unreadable = options.updateBaseline === true ? undefined : unreadableBaseline(root)
   const idle = empty || unreadable !== undefined
@@ -169,7 +174,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
       if (!engine.installed(root)) return { findings: [], setup: [...state.issues, engine.missing], commands: [] }
 
-      if (idle || !state.runnable) return { findings: [], setup: state.issues, commands: [] }
+      if (idle || noTargets || !state.runnable) return { findings: [], setup: state.issues, commands: [] }
 
       const outcome = await runEngine(engine, run)
 
@@ -189,7 +194,16 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     findings.push(...runScans({ root, policy, ignores: detection.ignores, ...own }))
 
     // The other languages the policy names, each with its own tools.
-    const languages = await checkLanguages({ root, policy, detection, ignored, write: options.fix === true, ...own })
+    // The tools of other languages get only the files past every ignore.
+    const languageFiles = scoped ? { files: scoped.files.filter(file => !ignored(file)) } : {}
+    const languages = await checkLanguages({
+      root,
+      policy,
+      detection,
+      ignored,
+      write: options.fix === true,
+      ...languageFiles
+    })
 
     engines.push(...languages.engines)
     commands.push(...languages.commands)
@@ -200,8 +214,9 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
   const limit = maxWarnings === undefined ? {} : { maxWarnings }
 
-  // The policy's ignore list applies at once, even before the engine config is synced.
-  const kept = findings.filter(finding => !ignored(finding.file))
+  // The policy's ignore list applies at once, even before the engine config is synced. Pawl's own
+  // findings follow the ignores of its scans, which read agent rules files the engines skip.
+  const kept = findings.filter(finding => !(finding.engine === 'pawl' ? ownIgnored : ignored)(finding.file))
   const suppressions = idle ? [] : scanSuppressions(root, ignored, scoped?.files)
 
   if (options.updateBaseline) {

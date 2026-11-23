@@ -20,7 +20,7 @@ Commits follow Conventional Commits. `pnpm commit` opens [Commitprompt](https://
 
 ## Changesets
 
-Run `pnpm changeset` for any user-visible change to `@santi020k/pawl`. Choose patch, minor or major by semantic versioning and describe the effect for users. Changes that do not affect the package can use the `skip-changelog` label instead.
+Run `pnpm changeset` for any user-visible change to `@santi020k/pawl`. Choose patch, minor or major by semantic versioning and describe the effect for users. Changes that do not affect the package can use the `skip-changelog` label instead. The `Changeset` workflow checks this, and is the only one that runs again when a label changes.
 
 ## Pull requests
 
@@ -33,7 +33,7 @@ Use a Conventional Commit title, keep changes focused and add tests for behavior
 1. Start from an up-to-date `main` and create the branch. Changesets decides the version: run `pnpm changeset status` to see it, then `git switch -c release/v<version>`.
 2. Run `pnpm version-packages`. It consumes the changesets and writes the versions, the changelogs and the lockfile. It needs a `GITHUB_TOKEN` to link pull requests in the changelog. Commit the result.
 3. Run `pnpm release:check`, then push the branch and open the pull request with `gh pr create --template release.md`. CI runs the same check: the branch name, every package version and the changelogs must agree, no changeset may be left, and the version must be new on npm and untagged.
-4. Merge the pull request. `.github/workflows/release.yml` runs on `main`: it validates the repository, publishes the versions npm does not have with provenance through trusted publishing, installs them from the registry, then creates the `v<version>` tag and the GitHub release on the merged commit. Last, it starts the docs deploy, so the [changelog page](https://pawl.santi020k.com/changelog/) shows the release with its date.
+4. Merge the pull request. `.github/workflows/release.yml` runs on `main`: it validates the repository, unless CI already passed on the pull request's head and the merged commit has exactly those files, publishes the versions npm does not have with provenance through trusted publishing, installs them from the registry, then creates the `v<version>` tag and the GitHub release on the merged commit. Last, it starts the docs deploy, so the [changelog page](https://pawl.santi020k.com/changelog/) shows the release with its date; the merge itself does not deploy the docs, so a release deploys them once.
 5. Check the release on npm and GitHub, then delete the release branch.
 
 Work for the next version can start before the current one is out: create its `release/v<version>` branch early and open feature pull requests into it. CI checks those pull requests like the ones into `main`, and each still needs a changeset. Run `pnpm version-packages` on the branch only when the release is ready.

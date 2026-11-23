@@ -37,7 +37,10 @@ jobs:
     permissions:
       # To start the docs deploy once the release exists.
       actions: write
+      # To read the checks that passed on the release pull request.
+      checks: read
       contents: write
+      pull-requests: read
       id-token: write
 
     steps:
@@ -63,12 +66,69 @@ jobs:
           node scripts/release.ts plan >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
-      - name: Validate repository
+      # CI ran the gate on the release pull request. It is not run again when that result is proven
+      # to be about the files of this commit: the commit is the merge of a pull request whose head has
+      # the same tree and already held everything on main, and every required check passed on that
+      # head. Anything short of that, or any failure to find it out, runs the gate here.
+      - name: Find the checks that passed on these files
+        id: trusted
         if: steps.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The jobs of ci.yml, by the names GitHub reports them under.
+          REQUIRED_CHECKS: |-
+            Required checks (Node 22)
+            Required checks (Node 24)
+        run: |
+          passed_on_pull_request() {
+            local found number head name conclusions
+
+            found=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq \
+              "[.[] | select(.merged_at != null and .base.ref == \"main\" and .merge_commit_sha == \"${GITHUB_SHA}\")][0] | select(. != null) | \"\(.number) \(.head.sha)\"") ||
+              { echo "The pull request of ${GITHUB_SHA} could not be looked up."; return 1; }
+            [ -n "$found" ] || { echo "No merged pull request has ${GITHUB_SHA} as its merge commit."; return 1; }
+            number=${found%% *}
+            head=${found##* }
+
+            git fetch --no-tags --quiet origin "refs/pull/${number}/head" ||
+              { echo "The head of pull request #${number} could not be fetched."; return 1; }
+            [ "$(git rev-parse FETCH_HEAD)" = "$head" ] ||
+              { echo "The head of pull request #${number} is no longer ${head}."; return 1; }
+            [ "$(git rev-parse "${GITHUB_SHA}^{tree}")" = "$(git rev-parse "${head}^{tree}")" ] ||
+              { echo "The files of ${GITHUB_SHA} differ from those of ${head}, the head of pull request #${number}."; return 1; }
+            # CI checked the head merged into main as it was then. That is the head's own tree only
+            # when the head already held everything on main.
+            git merge-base --is-ancestor "${GITHUB_SHA}^1" "$head" ||
+              { echo "Pull request #${number} was merged without all of main in it."; return 1; }
+
+            while IFS= read -r name; do
+              [ -n "$name" ] || continue
+              # 15368 is GitHub Actions, so a check another app reports under the same name does not count.
+              # A run that a newer one cancelled says nothing; a failed, skipped or unfinished one refuses.
+              conclusions=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/commits/${head}/check-runs" \
+                -f check_name="$name" -f filter=latest -F app_id=15368 --jq '[.check_runs[].conclusion] | if any(. == "success") and all(. == "success" or . == "cancelled") then "success" else join(",") end') ||
+                { echo "The check \"${name}\" could not be looked up on ${head}."; return 1; }
+              [ "$conclusions" = "success" ] ||
+                { echo "The check \"${name}\" on ${head} is \"${conclusions:-missing}\", not a success."; return 1; }
+            done <<< "$REQUIRED_CHECKS"
+
+            echo "Every required check passed on ${head}, the head of pull request #${number}, which has the files of ${GITHUB_SHA}."
+          }
+
+          if reason=$(passed_on_pull_request); then
+            echo "validated=true" >> "$GITHUB_OUTPUT"
+            echo "${reason} The gate is not run again."
+          else
+            echo "validated=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${reason} The gate runs here."
+          fi
+
+      - name: Validate repository
+        if: steps.plan.outputs.publish == 'true' && steps.trusted.outputs.validated != 'true'
         run: pnpm ok
 
       - name: Install the packed package like a consumer
-        if: steps.plan.outputs.publish == 'true'
+        if: steps.plan.outputs.publish == 'true' && steps.trusted.outputs.validated != 'true'
         run: pnpm run check:packed-install
 
       - name: Publish to npm with provenance
@@ -115,9 +175,9 @@ jobs:
           case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
           gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file "${RUNNER_TEMP}/release-notes.md" $PRERELEASE
 
-      # The changelog page dates each version by its tag, which exists only now. The deploy that the merge
-      # started ran before it, so build the site again.
-      - name: Redeploy the docs
+      # The changelog page dates each version by its tag, which exists only now. deploy-docs.yml left
+      # the push that brought this version to this run, so the site is built once, here.
+      - name: Deploy the docs
         if: steps.find.outputs.released == 'false'
         env:
           GH_TOKEN: ${{ github.token }}

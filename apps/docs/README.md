@@ -40,7 +40,7 @@ pnpm --filter @santi020k/pawl-docs run doctor      # Astro Doctor
 `/changelog/` shows every release, newest first, and nothing on it is written by hand. At build time, the `releases` collection reads:
 
 - `packages/*/CHANGELOG.md`, which Changesets writes on a release branch. Both packages share one version, so each release on the page has the notes of both.
-- The `v<version>` tags, for each release's date. A version without a tag is shown as not on npm yet. The release workflow creates the tag after publishing, then starts the docs deploy again, so the page catches up within minutes of a release.
+- The `v<version>` tags, for each release's date. A version without a tag is shown as not on npm yet. The release workflow creates the tag after publishing, then starts the docs deploy, so the page shows the release within minutes of it.
 - The changesets in `.changeset/`, as "Next release" at the top, when there are any.
 
 The landing page's version badge and its `softwareVersion` in the JSON-LD come from the same history. A clone without tags, such as a shallow one, shows no dates and falls back to the newest version in the changelogs.
@@ -57,7 +57,7 @@ The landing page uses the hand-made `public/og.jpg`. Every doc page gets its own
 
 ## Deploy
 
-`.github/workflows/deploy-docs.yml` builds the site and deploys `dist` to the Cloudflare Pages project `pawl-docs` with `wrangler pages deploy`. It runs on a push to `main` that touches `apps/docs/`, `packages/pawl/` or the lockfile, and on demand from the Actions tab. It uses the GitHub environment `docs-production`, which gets two secrets from Doppler (project `pawl`, config `prd`) through a Doppler sync. Change them in Doppler, not in GitHub:
+`.github/workflows/deploy-docs.yml` builds the site and deploys `dist` to the Cloudflare Pages project `pawl-docs` with `wrangler pages deploy`. It runs on a push to `main` that touches `apps/docs/`, `packages/pawl/` or the lockfile, and on demand from the Actions tab. A push that brings a new, untagged version is the exception: the release workflow deploys that one, after it has created the tag, so a release builds the site once. It uses the GitHub environment `docs-production`, which gets two secrets from Doppler (project `pawl`, config `prd`) through a Doppler sync. Change them in Doppler, not in GitHub:
 
 | Secret                  | What it is                                               |
 | ----------------------- | -------------------------------------------------------- |

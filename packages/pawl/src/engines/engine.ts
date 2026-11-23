@@ -113,14 +113,16 @@ export const runNode = (
 
 /**
  * Run a program and collect its output, as `runNode` does for a Node script. `command` is the
- * command as a person would type it.
+ * command as a person would type it. With `timeoutMs`, a program that is still running after that
+ * long is stopped and the run rejects with an EngineError, so a tool that hangs cannot hang the check.
  */
 export const runProgram = (
   program: string,
   args: readonly string[],
   cwd: string,
   command: string,
-  env?: Record<string, string>
+  env?: Record<string, string>,
+  timeoutMs?: number
 ): Promise<RunResult> =>
   new Promise((resolvePromise, reject) => {
     const notStarted = (cause: unknown): void => {
@@ -143,8 +145,27 @@ export const runProgram = (
 
       child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
       child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-      child.on('error', notStarted)
+      const timer =
+        timeoutMs === undefined
+          ? undefined
+          : setTimeout(() => {
+              child.kill('SIGKILL')
+              reject(
+                new EngineError(
+                  `The process did not finish in ${Math.round(timeoutMs / 1000)} seconds and was stopped.`,
+                  {
+                    command
+                  }
+                )
+              )
+            }, timeoutMs)
+
+      child.on('error', cause => {
+        clearTimeout(timer)
+        notStarted(cause)
+      })
       child.on('close', code => {
+        clearTimeout(timer)
         resolvePromise({
           code: code ?? 1,
           stdout: Buffer.concat(stdout).toString('utf8'),

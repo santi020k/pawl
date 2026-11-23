@@ -23,8 +23,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A push that brings a new version is also a release: release.yml creates the tag, which the
+  # changelog page reads, and then starts this workflow itself. Deploying on the push too would build
+  # the site twice, the first time without the tag.
+  plan:
+    name: Plan the deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.plan.outputs.deploy }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+
+      - name: Leave a new version to the release
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          deploy=true
+          # Only when everything is known: this push changed the version, and the version has no tag
+          # yet. Anything that cannot be read deploys, as before.
+          if [ "$EVENT_NAME" = "push" ]; then
+            version=$(jq -r .version packages/pawl/package.json)
+            if git fetch --no-tags --quiet --depth=1 origin "$BEFORE" &&
+              manifest=$(git show "${BEFORE}:packages/pawl/package.json") &&
+              previous=$(printf '%s' "$manifest" | jq -er .version) &&
+              tags=$(git ls-remote origin "refs/tags/v${version}"); then
+              if [ -n "$previous" ] && [ "$previous" != "$version" ] && [ -z "$tags" ]; then
+                deploy=false
+                echo "::notice::This push brings v${version}, which has no tag yet. The Release workflow deploys the docs once it has created it."
+              fi
+            fi
+          fi
+          echo "deploy=${deploy}" >> "$GITHUB_OUTPUT"
+
   build-and-deploy:
     name: Build & Deploy to Cloudflare Pages
+    needs: plan
+    if: needs.plan.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:

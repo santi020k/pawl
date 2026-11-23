@@ -9,6 +9,7 @@ import { configIgnores, ignoreMatcher } from '../project/ignores.ts'
 import { runScans } from '../scans/registry.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
+import { mapAsync } from '../utils/list.ts'
 import {
   applyBaseline,
   createBaseline,
@@ -51,25 +52,25 @@ const lowerLimit = (...limits: (number | undefined)[]): number | undefined => {
 const byPosition = (a: Finding, b: Finding): number =>
   a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column || a.rule.localeCompare(b.rule)
 
-/** Run one engine. An engine that cannot run is a setup problem, so the other engines still report. */
-const runEngine = async (
-  engine: Engine,
-  options: RunOptions,
-  setup: SetupIssue[],
+/** What one engine added to a check. */
+interface EngineOutcome {
+  findings: Finding[]
+  setup: SetupIssue[]
   commands: string[]
-): Promise<Finding[]> => {
+}
+
+/** Run one engine. An engine that cannot run is a setup problem, so the other engines still report. */
+const runEngine = async (engine: Engine, options: RunOptions): Promise<EngineOutcome> => {
   try {
     const { findings, command } = await engine.run(options)
 
-    commands.push(command)
-
-    return findings
+    return { findings, setup: [], commands: [command] }
   } catch (error) {
     if (!(error instanceof EngineError)) throw error
 
-    setup.push({ code: 'engine-failed', message: `${engine.name} could not run: ${error.message}` })
+    const failed: SetupIssue = { code: 'engine-failed', message: `${engine.name} could not run: ${error.message}` }
 
-    return []
+    return { findings: [], setup: [failed], commands: [] }
   }
 }
 
@@ -154,15 +155,33 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     gitignore: policy.gitignore
   }
 
-  for (const engine of activeEngines(project.tools)) {
-    if (engine.name !== 'prettier') engines.push(engine.name)
+  const active = activeEngines(project.tools)
 
-    const state = engine.inspect(project)
+  engines.push(...active.flatMap(engine => (engine.name === 'prettier' ? [] : [engine.name])))
 
-    setup.push(...state.issues)
+  // A check only reads, so its engines run at the same time. A fix writes files that the next
+  // engine reads, so there each engine waits for the one before it. Either way the outcomes are
+  // taken in the order of the registry, so the report does not depend on which engine ends first.
+  const outcomes = await mapAsync(
+    active,
+    async (engine): Promise<EngineOutcome> => {
+      const state = engine.inspect(project)
 
-    if (!engine.installed(root)) setup.push(engine.missing)
-    else if (!idle && state.runnable) findings.push(...(await runEngine(engine, run, setup, commands)))
+      if (!engine.installed(root)) return { findings: [], setup: [...state.issues, engine.missing], commands: [] }
+
+      if (idle || !state.runnable) return { findings: [], setup: state.issues, commands: [] }
+
+      const outcome = await runEngine(engine, run)
+
+      return { ...outcome, setup: [...state.issues, ...outcome.setup] }
+    },
+    { together: !run.write }
+  )
+
+  for (const outcome of outcomes) {
+    findings.push(...outcome.findings)
+    setup.push(...outcome.setup)
+    commands.push(...outcome.commands)
   }
 
   // Pawl's own checks for the files no engine reads.

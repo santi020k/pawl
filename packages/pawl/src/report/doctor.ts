@@ -298,11 +298,25 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
   const languages: DoctorReport['languages'] = detection.languages.map(({ language, dir, manifest }) => {
     const chosen = policy.languages[language]
 
-    return { language, dir, manifest, checked: chosen !== undefined, tools: chosen ? toolStates(language, chosen) : [] }
+    return {
+      language,
+      dir,
+      manifest,
+      checked: chosen !== undefined,
+      tools: chosen ? toolStates(language, chosen, { root, dir }) : []
+    }
   })
 
   for (const language of new Set(languages.flatMap(entry => (entry.checked ? [entry.language] : [])))) {
-    const missing = languages.find(entry => entry.language === language)?.tools.filter(tool => !tool.installed) ?? []
+    // Two Swift projects can use different formatters, so every project of the language is asked.
+    const missing = [
+      ...new Map(
+        languages
+          .filter(entry => entry.language === language)
+          .flatMap(entry => entry.tools.filter(tool => !tool.installed))
+          .map(tool => [tool.name, tool])
+      ).values()
+    ]
 
     if (missing.length > 0) {
       problems.push(

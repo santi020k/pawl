@@ -4,7 +4,8 @@ on:
   # Features for the next version merge into its release branch first, so those pull requests are checked too.
   pull_request:
     branches: [main, "release/**"]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # A label changes nothing these jobs check: the changeset rule that reads labels is in changeset.yml.
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
   workflow_dispatch: {}
@@ -39,16 +40,6 @@ jobs:
           task-cache-path: .turbo/cache
           task-cache-key: node-${{ matrix.node }}
 
-      - name: Require a changeset
-        if: >-
-          matrix.node == 22 &&
-          github.event_name == 'pull_request' &&
-          !contains(github.event.pull_request.labels.*.name, 'skip-changelog') &&
-          !startsWith(github.head_ref, 'release/')
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: pnpm changeset status --since="origin/${BASE_REF}"
-
       # Versions, changelogs and the branch name must agree before a release merges.
       - name: Check the release branch
         if: >-
@@ -70,7 +61,18 @@ jobs:
 
       # Build, typecheck, test, pawl on its own code, spelling, unused code, generated files.
       - name: Validate repository
+        if: matrix.node == 22
         run: pnpm ok
+
+      # What depends on the Node version: the packages' build and tests, the scripts' tests and pawl
+      # on its own code. Types, spelling, unused code, generated files and the docs site do not
+      # change with the runtime, so the Node 22 job alone checks them.
+      - name: Build, test and run pawl on this Node version
+        if: matrix.node != 22
+        run: |
+          pnpm exec turbo run build test --filter=@santi020k/pawl --filter=@santi020k/pawl-policy
+          pnpm run test:scripts
+          node packages/pawl/dist/cli.js check
 
       - name: Diagnose the docs site with Astro Doctor
         if: matrix.node == 22
@@ -83,3 +85,38 @@ jobs:
 
       - name: Install the packed package like a consumer
         run: pnpm run check:packed-install
+
+  # The tools of the other languages are not on the Linux runner, so the tests that drive the real
+  # SwiftLint, SwiftFormat, swift-format, ktlint, Clippy and rustfmt are skipped there. They run here.
+  language-tools:
+    name: Language tools (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+
+      - name: Set up pnpm workspace
+        uses: santi020k/quality/actions/setup-pnpm@b456ccc07a80cac227cc314be16c8309557ea8e6 # v2.1.0
+        with:
+          node-version: 22
+
+      - name: Install SwiftLint, SwiftFormat and ktlint
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install swiftlint swiftformat ktlint
+
+      # A tool that is missing would skip its tests, and the job would pass having checked nothing.
+      - name: Check that every tool is installed
+        run: |
+          swiftlint version
+          swiftformat --version
+          swift format --version
+          ktlint --version
+          cargo clippy --version
+          cargo fmt --version
+
+      - name: Test against the real tools
+        run: pnpm --filter @santi020k/pawl exec vitest run test/languages.test.ts

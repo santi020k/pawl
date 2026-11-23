@@ -1,0 +1,41 @@
+name: Changeset
+
+# The one check that reads a pull request's labels. It is on its own so that adding or removing a
+# label reruns this small job and not the whole of CI.
+on:
+  pull_request:
+    branches: [main, "release/**"]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changeset-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changeset:
+    name: Require a changeset
+    # A release branch has consumed its changesets; scripts/release.ts checks that in CI.
+    if: >-
+      !contains(github.event.pull_request.labels.*.name, 'skip-changelog') &&
+      !startsWith(github.head_ref, 'release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm workspace
+        uses: santi020k/quality/actions/setup-pnpm@b456ccc07a80cac227cc314be16c8309557ea8e6 # v2.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Require a changeset
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: pnpm changeset status --since="origin/${BASE_REF}"

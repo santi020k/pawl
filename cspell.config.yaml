@@ -37,6 +37,7 @@ words:
   - langchain
   - lede
   - linejoin
+  - lintable
   - llamaindex
   - llms
   - lockfiles
@@ -69,6 +70,7 @@ words:
   - swiftformat
   - swiftlint
   - swiftpm
+  - swiftversion
   - tabindex
   - textnodes
   - Titlebar

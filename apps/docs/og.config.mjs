@@ -7,7 +7,17 @@ import { createPathCards } from '@santi020k/og'
 import { collectContentCards } from '@santi020k/og/content'
 import { definePresetConfig } from '@santi020k/og/presets'
 
-const badges = { guide: 'Guide', reference: 'Reference' }
+const badges = { changelog: 'Changelog', guide: 'Guide', reference: 'Reference' }
+
+// A card has room for about two lines of description. A page's description is written for search results and runs
+// longer, so a long one gives the card its first sentence or clause instead of being cut off mid-phrase.
+const cardDescription = description => {
+  if (description.length <= 105) return description
+
+  const end = /[.:]\s/u.exec(description)?.index
+
+  return end === undefined ? description : `${description.slice(0, end)}.`
+}
 
 const docs = () =>
   collectContentCards({
@@ -20,7 +30,7 @@ const docs = () =>
 
       return {
         badge: badges[entry.slug.split('/')[0]] ?? 'Docs',
-        description: typeof description === 'string' ? description : undefined,
+        description: typeof description === 'string' ? cardDescription(description) : undefined,
         title
       }
     }

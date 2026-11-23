@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
-import { BIOME_PRESET, biomeConfig, biomeProjectConfig, biomeTechConfig } from '../src/engines/biome.ts'
-import { eslintPlan } from '../src/engines/eslint.ts'
-import { oxlintConfig } from '../src/engines/oxlint.ts'
-import { applyInit, planInit } from '../src/init.ts'
-import { defaultPolicy, loadPolicy, mergeLayers } from '../src/policy.ts'
+import { check } from '../src/check/check.ts'
+import { BIOME_PRESET, biomeConfig, biomeProjectConfig, biomeTechConfig } from '../src/engines/biome/config.ts'
+import { eslintPlan } from '../src/engines/eslint/plan.ts'
+import { oxlintConfig } from '../src/engines/oxlint/config.ts'
+import { loadPolicy } from '../src/policy/load.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { type PolicyInput } from '../src/types.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
 
@@ -84,7 +86,7 @@ describe('Biome options in the policy', () => {
       ]
     })
 
-    expect(biomeConfig(policy).overrides).toEqual([
+    expect(biomeProjectConfig(policy).overrides).toEqual([
       {
         includes: ['legacy/**'],
         linter: {
@@ -140,7 +142,7 @@ describe('Biome options, with the real Biome', { timeout: 60_000 }, () => {
 
     for (const root of [standard, stricter]) {
       link(root)
-      applyInit(await planInit({ root, install: false, editor: false }))
+      applyPlan(await planInit({ root, install: false, editor: false }))
     }
 
     expect(unused(await check({ root: standard }))).toEqual([])
@@ -158,7 +160,7 @@ describe('Biome options, with the real Biome', { timeout: 60_000 }, () => {
     })
 
     link(root)
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     expect(unused(await check({ root }))).toEqual(['src/a.js'])
   })

@@ -4,6 +4,7 @@ language: en,en-GB
 words:
   - activedescendant
   - agentchat
+  - alnum
   - astrojs
   - baselined
   - biomejs
@@ -12,13 +13,17 @@ words:
   - classlist
   - clinerules
   - clippy
+  - cntrl
   - commitprompt
   - Containerfile
   - darraghor
   - detekt
   - distroless
-  - esbuild
   - Dockerfiles
+  - esbuild
+  - extglob
+  - extglobs
+  - fflate
   - fontsource
   - genai
   - heredocs
@@ -32,20 +37,24 @@ words:
   - lede
   - linejoin
   - llamaindex
+  - llms
   - lockfiles
   - menuitemcheckbox
   - menuitemradio
+  - minimatch
   - miterlimit
   - modelcontextprotocol
   - noninteractive
   - nonroot
   - noopener
   - noreferrer
-  - opencontainers
   - opencode
+  - opencontainers
+  - pagefind
   - pathext
   - pbxproj
   - proptypes
+  - punct
   - Qwik
   - rustc
   - rustup
@@ -64,17 +73,21 @@ words:
   - Titlebar
   - topsecret
   - treegrid
+  - tsgolint
   - Turborepo
+  - unstub
   - vdom
   - vitesse
   - Vitest
   - WCAG
+  - wildmatch
   - workerd
   - xcassets
   - xcframework
   - xcodeproj
   - xcuserdata
   - xcworkspace
+  - xdigit
 ignorePaths:
   - node_modules
   - dist

@@ -1,7 +1,8 @@
 ---
 
 title: Configuration
-description: Every option of pawl.config.ts, its type, its default, and how layers merge.
+description: "Every option of pawl.config.ts: engine, formatter, packs, strict, rules, overrides, locked rules, ignores and more, with types, defaults, and how layers merge."
+head: [{ tag: title, content: "Configuration reference: pawl.config.ts | pawl" }]
 ---
 
 This page lists every option. For what a policy is and how a company shares one, see [The policy](/guide/policy/).
@@ -37,7 +38,7 @@ A `.json` file holds the same object, as plain JSON. It may name the schema pawl
 }
 ```
 
-The schema is also exported as `@santi020k/pawl/schema.json`. Pawl ignores `$schema` and refuses any other key it does not know, in this file and in every policy it extends, so a typo such as `ignores` stops the run with exit code 2 instead of passing in silence.
+The schema is also exported as `@santi020k/pawl/schema.json`. Pawl ignores `$schema` and refuses any other key it does not know, in this file and in every policy it extends, so a typo such as `ignores` stops the run with exit code 2 instead of passing in silence. Pawl checks the values against the same schema: a level that is not `off`, `warn` or `error`, a string where a list belongs, or a pack name it does not have stops the run too, with the place and what it takes.
 
 ESLint runs from wherever an editor starts it, so `eslint.config.js` passes its own folder as the root: `eslint({ root: import.meta.dirname })`. Without a root, pawl looks up from the working directory for the nearest folder with a pawl config, then the nearest with an ESLint flat config, then the nearest with a `package.json`.
 
@@ -56,7 +57,8 @@ After changing the policy, run `pawl sync` to rewrite the Biome, Oxlint and Pret
 | `style`          | Part of [the style](#style)                                     | See below |
 | `rules`          | `Record<string, 'off' \| 'warn' \| 'error'>`                    | `{}`      |
 | `options`        | `Record<string, unknown[]>`                                     | `{}`      |
-| `overrides`      | `{ files: string[], rules?, options? }[]`                       | `[]`      |
+| `biomeOptions`   | `Record<string, Record<string, unknown>>`                       | `{}`      |
+| `overrides`      | `{ files: string[], rules?, options?, biomeOptions? }[]`        | `[]`      |
 | `locked`         | `string[]`                                                      | `[]`      |
 | `ignore`         | `string[]`                                                      | `[]`      |
 | `gitignore`      | `boolean`                                                       | `true`    |
@@ -98,7 +100,7 @@ Fail the check, with exit code 1, when there are more new warnings than this. Wa
 | Key              | Type                        | Default       |
 | ---------------- | --------------------------- | ------------- |
 | `indent`         | `2`, `4` or `'tab'`         | `2`           |
-| `lineWidth`      | `number`                    | `120`         |
+| `lineWidth`      | `number`, 1 to 320          | `120`         |
 | `quotes`         | `'single'` or `'double'`    | `'single'`    |
 | `semicolons`     | `boolean`                   | `false`       |
 | `trailingCommas` | `'none'` or `'all'`         | `'none'`      |
@@ -163,35 +165,37 @@ export default definePolicy({
 - In Biome, an entry that changes only a rule's level keeps the options the top level gives it.
 - Rules for a technology the project does not use are left out, as at the top level.
 - A locked rule keeps its stricter level in an override too, and the attempt is reported.
-- Pawl's own Docker checks follow the top-level levels only.
+- Pawl's own Docker and Markdown checks follow an override too: `{ files: ['CHANGELOG.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'off' } }`. A [guard](/guide/guards/) and the ratchet's `pawl/no-new-disable` keep one level for the whole repo.
 
 ### locked
 
-Rules that later layers may tighten but never loosen.
+Rules that later layers may tighten but never loosen. Pawl's own checks can be locked too: a Docker or Markdown check, or a guard as `pawl/<guard>`, keeps at least its own level, so a later layer cannot switch it off, for some files or for all.
 
 ### ignore
 
 Extra glob patterns to skip, on top of the defaults and the `.gitignore`. They apply at once, even before `pawl sync` has run. A pattern without a slash matches at any depth, as in `.gitignore`: `vendor` skips every folder named `vendor`, and `src/vendor` only that one.
 
+A pattern takes `**`, `*`, `?` and braces, as in `**/*.{gen,auto}.ts`, which pawl lists out for every engine. `[` and `]` are the characters themselves, here and in the `files` of an override, so the route folders of Next.js, SvelteKit and Astro are named as they are on disk: `src/app/[slug]`. To match one of several characters, list the patterns: `**/*.min.js` and `**/*.min.cs`, not `**/*.min.[jc]s`. `pawl doctor` names a pattern whose brackets match no file but would as a character class. Pawl escapes them for each engine. Prettier has no setting for them, so pawl gives them to it as negative patterns on its command line, and `pawl fix` does not rewrite a file pawl skips. A file that a `!` pattern takes back goes to Prettier by name, in a run of its own, so it is still checked.
+
 ### gitignore
 
-Skip what the root `.gitignore` lists, including its `!` lines. Biome reads the file through its git integration, which pawl turns on in `biome.json` when there is a `.gitignore` or a git repo. Pawl turns the lines into ESLint's ignore patterns. Oxlint reads the file by itself, whatever this option says.
+Skip what the root `.gitignore` lists, including its `!` lines, its character classes such as `*.py[cod]`, and lines that start with a slash, which name a path at the root only. Biome reads the file through its git integration, which pawl turns on in `biome.json` when there is a `.gitignore` or a git repo. Pawl turns the lines into ESLint's ignore patterns. Prettier reads it by itself too, and with `gitignore: false` pawl tells it to read only `.prettierignore`. Oxlint reads the file by itself, whatever this option says.
 
 ### defaultIgnores
 
-Skip what no project wants checked: build output and caches (`dist`, `build`, `coverage`, `.turbo`, `.next`, `.open-next`, `.astro`, `.nuxt`, `.svelte-kit`, `.output`, `.vercel`, `.wrangler`), test reports (`playwright-report`, `test-results`), `*.tsbuildinfo`, lockfiles, the folders of AI coding tools (`.agent`, `.agents`, `.aider*`, `.claude`, `.clinerules`, `.codex`, `.copilot`, `.cursor`, `.gemini`, `.kiro`, `.opencode`, `.roo`, `.windsurf`), generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`), and what the tools of other languages write: `Cargo.lock`, `Package.resolved`, `.build`, `.swiftpm`, `DerivedData`, `xcuserdata`, `Pods`, `*.xcassets`, `*.xcodeproj`, `*.xcworkspace`, `.gradle`, `.kotlin`, `.cxx`, and the `target` folder next to each Rust or Maven project. `false` checks them. `node_modules`, `.git` and `.pawl` are always skipped.
+Skip what no project wants checked: build output and caches (`dist`, `build`, `coverage`, `.turbo`, `.next`, `.open-next`, `.astro`, `.nuxt`, `.svelte-kit`, `.output`, `.vercel`, `.wrangler`), test reports (`playwright-report`, `test-results`), `*.tsbuildinfo`, lockfiles, `.changeset`, the folders of AI coding tools (`.agent`, `.agents`, `.aider*`, `.claude`, `.clinerules`, `.codex`, `.copilot`, `.cursor`, `.gemini`, `.kiro`, `.opencode`, `.roo`, `.windsurf`), generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`), and what the tools of other languages write: `Cargo.lock`, `Package.resolved`, `.build`, `.swiftpm`, `DerivedData`, `xcuserdata`, `Pods`, `*.xcassets`, `*.xcodeproj`, `*.xcworkspace`, `.gradle`, `.kotlin`, `.cxx`, and the `target` folder next to each Rust or Maven project. `false` checks them. `node_modules`, `.git` and `.pawl` are always skipped.
 
 ### runtime
 
 Where the code runs, instead of what pawl detects. Each runtime brings its global variables:
 
-| Runtime   | Detected from                                                                    | Globals                                                |
-| --------- | -------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `node`    | Any project with a `package.json`                                                | Node's                                                 |
-| `browser` | A frontend framework, or no sign of any runtime                                  | The browser's                                          |
-| `bun`     | `bun-types`, `@types/bun` or `bunfig.toml`                                       | Node's and `Bun`                                       |
-| `deno`    | `deno.json` or `deno.jsonc`                                                      | The web platform's and `Deno`                          |
-| `worker`  | `wrangler`, `@cloudflare/workers-types`, or `wrangler.toml`, `.json` or `.jsonc` | A service worker's, `HTMLRewriter` and `WebSocketPair` |
+| Runtime   | Detected from                                                                                                       | Globals                                                |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `node`    | Any project, but a Deno project without a `package.json`                                                            | Node's                                                 |
+| `browser` | A frontend framework, or no sign of any runtime                                                                     | The browser's                                          |
+| `bun`     | `bun-types`, `@types/bun` or `bunfig.toml`                                                                          | Node's and `Bun`                                       |
+| `deno`    | `deno.json` or `deno.jsonc`                                                                                         | The web platform's and `Deno`                          |
+| `worker`  | `wrangler`, `@cloudflare/workers-types`, `@cloudflare/vitest-pool-workers`, or `wrangler.toml`, `.json` or `.jsonc` | A service worker's, `HTMLRewriter` and `WebSocketPair` |
 
 Biome knows the Node and browser globals by itself, so `biome.json` names only the rest in `javascript.globals`. Oxlint gets its own `env`, and ESLint the lists of the `globals` package when the project has it, else pawl's own.
 
@@ -228,7 +232,7 @@ The default standard comes first, then each `extends` entry, then the config fil
 | `maxWarnings`                            | The lower limit wins                                                  |
 | `style`                                  | Keys merge; a later key wins                                          |
 | `rules`                                  | A later level wins, unless the rule is locked and it is looser        |
-| `options`                                | A later entry replaces the earlier one for that rule                  |
+| `options`, `biomeOptions`                | A later entry replaces the earlier one for that rule                  |
 | `gitignore`, `defaultIgnores`, `runtime` | The later one wins                                                    |
 | `detect`                                 | A later `true` or `false` wins; the exclusions add up                 |
 | `languages`                              | A name adds a language; `false` removes it; an object picks its tools |

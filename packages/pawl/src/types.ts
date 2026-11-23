@@ -1,7 +1,11 @@
-import { type Language } from './languages.ts'
-
 /** Severity a rule runs at. */
 export type Level = 'off' | 'warn' | 'error'
+
+/**
+ * A language other than JavaScript and TypeScript. Pawl finds projects in these languages and,
+ * when the policy names the language, checks them with that language's own tools.
+ */
+export type Language = 'rust' | 'swift' | 'kotlin'
 
 /** Engines pawl can compile a policy for. */
 export type EngineName = 'biome' | 'oxlint' | 'eslint'
@@ -139,6 +143,7 @@ export interface PolicyInput {
 
 /** An override, merged. */
 export interface Override {
+  /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   files: string[]
   rules: Record<string, Level>
   options: Record<string, unknown[]>
@@ -168,6 +173,7 @@ export interface Policy {
   biomeOptions: Record<string, Record<string, unknown>>
   overrides: Override[]
   locked: string[]
+  /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   ignore: string[]
   gitignore: boolean
   defaultIgnores: boolean
@@ -208,8 +214,10 @@ export interface SetupIssue {
     | 'biome-config-missing'
     | 'biome-config-stale'
     | 'biome-config-foreign'
+    | 'biome-missing'
     | 'eslint-missing'
     | 'oxlint-missing'
+    | 'tsgolint-missing'
     | 'oxlint-config-missing'
     | 'oxlint-config-stale'
     | 'prettier-missing'
@@ -220,6 +228,8 @@ export interface SetupIssue {
     | 'engine-failed'
     | 'language-tool-missing'
     | 'since-unresolved'
+    | 'baseline-unreadable'
+    | 'pawl-missing'
   message: string
   fix?: string
 }

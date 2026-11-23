@@ -1,21 +1,26 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check, exitCode } from '../src/check.ts'
-import { describe as describeRepo, detect } from '../src/detect.ts'
-import { doctor, formatDoctor } from '../src/doctor.ts'
-import { biomeConfig, biomeContextFor, biomeProjectConfig, runBiome } from '../src/engines/biome.ts'
-import { parseClippy, parseRustfmt } from '../src/engines/cargo.ts'
-import { eslintPlanFor } from '../src/engines/eslint.ts'
-import { parseKtlint, runKtlint } from '../src/engines/ktlint.ts'
-import { checkLanguages, isLanguageRule } from '../src/engines/languages.ts'
-import { oxlintConfig, oxlintContextFor } from '../src/engines/oxlint.ts'
-import { findOnPath } from '../src/engines/run.ts'
-import { parseSwiftFormat, parseSwiftLint, runSwiftFormat, runSwiftLint } from '../src/engines/swift.ts'
-import { ignoreMatcher } from '../src/ignores.ts'
-import { planInit } from '../src/init.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
-import { toolset } from '../src/tools.ts'
+import { isLanguageRule } from '../src/catalog/rules.ts'
+import { check } from '../src/check/check.ts'
+import { exitCode } from '../src/check/result.ts'
+import { biomeConfig, biomeProjectConfig } from '../src/engines/biome/config.ts'
+import { runBiome } from '../src/engines/biome/run.ts'
+import { biomeContextFor } from '../src/engines/biome/state.ts'
+import { findOnPath } from '../src/engines/engine.ts'
+import { eslintPlanFor } from '../src/engines/eslint/plan.ts'
+import { parseClippy, parseRustfmt } from '../src/engines/languages/cargo.ts'
+import { checkLanguages } from '../src/engines/languages/check.ts'
+import { parseKtlint, runKtlint } from '../src/engines/languages/ktlint.ts'
+import { parseSwiftFormat, parseSwiftLint, runSwiftFormat, runSwiftLint } from '../src/engines/languages/swift.ts'
+import { oxlintConfig, oxlintContextFor } from '../src/engines/oxlint/config.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
+import { describe as describeRepo, detect } from '../src/project/detect.ts'
+import { ignoreMatcher } from '../src/project/ignores.ts'
+import { toolset } from '../src/project/toolset.ts'
+import { doctor, formatDoctor } from '../src/report/doctor.ts'
+import { explainRule } from '../src/report/explain.ts'
+import { planInit } from '../src/setup/init.ts'
 import { link, project, write } from './helpers.ts'
 
 const polyglot = (): string =>
@@ -197,6 +202,15 @@ describe('other languages: the policy', () => {
     expect(isLanguageRule('swiftlint:force_cast')).toBe(true)
     expect(isLanguageRule('ktlint:standard:no-wildcard-imports')).toBe(true)
     expect(isLanguageRule('no-console')).toBe(false)
+  })
+
+  it("explains a rule of one of those tools as that tool's own", () => {
+    expect(explainRule(defaultPolicy(), 'clippy:needless_return')).toEqual(
+      expect.arrayContaining(['clippy:needless_return', '  Checked by:  Clippy'])
+    )
+    expect(explainRule(defaultPolicy(), 'ktlint:standard:no-wildcard-imports')?.[1]).toContain(
+      "under ktlint's own name, standard:no-wildcard-imports"
+    )
   })
 })
 

@@ -1,8 +1,21 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { applyBaseline, createBaseline, newSuppressions, scanSuppressions } from '../src/baseline.ts'
-import { makeIgnore } from '../src/ignores.ts'
+import {
+  applyBaseline,
+  BASELINE_FILE,
+  baselineUnreadable,
+  blankJsonStrings,
+  createBaseline,
+  newSuppressions,
+  readBaseline,
+  scanSuppressions
+} from '../src/check/baseline.ts'
+import { check } from '../src/check/check.ts'
+import { exitCode } from '../src/check/result.ts'
+import { makeIgnore } from '../src/project/ignores.ts'
 import { type Finding } from '../src/types.ts'
-import { project } from './helpers.ts'
+import { link, project, write } from './helpers.ts'
 
 const finding = (file: string, rule: string, line = 1): Finding => ({
   file,
@@ -86,6 +99,59 @@ describe('disable-comment ratchet', () => {
     ])
   })
 
+  it('finds the comments of Oxlint, and those in stylesheets, JSON, GraphQL and YAML', () => {
+    // Put together here, so that pawl's check of this file does not count them.
+    const comment = (open: string, text: string): string => `${open} ${text}`
+    const files = project({
+      'src/a.ts': [comment('//', 'oxlint-disable-next-line no-console'), 'console.log(1)', ''].join('\n'),
+      'src/b.js': `${comment('/*', 'oxlint-disable */')}\nconsole.log(2) ${comment('//', 'oxlint-disable-line')}\n`,
+      'src/a.css': `a {\n  ${comment('/*', 'biome-ignore lint/suspicious/noDuplicateProperties: legacy */')}\n}\n`,
+      'data.jsonc': `{\n  ${comment('//', 'biome-ignore lint/suspicious/noDuplicateObjectKeys: legacy')}\n  "a": 1\n}\n`,
+      'schema.graphql': `${comment('#', 'biome-ignore lint/style/useNamingConvention: legacy')}\ntype a { b: Int }\n`,
+      'ci.yml': `${comment('#', 'eslint-disable yml/no-empty-key')}\na: 1 # a note about eslint\n`,
+      'notes.txt': `${comment('//', 'eslint-disable')}\n`
+    })
+
+    expect(
+      scanSuppressions(files, () => false)
+        .map(item => `${item.file}:${item.line} ${item.text}`)
+        .sort()
+    ).toEqual([
+      'ci.yml:1 eslint-disable',
+      'data.jsonc:2 biome-ignore',
+      'schema.graphql:1 biome-ignore',
+      'src/a.css:2 biome-ignore',
+      'src/a.ts:1 oxlint-disable-next-line',
+      'src/b.js:1 oxlint-disable',
+      'src/b.js:2 oxlint-disable-line'
+    ])
+  })
+
+  it('does not count a JSON string that shows a disable comment, but does count the comment after it', () => {
+    const comment = (open: string, text: string): string => `${open} ${text}`
+    const files = project({
+      '.vscode/snippets.json': [
+        '{',
+        `  "skip": { "body": "${comment('//', 'eslint-disable-next-line no-console')}" },`,
+        `  "escaped": "a \\" ${comment('/*', 'biome-ignore x */')}",`,
+        `  "url": "https://example.com/${comment('*', 'eslint-disable')}"`,
+        `}  ${comment('//', 'eslint-disable-line')}`,
+        ''
+      ].join('\n'),
+      'tsconfig.json': `{
+  ${comment('/*', 'biome-ignore lint: "quoted" */')}
+  "a": "${comment('//', '@ts-ignore')}"
+}
+`
+    })
+
+    expect(scanSuppressions(files, () => false).map(item => `${item.file}:${item.line} ${item.text}`)).toEqual([
+      '.vscode/snippets.json:5 eslint-disable-line',
+      'tsconfig.json:2 biome-ignore'
+    ])
+    expect(blankJsonStrings('{"a": "x\\"y", "b": 1}')).toBe('{" ": "    ", " ": 1}')
+  })
+
   it('fails only files that gained a comment since the baseline', () => {
     const found = scanSuppressions(root, makeIgnore(['generated/**']))
     const baseline = createBaseline(
@@ -103,5 +169,79 @@ describe('disable-comment ratchet', () => {
       severity: 'error',
       overBaseline: { allowed: 2, found: 3 }
     })
+  })
+})
+
+describe('the baseline file, with the real Biome', { timeout: 60_000 }, () => {
+  const LEGACY = 'var legacy = 1\nexport default legacy\n'
+
+  const fixture = (files: Record<string, string | object> = {}): string => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'biome.json': { extends: ['@santi020k/pawl/biome'] },
+      'src/old.js': LEGACY,
+      ...files
+    })
+
+    link(root)
+
+    return root
+  }
+
+  it('is not written by a check that did not complete', async () => {
+    // Oxlint is the linter and has no config yet, so the lint part of the check cannot run.
+    const root = fixture({ 'pawl.config.json': { engine: 'oxlint' } })
+    const first = await check({ root, updateBaseline: true })
+
+    expect(first.setup.map(issue => issue.code)).toContain('oxlint-config-missing')
+    expect(first.baselined).toBe(0)
+    expect(first.hasBaseline).toBe(false)
+    expect(existsSync(join(root, BASELINE_FILE))).toBe(false)
+
+    // An earlier baseline is kept as it was, not replaced by half the findings.
+    const kept = { version: 1, findings: { 'src/old.js': { 'no-var': 1, 'pawl/format': 4 } }, suppressions: {} }
+
+    write(root, { [BASELINE_FILE]: kept })
+
+    const second = await check({ root, updateBaseline: true })
+
+    expect(second.hasBaseline).toBe(true)
+    expect(readBaseline(root)).toEqual(kept)
+  })
+
+  it('stops the check when the file cannot be read, and is written again by "pawl baseline"', async () => {
+    const root = fixture()
+
+    await check({ root, updateBaseline: true })
+
+    const recorded = readBaseline(root)
+
+    write(root, { [BASELINE_FILE]: `<<<<<<< HEAD\n${JSON.stringify(recorded)}\n=======\n{}\n>>>>>>> feature\n` })
+
+    const result = await check({ root })
+
+    // Nothing ran: without the baseline every old finding would come back as new.
+    expect(result.setup).toEqual([
+      {
+        code: 'baseline-unreadable',
+        message: `${BASELINE_FILE} cannot be read: it is not valid JSON, or not a baseline this version of pawl knows.`,
+        fix: 'Resolve the merge conflict in it, or run "pawl baseline" to record the findings again.'
+      }
+    ])
+    expect(result.findings).toEqual([])
+    expect(result.commands).toEqual([])
+    expect(exitCode(result)).toBe(2)
+
+    await check({ root, updateBaseline: true })
+
+    expect(readBaseline(root)).toEqual(recorded)
+    expect((await check({ root })).setup).toEqual([])
+  })
+
+  it('counts as unreadable when a newer pawl wrote it', () => {
+    const root = fixture({ [BASELINE_FILE]: { version: 2, entries: [] } })
+
+    expect(baselineUnreadable(root)).toBe(true)
+    expect(baselineUnreadable(fixture())).toBe(false)
   })
 })

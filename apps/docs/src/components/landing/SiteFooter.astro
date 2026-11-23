@@ -2,6 +2,7 @@
 import { Container } from '@santi020k/lumen-astro'
 
 import PawlMark from '../PawlMark.astro'
+import { npmUrl } from './facts.ts'
 
 const groups = [
   {
@@ -9,6 +10,7 @@ const groups = [
     links: [
       { label: 'Getting started', href: '/guide/getting-started/' },
       { label: 'Coming from ESLint', href: '/guide/migrate/' },
+      { label: 'Upgrading', href: '/guide/upgrade/' },
       { label: 'The ratchet', href: '/guide/ratchet/' },
       { label: 'Packs', href: '/guide/packs/' },
       { label: 'Coding agents', href: '/guide/agents/' }
@@ -20,13 +22,15 @@ const groups = [
       { label: 'CLI', href: '/reference/cli/' },
       { label: 'Configuration', href: '/reference/config/' },
       { label: 'Rules', href: '/reference/rules/' },
-      { label: 'API', href: '/reference/api/' }
+      { label: 'API', href: '/reference/api/' },
+      { label: 'Changelog', href: '/changelog/' }
     ]
   },
   {
     title: 'Project',
     links: [
       { label: 'GitHub', href: 'https://github.com/santi020k/pawl' },
+      { label: 'npm', href: npmUrl },
       { label: 'Issues', href: 'https://github.com/santi020k/pawl/issues' },
       { label: 'License (MIT)', href: 'https://github.com/santi020k/pawl/blob/main/LICENSE' }
     ]
@@ -97,9 +101,7 @@ const groups = [
 
   h2 {
     margin: 0 0 0.75rem;
-    font: 500 0.75rem/1 var(--pawl-font-mono);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font: 500 0.8125rem/1 var(--pawl-font-mono);
     color: hsl(var(--ink-muted));
   }
 
@@ -147,6 +149,21 @@ const groups = [
 
     .site-footer__brand {
       grid-column: 1 / -1;
+    }
+
+    /* Touch-sized rows. */
+    ul {
+      gap: 0;
+    }
+
+    nav a {
+      display: flex;
+      align-items: center;
+      min-height: 2.75rem;
+    }
+
+    .brand {
+      min-height: 2.75rem;
     }
   }
 </style>

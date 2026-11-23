@@ -69,7 +69,8 @@
         },
         "lineWidth": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 320
         },
         "quotes": {
           "type": "string",

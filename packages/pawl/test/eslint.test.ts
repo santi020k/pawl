@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { eslintPlan } from '../src/engines/eslint.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
-import { project } from './helpers.ts'
+import { check } from '../src/check/check.ts'
+import { exitCode } from '../src/check/result.ts'
+import { readReport } from '../src/engines/engine.ts'
+import { eslintPlan } from '../src/engines/eslint/plan.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
+import { link, project } from './helpers.ts'
 
 const block = (config: Record<string, unknown>[], name: string): Record<string, unknown> | undefined =>
   config.find(entry => entry.name === name)
@@ -20,6 +23,17 @@ const withPlugins = (): string =>
   })
 
 describe('eslintPlan', () => {
+  it('leaves a rule named for another engine to that engine', async () => {
+    const policy = mergeLayers([
+      { input: { rules: { 'oxlint:no-foo': 'error', 'biome:style/useBlockStatements': 'error' } }, source: 'test' }
+    ])
+    const plan = await eslintPlan({ root: withPlugins(), policy, biomeActive: false, typescript: false })
+    const base = block(plan.config, 'pawl/base') as { rules: Record<string, unknown> }
+
+    expect(Object.keys(base.rules).filter(name => name.includes(':'))).toEqual([])
+    expect(plan.notEnforced.filter(({ rule, needs }) => `${rule} ${needs}`.includes(':'))).toEqual([])
+  })
+
   it('takes every rule when ESLint is the only engine', async () => {
     const plan = await eslintPlan({
       root: withPlugins(),
@@ -298,5 +312,66 @@ describe('eslintPlan', () => {
         'vitest/valid-title': 'error'
       })
     })
+  })
+})
+
+describe('an engine report', () => {
+  it('is read from the first bracket, or from the first line after the noise that starts with one', () => {
+    expect(readReport('{"diagnostics":[]}', '{')).toEqual({ diagnostics: [] })
+    expect(readReport('warning: slow\n{"diagnostics":[]}\n', '{')).toEqual({ diagnostics: [] })
+    expect(readReport('[plugin] ready\n[{"filePath":"a.js","messages":[]}]', '[')).toEqual([
+      { filePath: 'a.js', messages: [] }
+    ])
+  })
+
+  it("is found after noise with a bracket, when the report puts each finding on a line of its own, as Oxlint's does", () => {
+    const report = '{ "diagnostics": [{"code": "a"},\n{"code": "b"},\n{"code": "c"}],\n  "number_of_files": 1\n}\n'
+
+    expect(readReport<{ diagnostics: unknown[] }>(`{config} loaded\n${report}`, '{')?.diagnostics).toHaveLength(3)
+    expect(readReport<{ diagnostics: unknown[] }>(`a {\n{ not json\n${report}`, '{')?.diagnostics).toHaveLength(3)
+  })
+
+  it('is undefined when the output holds none', () => {
+    expect(readReport('', '{')).toBeUndefined()
+    expect(readReport('Segmentation fault', '[')).toBeUndefined()
+    expect(readReport('{ "diagnostics": [', '{')).toBeUndefined()
+  })
+})
+
+describe('the report of the real ESLint', { timeout: 60_000 }, () => {
+  const fixture = (config: string): string => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'pawl.config.json': { engine: 'eslint', formatter: 'prettier' },
+      '.prettierrc.json': '{}\n',
+      'eslint.config.js': config,
+      'src/a.js': 'debugger\n'
+    })
+
+    link(root, { eslint: true, prettier: true })
+
+    return root
+  }
+
+  it('is read when a config file prints lines of its own before it', async () => {
+    const result = await check({
+      root: fixture("console.log('[my-plugin] ready {')\n\nexport default [{ rules: { 'no-debugger': 'error' } }]\n")
+    })
+
+    expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
+    expect(
+      result.findings.filter(finding => finding.engine === 'eslint').map(finding => `${finding.file} ${finding.rule}`)
+    ).toEqual(['src/a.js no-debugger'])
+  })
+
+  it('is a setup problem, with what ESLint said, when the config file fails', async () => {
+    const result = await check({ root: fixture("throw new Error('the config is broken')\n") })
+
+    const failed = result.setup.filter(issue => issue.code === 'engine-failed')
+
+    expect(failed).toHaveLength(1)
+    expect(failed[0]?.message).toContain('eslint could not run:')
+    expect(failed[0]?.message).toContain('the config is broken')
+    expect(exitCode(result)).toBe(2)
   })
 })

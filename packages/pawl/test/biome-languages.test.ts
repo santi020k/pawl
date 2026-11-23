@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
-import { biomeConfig, biomeTechConfig } from '../src/engines/biome.ts'
-import { applyInit, formatWritten, planInit } from '../src/init.ts'
-import { defaultPolicy } from '../src/policy.ts'
+import { check } from '../src/check/check.ts'
+import { biomeConfig, biomeTechConfig } from '../src/engines/biome/config.ts'
+import { defaultPolicy } from '../src/policy/merge.ts'
+import { formatWritten, planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { link, project, write } from './helpers.ts'
 
 const ready = async (files: Record<string, string | object>): Promise<string> => {
@@ -14,7 +15,7 @@ const ready = async (files: Record<string, string | object>): Promise<string> =>
 
   const plan = await planInit({ root, install: false, editor: false })
 
-  applyInit(plan)
+  applyPlan(plan)
   await formatWritten(
     root,
     plan.actions.map(action => action.path)
@@ -63,6 +64,74 @@ describe('what Biome checks beyond scripts, with the real Biome', { timeout: 60_
       'version',
       'private',
       'type'
+    ])
+  })
+})
+
+describe('component files, with the real Biome', { timeout: 60_000 }, () => {
+  // Biome reads the script of a component and not its template, where Status and Child are used.
+  const VUE = `<script setup lang="ts">
+import Child from './Child.vue'
+import { Status } from './types'
+
+defineProps<{ status: Status }>()
+</script>
+
+<template>
+  <Child v-if="status === Status.Active" />
+</template>
+`
+  const ASTRO = `---
+import Card from '../Card.astro'
+import { Status } from '../types'
+
+const status: Status = Astro.props.status
+---
+<Card>{status === Status.Active ? 'on' : 'off'}</Card>
+`
+  const files = {
+    'package.json': {
+      name: 'fixture',
+      private: true,
+      type: 'module',
+      dependencies: { vue: '^3.5.0', astro: '^5.0.0' },
+      devDependencies: { typescript: '^5.9.0' }
+    },
+    'src/Card.vue': VUE,
+    'src/pages/index.astro': ASTRO,
+    'src/types.ts': "export enum Status {\n  Active = 'active'\n}\n"
+  }
+  const unused = (result: Awaited<ReturnType<typeof check>>): string[] =>
+    result.findings
+      .filter(finding => /unused|consistent-type-imports|prefer-const/.test(finding.rule))
+      .map(finding => `${finding.file} ${finding.rule}`)
+
+  it('keep the imports their templates use, and are not told those are unused', async () => {
+    const root = await ready(files)
+
+    expect(unused(await check({ root }))).toEqual([])
+
+    // The fix for a type-only import is a safe one, so "pawl fix" applied it and broke the template.
+    await check({ root, fix: true })
+
+    expect(readFileSync(join(root, 'src/Card.vue'), 'utf8')).toBe(VUE)
+    expect(readFileSync(join(root, 'src/pages/index.astro'), 'utf8')).toBe(ASTRO)
+  })
+
+  it('still get those rules in a plain script, and in a component when the policy says so', async () => {
+    const root = await ready({ ...files, 'src/a.ts': "import { Status } from './types'\n\nexport const b = 1\n" })
+
+    expect(unused(await check({ root }))).toEqual(['src/a.ts unused-imports/no-unused-imports'])
+
+    // A policy that has switched on Biome's full support for these files can have the rule back.
+    write(root, {
+      'pawl.config.json': { overrides: [{ files: ['*.vue'], rules: { 'unused-imports/no-unused-imports': 'error' } }] }
+    })
+    applyPlan(await planInit({ root, install: false, editor: false }))
+
+    expect(unused(await check({ root }))).toEqual([
+      'src/a.ts unused-imports/no-unused-imports',
+      'src/Card.vue unused-imports/no-unused-imports'
     ])
   })
 })

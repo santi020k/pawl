@@ -5,8 +5,11 @@ on:
     branches: [main]
     paths:
       - "apps/docs/**"
-      # The rules page is generated from the library's rule catalog.
+      # The rules page is generated from the library's rule catalog, and the changelog page reads the
+      # packages' changelogs and the pending changesets.
       - "packages/pawl/**"
+      - "packages/pawl-policy/CHANGELOG.md"
+      - ".changeset/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/deploy-docs.yml"
@@ -44,6 +47,20 @@ jobs:
 
       - name: Audit SEO and social metadata
         run: pnpm --filter @santi020k/pawl-docs run audit
+
+      # The first run creates the Direct Upload project; every later run finds it.
+      - name: Create the Pages project if it is missing
+        working-directory: apps/docs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if pnpm exec wrangler pages project list --json |
+            node -e 'const projects = JSON.parse(require("node:fs").readFileSync(0, "utf8")); process.exit(projects.some(project => project["Project Name"] === "pawl-docs") ? 0 : 1)'; then
+            echo "The Pages project pawl-docs exists."
+          else
+            pnpm exec wrangler pages project create pawl-docs --production-branch=main
+          fi
 
       - name: Deploy to Cloudflare Pages
         working-directory: apps/docs

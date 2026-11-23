@@ -173,6 +173,10 @@ export const explain: readonly Line[] = [
     ['  https://biomejs.dev/linter/rules/no-double-equals', 'muted']
   ],
   [
+    ['  Oxlint:      ', 'muted'],
+    ['eqeqeq', 'plain']
+  ],
+  [
     ['  ESLint:      ', 'muted'],
     ['eqeqeq', 'plain']
   ]

@@ -2,6 +2,9 @@
  * Starlight reads the pawl tokens from tokens.css.
  * Starlight's scale runs from --sl-color-white (strongest text) to --sl-color-black (page background),
  * and flips in light mode, so each step maps to the matching pawl token.
+ *
+ * Starlight puts its own styles in cascade layers, so every rule here wins over them without
+ * extra specificity. Lime is the signal: links, the current page, the primary button. The rest stays quiet.
  */
 
 :root {
@@ -9,6 +12,17 @@
   --sl-font-mono: var(--pawl-font-mono);
   --sl-content-width: 46rem;
   --sl-nav-height: 4rem;
+  --sl-line-height: 1.7;
+
+  /* Body copy keeps a readable measure; code, tables and asides use the full column. */
+  --pawl-measure: 40rem;
+
+  /* One type scale for doc pages: 44 / 28 / 21 / 18 on wide screens. */
+  --sl-text-h1: 2.125rem;
+  --sl-text-h2: 1.5rem;
+  --sl-text-h3: 1.1875rem;
+  --sl-text-h4: 1.0625rem;
+  --sl-text-h5: 1rem;
 
   --sl-color-white: hsl(120 22% 96%);
   --sl-color-gray-1: hsl(var(--ink));
@@ -27,8 +41,40 @@
   --sl-color-bg-sidebar: hsl(var(--canvas));
   --sl-color-hairline-light: hsl(var(--line) / 0.7);
   --sl-color-hairline: hsl(var(--line));
+  --sl-color-hairline-shade: hsl(var(--line) / 0.7);
+  --sl-color-backdrop-overlay: hsl(150 8% 3% / 0.72);
+
+  /*
+   * Starlight's hue scales drive asides and badges. Each one maps to a brand role:
+   * note is the mint accent, tip the lime signal, caution amber, danger red.
+   */
+  --sl-color-blue-low: hsl(var(--accent) / 0.08);
+  --sl-color-blue: hsl(var(--accent));
+  --sl-color-blue-high: hsl(var(--accent));
+  --sl-color-purple-low: hsl(var(--brand) / 0.07);
+  --sl-color-purple: hsl(var(--brand));
+  --sl-color-purple-high: hsl(var(--brand));
+  --sl-color-orange-low: hsl(var(--warning) / 0.08);
+  --sl-color-orange: hsl(var(--warning));
+  --sl-color-orange-high: hsl(var(--warning));
+  --sl-color-red-low: hsl(var(--danger) / 0.08);
+  --sl-color-red: hsl(var(--danger));
+  --sl-color-red-high: hsl(var(--danger));
+  --sl-color-green-low: hsl(var(--success) / 0.08);
+  --sl-color-green: hsl(var(--success));
+  --sl-color-green-high: hsl(var(--success));
 }
 
+@media (min-width: 50em) {
+  :root {
+    --sl-text-h1: 2.75rem;
+    --sl-text-h2: 1.75rem;
+    --sl-text-h3: 1.3125rem;
+    --sl-text-h4: 1.125rem;
+  }
+}
+
+/* Light pages sit on the pale canvas, like the landing page; code, cards and asides are white surfaces on it. */
 :root[data-theme="light"] {
   --sl-color-white: hsl(var(--ink));
   --sl-color-gray-1: hsl(140 10% 14%);
@@ -38,15 +84,29 @@
   --sl-color-gray-5: hsl(var(--line));
   --sl-color-gray-6: hsl(var(--surface-muted));
   --sl-color-gray-7: hsl(var(--canvas));
-  --sl-color-black: hsl(var(--surface));
+  --sl-color-black: hsl(var(--canvas));
 
   --sl-color-accent-low: hsl(var(--brand-soft));
   --sl-color-accent: hsl(var(--brand));
   --sl-color-accent-high: hsl(87 100% 15%);
 
-  --sl-color-bg-nav: hsl(var(--surface) / 0.86);
-  --sl-color-bg-sidebar: hsl(var(--surface));
+  --sl-color-bg-nav: hsl(var(--canvas) / 0.86);
+  --sl-color-bg-sidebar: hsl(var(--canvas));
+  --sl-color-hairline-shade: hsl(var(--line) / 0.8);
+  --sl-color-backdrop-overlay: hsl(140 10% 10% / 0.4);
 }
+
+::selection {
+  background: hsl(var(--brand) / 0.3);
+  color: hsl(var(--ink));
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--brand));
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- Header */
 
 /* A translucent header that blurs the page underneath, like the landing page. */
 header.header {
@@ -67,14 +127,273 @@ header.header {
   width: auto;
 }
 
-/* Headings use Geist's tighter display tracking. */
-.sl-markdown-content :is(h1, h2, h3, h4),
-h1#_top {
-  letter-spacing: -0.025em;
-  font-weight: 640;
+/* The search field reads as a quiet input until it is pointed at. */
+site-search button[data-open-modal] {
+  color: var(--sl-color-gray-2);
 }
 
-/* The primary call to action is lime with near-black text in both themes, as on the landing page. */
+@media (min-width: 50rem) {
+  site-search button[data-open-modal] {
+    border-color: hsl(var(--line));
+    border-radius: var(--ui-radius);
+    background-color: hsl(var(--surface));
+    color: var(--sl-color-gray-3);
+  }
+
+  site-search button[data-open-modal]:hover {
+    border-color: hsl(var(--brand) / 0.5);
+    color: var(--sl-color-white);
+  }
+}
+
+site-search :where(button[data-open-modal]) > kbd {
+  border: 1px solid hsl(var(--line));
+  background: transparent;
+  color: var(--sl-color-gray-3);
+  font-family: var(--pawl-font-mono);
+  font-size: 0.6875rem;
+}
+
+site-search dialog {
+  border-color: hsl(var(--line));
+  background-color: hsl(var(--surface));
+}
+
+/* The search field shows focus with its own border; the global ring would double it. */
+#starlight__search input:focus-visible {
+  outline: none;
+}
+
+@media (min-width: 50rem) {
+  site-search dialog {
+    border-radius: var(--ui-radius-lg);
+  }
+}
+
+/* The mobile menu button matches the other controls instead of a white disc. */
+.sl-menu-button,
+:root[data-theme="light"] .sl-menu-button {
+  border: 1px solid hsl(var(--line));
+  border-radius: var(--ui-radius);
+  background-color: hsl(var(--surface));
+  color: var(--sl-color-white);
+  box-shadow: none;
+}
+
+.sl-menu-button:has(~ :popover-open),
+:root[data-theme="light"] .sl-menu-button:has(~ :popover-open) {
+  border-color: hsl(var(--brand) / 0.5);
+  background-color: hsl(var(--brand-soft));
+  color: hsl(var(--brand));
+}
+
+/* ---------------------------------------------------------------- Sidebar */
+
+/*
+ * Each group is a hairline rail. The current page sits on it as a lime notch on a brand-soft row,
+ * the way a pawl sits in one tooth of the ratchet.
+ */
+.sidebar-content {
+  padding-top: 1.5rem;
+}
+
+.sidebar-content :where(ul ul) li {
+  border-inline-start-color: hsl(var(--line));
+  padding-inline-start: 0;
+}
+
+.sidebar-content .top-level > li + li {
+  margin-top: 1.25rem;
+}
+
+.sidebar-content summary {
+  padding-block: 0.25rem;
+}
+
+.sidebar-content .group-label .large {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--sl-color-white);
+}
+
+.sidebar-content summary .caret {
+  color: var(--sl-color-gray-3);
+}
+
+.sidebar-content :where(ul) ul {
+  margin-top: 0.25rem;
+}
+
+/*
+ * Link rules below keep one specificity, (0, 1, 1), and rely on source order: hover, then the current page.
+ * The row starts at the rail, so the notch and its background read as one mark.
+ */
+.sidebar-content :where(ul ul) a {
+  border-radius: 0 var(--ui-radius-sm) var(--ui-radius-sm) 0;
+  padding-block: 0.375rem;
+  padding-inline-start: 1rem;
+  color: var(--sl-color-gray-2);
+}
+
+/* The sidebar and the table of contents scroll, so their focus rings sit inside the row. */
+.sidebar-content a:where(:focus-visible),
+.sidebar-content summary:focus-visible {
+  outline-offset: -2px;
+}
+
+.sidebar-content :where(ul ul) a:where(:hover) {
+  background-color: hsl(var(--surface-muted));
+  color: var(--sl-color-white);
+}
+
+.sidebar-content :where(ul ul) li:has(> a[aria-current="page"]) {
+  border-inline-start-color: hsl(var(--brand));
+  box-shadow: inset 1px 0 0 hsl(var(--brand));
+}
+
+.sidebar-content a:where([aria-current="page"]) {
+  background-color: hsl(var(--brand-soft));
+  color: hsl(var(--brand));
+  font-weight: 560;
+}
+
+@media (min-width: 50rem) {
+  .sidebar-content :where(ul ul) a {
+    font-size: var(--sl-text-sm);
+  }
+}
+
+/* ---------------------------------------------------------------- Page title and prose */
+
+h1#_top {
+  margin-top: 0.75rem;
+  letter-spacing: -0.035em;
+  font-weight: 640;
+  text-wrap: balance;
+}
+
+.sl-markdown-content :is(h2, h3, h4, h5) {
+  letter-spacing: -0.02em;
+  font-weight: 620;
+  text-wrap: balance;
+}
+
+.sl-markdown-content h2 {
+  letter-spacing: -0.028em;
+}
+
+/* Sections open with a hairline, so a long page reads as a set of parts. */
+.sl-markdown-content .sl-heading-wrapper.level-h2 {
+  margin-top: 2.75rem;
+}
+
+.sl-markdown-content .sl-heading-wrapper.level-h2:not(:first-child) {
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--sl-color-hairline-light);
+}
+
+.sl-markdown-content .sl-heading-wrapper.level-h3 {
+  margin-top: 2.25rem;
+}
+
+.sl-markdown-content .sl-heading-wrapper.level-h4 {
+  margin-top: 1.75rem;
+}
+
+.sl-markdown-content .sl-anchor-link {
+  color: var(--sl-color-gray-3);
+}
+
+.sl-markdown-content .sl-anchor-link:hover {
+  color: hsl(var(--brand));
+}
+
+.sl-markdown-content > :is(p, dl, blockquote),
+.sl-markdown-content > :is(ul, ol):not(.sl-steps),
+.sl-markdown-content .sl-steps > li > :is(p, ul, ol) {
+  max-width: var(--pawl-measure);
+}
+
+.sl-markdown-content p {
+  text-wrap: pretty;
+}
+
+.sl-markdown-content strong {
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+
+.sl-markdown-content ul:not(:where(.not-content *, .sl-steps)) > li::marker {
+  color: var(--sl-color-gray-3);
+}
+
+.sl-markdown-content ol:not(:where(.not-content *, .sl-steps)) > li::marker {
+  color: var(--sl-color-gray-3);
+  font-family: var(--pawl-font-mono);
+  font-size: 0.875em;
+}
+
+/* Links are lime with a soft underline that firms up on hover. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: hsl(var(--brand));
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: hsl(var(--brand) / 0.45);
+  text-underline-offset: 0.22em;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)):where(:hover) {
+  color: hsl(var(--brand));
+  text-decoration-color: currentColor;
+}
+
+/* Inline code is a quiet chip, so links keep the signal. */
+.sl-markdown-content :not(pre) > code:not(:where(.not-content *)) {
+  margin-block: 0;
+  border: 1px solid hsl(var(--line) / 0.8);
+  border-radius: 0.3125rem;
+  padding: 0.0625rem 0.3125rem;
+  background: hsl(var(--surface-muted));
+  color: var(--sl-color-white);
+  font-size: 0.875em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) > code {
+  color: inherit;
+}
+
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) code:not(:where(.not-content *)) {
+  font-size: 0.9em;
+}
+
+.sl-markdown-content kbd {
+  border: 1px solid hsl(var(--line));
+  border-bottom-width: 2px;
+  border-radius: 0.3125rem;
+  padding: 0.0625rem 0.375rem;
+  background: hsl(var(--surface));
+  color: var(--sl-color-white);
+  font-family: var(--pawl-font-mono);
+  font-size: 0.8125em;
+}
+
+.sl-markdown-content hr:not(:where(.not-content *)) {
+  margin-block: 2.5rem;
+  border-bottom-color: var(--sl-color-hairline-light);
+}
+
+/* Buttons match the landing page: compact, squared corners, lime with near-black text for the primary one. */
+.sl-link-button {
+  border-radius: var(--ui-radius);
+  padding: 0.625rem 1rem;
+  font-size: var(--sl-text-sm);
+  font-weight: 560;
+  line-height: 1.25;
+}
+
 .sl-link-button.primary,
 .hero .action.primary {
   background: hsl(var(--pawl-lime));
@@ -82,26 +401,443 @@ h1#_top {
   color: hsl(var(--pawl-ink-on-lime));
 }
 
-/* Inline code picks up the lime tint. */
-.sl-markdown-content :not(pre) > code {
-  background: hsl(var(--brand-soft));
-  color: var(--sl-color-text-accent);
-  border: 1px solid hsl(var(--brand) / 0.18);
-  border-radius: 0.3rem;
-  padding: 0.1em 0.35em;
+.sl-link-button.primary:hover {
+  color: hsl(var(--pawl-ink-on-lime));
+  box-shadow: var(--pawl-glow);
 }
 
-/* Tables read as data: mono header labels, hairline rows. */
-.sl-markdown-content table th {
-  font-family: var(--pawl-font-mono);
-  font-size: var(--sl-text-xs);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--sl-color-gray-3);
+.sl-link-button.secondary {
+  border-color: hsl(var(--line));
+  background: hsl(var(--surface));
+  color: var(--sl-color-white);
+}
+
+.sl-link-button.secondary:hover {
+  border-color: hsl(var(--brand) / 0.55);
+  color: var(--sl-color-white);
 }
 
 /* Lumen components inside a doc page keep their own spacing and typography. */
 .sl-markdown-content .not-content {
   font-family: var(--pawl-font);
+}
+
+/* ---------------------------------------------------------------- Asides */
+
+.sl-markdown-content .starlight-aside {
+  border-inline-start-width: 2px;
+  border-radius: 0 var(--ui-radius) var(--ui-radius) 0;
+  padding: 0.875rem 1.125rem 0.9375rem;
+  color: var(--sl-color-gray-1);
+}
+
+/* On the light canvas the tints sit on white, so the colored titles keep their contrast. */
+:root[data-theme="light"] .sl-markdown-content .starlight-aside {
+  background-image: linear-gradient(var(--sl-color-asides-bg), var(--sl-color-asides-bg));
+  background-color: hsl(var(--surface));
+}
+
+:root[data-theme="light"] .starlight-aside--note {
+  --sl-color-asides-bg: hsl(var(--accent) / 0.07);
+}
+
+:root[data-theme="light"] .starlight-aside--tip {
+  --sl-color-asides-bg: hsl(var(--brand-solid) / 0.12);
+}
+
+:root[data-theme="light"] .starlight-aside--caution {
+  --sl-color-asides-bg: hsl(var(--warning) / 0.07);
+}
+
+:root[data-theme="light"] .starlight-aside--danger {
+  --sl-color-asides-bg: hsl(var(--danger) / 0.06);
+}
+
+.sl-markdown-content .starlight-aside__title {
+  gap: 0.5rem;
+  font-size: var(--sl-text-sm);
+  font-weight: 620;
+  letter-spacing: -0.005em;
+}
+
+.sl-markdown-content .starlight-aside__icon {
+  font-size: 1.25em;
+}
+
+.sl-markdown-content .starlight-aside__title + .starlight-aside__content {
+  margin-top: 0.375rem;
+}
+
+.starlight-aside__content a {
+  color: var(--sl-color-asides-text-accent);
+  text-decoration-color: currentColor;
+}
+
+/* ---------------------------------------------------------------- Steps */
+
+.sl-markdown-content .sl-steps > li::before {
+  background-color: hsl(var(--brand-soft));
+  box-shadow: inset 0 0 0 1px hsl(var(--brand) / 0.35);
+  color: hsl(var(--brand));
+  font-family: var(--pawl-font-mono);
+  font-size: 0.75rem;
+}
+
+.sl-markdown-content .sl-steps > li::after {
+  background-color: hsl(var(--line));
+}
+
+/* ---------------------------------------------------------------- Tabs */
+
+starlight-tabs [role="tablist"] {
+  border-bottom-color: hsl(var(--line));
+}
+
+starlight-tabs .tab > [role="tab"] {
+  padding: 0.375rem 0.875rem;
+  font-size: var(--sl-text-sm);
+}
+
+starlight-tabs .tab > [role="tab"]:hover {
+  color: var(--sl-color-white);
+}
+
+starlight-tabs .tab [role="tab"][aria-selected="true"] {
+  --sl-tab-color-border: hsl(var(--brand));
+  font-weight: 580;
+}
+
+starlight-tabs .tablist-wrapper ~ [role="tabpanel"] {
+  margin-top: 0.75rem;
+}
+
+/* ---------------------------------------------------------------- Tables */
+
+/*
+ * Tables read as data: mono header labels, hairline rows.
+ * In a column wide enough for the widest table (Guards needs about 35rem), a table fills the column.
+ * In a narrower one it keeps Starlight's horizontal scroll, with soft edges that show there is more.
+ */
+/*
+ * Note: a size container also contains layout, so a position: fixed element placed inside doc content
+ * (a dialog or popover in an MDX page) would be positioned against this column, not the viewport.
+ * Render such elements outside .sl-markdown-content, or move this container to a wrapper.
+ */
+.sl-markdown-content {
+  container: pawl-content / inline-size;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  background:
+    linear-gradient(to right, var(--sl-color-bg) 40%, transparent) left center / 2rem 100% no-repeat local,
+    linear-gradient(to left, var(--sl-color-bg) 40%, transparent) right center / 2rem 100% no-repeat local,
+    linear-gradient(to right, hsl(var(--line)), transparent) left center / 0.75rem 100% no-repeat scroll,
+    linear-gradient(to left, hsl(var(--line)), transparent) right center / 0.75rem 100% no-repeat scroll;
+}
+
+@container pawl-content (max-width: 37.5rem) {
+  .sl-markdown-content :is(th, td):not(:where(.not-content *)) {
+    padding-inline: 0.75rem;
+  }
+
+  /* A name in the first column stays on one line; the table scrolls instead. */
+  .sl-markdown-content td:first-child > code:not(:where(.not-content *)) {
+    white-space: nowrap;
+  }
+}
+
+@container pawl-content (min-width: 37.5rem) {
+  .sl-markdown-content table:not(:where(.not-content *)) {
+    display: table;
+    width: 100%;
+    background: none;
+  }
+}
+
+.sl-markdown-content :is(th, td):not(:where(.not-content *)) {
+  padding: 0.625rem 1rem;
+  border-bottom-color: var(--sl-color-hairline-light);
+}
+
+.sl-markdown-content :is(th, td):first-child:not(:where(.not-content *)) {
+  padding-inline-start: 0;
+}
+
+.sl-markdown-content :is(th, td):last-child:not(:where(.not-content *)) {
+  padding-inline-end: 0;
+}
+
+.sl-markdown-content table th:not(:where(.not-content *)) {
+  padding-block: 0.5rem;
+  border-bottom-color: hsl(var(--line));
+  font-family: var(--pawl-font-mono);
+  font-size: var(--sl-text-2xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: bottom;
+  color: var(--sl-color-gray-3);
+}
+
+.sl-markdown-content table th code:not(:where(.not-content *)) {
+  text-transform: none;
+}
+
+/*
+ * The generated Rules page (reference/rules.md) has five columns, too many for one row in a doc column.
+ * Each rule becomes an entry: name and level, then what it checks, then the Biome rule and notes.
+ * The table stays a table for assistive technology; only its layout changes.
+ */
+.pawl-rules table:not(:where(.not-content *)) {
+  display: block;
+  overflow: visible;
+  width: auto;
+  background: none;
+}
+
+.pawl-rules thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.pawl-rules tbody {
+  display: block;
+}
+
+.pawl-rules tbody tr {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 1rem;
+  align-items: baseline;
+  margin: 0 -0.75rem;
+  border-radius: var(--ui-radius);
+  padding: 0.75rem;
+}
+
+.pawl-rules tbody tr + tr::before {
+  content: "";
+  position: absolute;
+  inset: 0 0.75rem auto;
+  height: 1px;
+  background: var(--sl-color-hairline-light);
+}
+
+.pawl-rules tbody tr:hover {
+  background: hsl(var(--surface-muted) / 0.7);
+}
+
+.pawl-rules tbody tr:hover::before,
+.pawl-rules tbody tr:hover + tr::before {
+  opacity: 0;
+}
+
+.pawl-rules td:not(:where(.not-content *)) {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.pawl-rules td:nth-child(1) {
+  grid-area: 1 / 1;
+}
+
+.pawl-rules td:nth-child(1) code {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.pawl-rules td:nth-child(2) {
+  grid-area: 2 / 1 / 3 / 3;
+  color: var(--sl-color-gray-2);
+}
+
+.pawl-rules td:not(:where(.not-content *)):nth-child(2) {
+  margin-top: 0.125rem;
+}
+
+.pawl-rules td:nth-child(3) {
+  grid-area: 1 / 2;
+  max-width: 11rem;
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  text-align: end;
+}
+
+.pawl-rules td:nth-child(4) {
+  grid-area: 3 / 1;
+}
+
+.pawl-rules td:nth-child(5) {
+  grid-area: 3 / 2;
+  max-width: 13rem;
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  text-align: end;
+}
+
+.pawl-rules td:not(:where(.not-content *)):nth-child(n + 4):not(:empty) {
+  margin-top: 0.25rem;
+}
+
+.pawl-rules td:nth-child(4) code {
+  /* Wraps below the "Biome" label as a whole instead of breaking mid-name on a phone. */
+  display: inline-block;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+}
+
+/* The header row is hidden, so the Biome cell names its engine. Screen readers already hear the column header. */
+.pawl-rules td:nth-child(4):not(:empty)::before {
+  content: "Biome" / "";
+  margin-inline-end: 0.5rem;
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-2xs);
+}
+
+/* On a phone the Biome rule and the notes each get a full line. */
+@media (max-width: 36rem) {
+  .pawl-rules td:nth-child(1) code {
+    white-space: normal;
+  }
+
+  .pawl-rules td:nth-child(3) {
+    max-width: 7.5rem;
+  }
+
+  .pawl-rules td:nth-child(4) {
+    grid-area: 3 / 1 / 4 / 3;
+  }
+
+  .pawl-rules td:nth-child(5) {
+    grid-area: 4 / 1 / 5 / 3;
+    max-width: none;
+    text-align: start;
+  }
+}
+
+/* ---------------------------------------------------------------- On this page */
+
+.right-sidebar-panel {
+  padding-top: 2rem;
+}
+
+.right-sidebar-panel h2#starlight__on-this-page {
+  margin-bottom: 0.75rem;
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.right-sidebar-panel :where(starlight-toc nav) > ul {
+  border-inline-start: 1px solid hsl(var(--line));
+}
+
+.right-sidebar-panel :where(starlight-toc) a {
+  margin-inline-start: -1px;
+  border-inline-start: 2px solid transparent;
+  border-radius: 0;
+  padding-block: 0.3rem;
+  line-height: 1.35;
+}
+
+.right-sidebar-panel a:where(:focus-visible) {
+  outline-offset: -2px;
+}
+
+.right-sidebar-panel :where(starlight-toc) a:where(:hover) {
+  color: var(--sl-color-white);
+}
+
+.right-sidebar-panel :where(starlight-toc) a:where([aria-current="true"]) {
+  border-inline-start-color: hsl(var(--brand));
+  color: hsl(var(--brand));
+}
+
+mobile-starlight-toc nav {
+  border-top-color: var(--sl-color-hairline-shade);
+}
+
+mobile-starlight-toc .toggle {
+  border-color: hsl(var(--line));
+  border-radius: var(--ui-radius);
+  background-color: hsl(var(--surface));
+}
+
+mobile-starlight-toc details[open] .toggle {
+  border-color: hsl(var(--brand) / 0.6);
+}
+
+mobile-starlight-toc .dropdown {
+  border-color: hsl(var(--line));
+}
+
+/* ---------------------------------------------------------------- Footer and pagination */
+
+.sl-container footer .meta {
+  margin-top: 4rem;
+  font-size: var(--sl-text-xs);
+}
+
+.meta a:where(:hover) {
+  color: hsl(var(--brand));
+}
+
+.pagination-links a {
+  gap: 0.75rem;
+  border: 1px solid hsl(var(--line));
+  border-radius: var(--ui-radius-lg);
+  padding: 1rem 1.25rem;
+  background-color: hsl(var(--surface));
+  box-shadow: none;
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  line-height: 1.5;
+}
+
+.pagination-links a:where(:hover) {
+  border-color: hsl(var(--brand) / 0.55);
+}
+
+.pagination-links a svg {
+  color: hsl(var(--brand));
+}
+
+.pagination-links .link-title {
+  display: inline-block;
+  margin-top: 0.125rem;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-lg);
+  font-weight: 580;
+  letter-spacing: -0.015em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :where(
+    .sidebar-content ul ul a,
+    site-search button[data-open-modal],
+    .pagination-links a,
+    .pawl-rules tbody tr,
+    starlight-toc a
+  ) {
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
 }

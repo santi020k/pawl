@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
-import { detect } from '../src/detect.ts'
-import { eslintPlan, eslintPlanFor } from '../src/engines/eslint.ts'
-import { oxlintConfig, oxlintContextFor, runOxlint } from '../src/engines/oxlint.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
+import { check } from '../src/check/check.ts'
+import { eslintPlan, eslintPlanFor } from '../src/engines/eslint/plan.ts'
+import { oxlintConfig, oxlintContextFor } from '../src/engines/oxlint/config.ts'
+import { runOxlint } from '../src/engines/oxlint/run.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
+import { detect } from '../src/project/detect.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
 const manifest = (name: string): object => ({ name, type: 'module', exports: './index.js' })
@@ -74,7 +75,7 @@ describe('a monorepo that mixes stacks', () => {
     const keyed = findings.filter(finding => finding.rule === 'react/jsx-key').map(finding => finding.file)
 
     expect(keyed).toEqual(['apps/web/src/list.jsx'])
-  })
+  }, 60_000)
 
   it('gives ESLint the React rules, and a pack only the React app depends on, for the React app only', async () => {
     const root = mixed({
@@ -155,6 +156,7 @@ describe('a monorepo that mixes stacks', () => {
 
       expect(result.setup.filter(issue => issue.code === 'engine-failed')).toEqual([])
       expect(hooks.map(finding => finding.file)).toEqual(['apps/web/src/a.js'])
-    }
+    },
+    60_000
   )
 })

@@ -1,7 +1,9 @@
 {
+  "id": "/",
   "name": "pawl",
   "short_name": "pawl",
-  "description": "Fast guardrails for AI-written code. One standard, for the linter and formatter you choose.",
+  "description": "Fast guardrails for AI-written code: one lint and format standard for Biome, Oxlint, ESLint and Prettier, with a baseline so only new findings fail.",
+  "lang": "en",
   "start_url": "/",
   "display": "browser",
   "background_color": "#0B0D0C",

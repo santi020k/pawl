@@ -1,7 +1,8 @@
 ---
 
 title: With Quality
-description: Run pawl as part of Quality, the one command for every check in a repo.
+description: "Run pawl as part of Quality, one command for every code-quality check in a repo. Quality leaves the JavaScript and TypeScript engines and the baseline to pawl."
+head: [{ tag: title, content: "Run pawl with Quality | pawl" }]
 ---
 
 [Quality](https://quality.santi020k.com) runs the code-quality tools of a whole repo with one command: Rust, Swift, Kotlin and Python analyzers, Astro Check, CSpell, Knip, Actionlint and more, configured in `quality.yml`. Pawl owns the JavaScript and TypeScript side: Biome, Oxlint, ESLint, Prettier and the baseline. Use them together and each does its own part.

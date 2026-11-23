@@ -14,12 +14,13 @@ catalog:
   "@santi020k/commitprompt": ^1.1.0
   "@santi020k/lumen-astro": ^5.2.0
   "@santi020k/og": ^1.2.1
-  "@types/node": ^22.18.0
+  "@types/node": ^26.6.6
   astro: ^7.4.0
   cspell: ^10.5.1
   eslint: ^10.15.0
   knip: ^6.45.1
   oxlint: 1.94.0
+  oxlint-tsgolint: 7.0.2007
   prettier: ^3.10.0
   starlight-links-validator: ^0.27.0
   turbo: ^2.11.0
@@ -39,3 +40,13 @@ autoInstallPeers: false
 allowBuilds:
   esbuild: false
   workerd: false
+
+# Patched versions of dev-only dependencies that upstream still pins to vulnerable ones. Drop each
+# override once the package that pulls it in moves past it.
+overrides:
+  # satori 0.36.0, through @santi020k/og: GHSA-px8p-9vwx-vf98
+  "fflate@<0.7.5": "^0.7.5"
+  # @santi020k/astro-doctor 1.7.0: GHSA-3g3m-2fjr-6pw4
+  "glob@>=9.0.0 <14.0.2": "^14.0.2"
+  # eslint 10.12.0, pinned by @santi020k/astro-doctor 1.7.0 (eslint 10.15 already uses minimatch 11): GHSA-g3hv-75wg-m249
+  "minimatch@>=7.0.0 <11.0.1": "^11.0.1"

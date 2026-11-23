@@ -1,0 +1,18 @@
+---
+title: Changelog
+description: Every pawl release, newest first, with what changed in it and what is already merged for the next one.
+---
+
+import Releases from '../../components/Releases.astro'
+
+Pawl's progress, release by release. `@santi020k/pawl` and `@santi020k/pawl-policy` always share one version, so each release covers both packages.
+
+Every version is on [npm](https://www.npmjs.com/package/@santi020k/pawl), published from GitHub Actions with provenance, and on [GitHub Releases](https://github.com/santi020k/pawl/releases) under the tag `v<version>`. The notes are the changesets merged since the release before.
+
+<Releases />
+
+## Versions before 1.0
+
+Pawl follows semantic versioning. Until 1.0, a minor release, such as 0.1.0 to 0.2.0, may change the API or the standard, and a patch release only fixes bugs. A new rule, or a rule made stricter, reports findings the baseline has not seen, so read a release's notes before you move to it.
+
+The caret range that `init` writes, such as `^0.1.0`, takes patch releases but not the next minor one. [Upgrading](/guide/upgrade/) covers the move to a new minor release.

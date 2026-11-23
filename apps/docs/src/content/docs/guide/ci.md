@@ -1,7 +1,8 @@
 ---
 
 title: CI and hooks
-description: Run pawl in GitHub Actions and before each commit.
+description: "Run pawl in CI and before each commit: --ci fails on new findings and on config drift, and init can write a GitHub Actions workflow and a pre-commit hook."
+head: [{ tag: title, content: "CI and hooks: GitHub Actions and pre-commit | pawl" }]
 ---
 
 ## In CI
@@ -10,7 +11,7 @@ description: Run pawl in GitHub Actions and before each commit.
 pawl check --ci
 ```
 
-`--ci` also fails when the setup has drifted from the policy, for example when someone edited `biome.json` by hand instead of changing the policy and running `pawl sync`. It is on automatically when the `CI` environment variable is `true`, which most CI services set.
+`--ci` also fails when the setup has drifted from the policy, for example when someone edited `biome.json` by hand instead of changing the policy and running `pawl sync`. It is on automatically when the `CI` environment variable is set, which CI services do: `true`, `1` and any other value count, except an empty one, `0` and `false`.
 
 | Exit code | Meaning                                                                                       |
 | --------- | --------------------------------------------------------------------------------------------- |
@@ -52,6 +53,8 @@ It needs the history that joins the branch to `<ref>`. In GitHub Actions, check 
 When git does not know the ref, or the clone is too shallow to join it to the branch, the check stops with exit code 2. It never falls back to checking nothing.
 
 The scope is whole files, not changed lines. A file the pull request touches is checked in full, and the [baseline](/guide/ratchet/) still allows the findings it already had. A partial run cannot see findings in files the branch did not touch, so keep a full `pawl check --ci` on the main branch.
+
+A pull request that touches thousands of files is checked too. When the list is too long for one command line, pawl runs each engine several times on part of it, one run after the other, and `--verbose` shows the command once with the number of files and runs.
 
 ### GitHub Actions
 
@@ -111,3 +114,9 @@ It uses the hook manager the repo already has:
 | Neither       | Writes `.git/hooks/pre-commit`, which is local to this clone. Use husky or lefthook to share it. |
 
 If a plain git pre-commit hook already exists, pawl does not touch it and tells you which command to add.
+
+With lint-staged, give it the command and it adds the staged files, which pawl takes by absolute path:
+
+```json title="package.json"
+{ "lint-staged": { "*": "pawl check" } }
+```

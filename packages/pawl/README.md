@@ -2,7 +2,9 @@
 
 Fast guardrails for AI-written code. One standard, for the linter and formatter you choose.
 
-> **Status: early.** Not published to npm yet. The API may still change.
+[Documentation](https://pawl.santi020k.com) · [Changelog](https://pawl.santi020k.com/changelog/) · [Upgrading](https://pawl.santi020k.com/guide/upgrade/)
+
+> **Before 1.0:** a minor release may change the API or the standard. Read a release's notes before you move to it.
 
 ## Set up a repo
 
@@ -24,7 +26,7 @@ Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Action
 
 - `biome.json`, a few lines that extend the standard and turn on Biome's `.gitignore` support;
 - `check` and `fix` scripts in `package.json`;
-- `.vscode/settings.json`, so the editor formats and fixes on save;
+- `.vscode/settings.json`, so the editor formats and fixes on save, and `.vscode/extensions.json`, which recommends the editor extension;
 - `.pawl/baseline.json`, the findings the repo already has.
 
 Pawl never deletes or overwrites a tool config you already have. It tells you what you can remove.
@@ -70,7 +72,7 @@ The engines also work on their own: `npx biome check` and `npx eslint .` use the
 | 1    | New errors, or more new warnings than `--max-warnings` or the policy's `maxWarnings` allows   |
 | 2    | A setup problem: an engine could not run, or, with `--ci`, the config drifted from the policy |
 
-`--ci` is on automatically when the `CI` environment variable is `true`.
+`--ci` is on automatically when the `CI` environment variable is set, as CI services set it; an empty value, `0` and `false` mean it is not.
 
 ### Output for coding agents
 
@@ -129,7 +131,7 @@ Then run `pawl sync`. `pawl.config.js`, `.mjs` and `.json` work too.
 | `detect`         | `false` turns detection off; `{ exclude: ['tailwind'] }` leaves a technology out.              |
 | `languages`      | Other languages to check with their own tools: `['rust', 'swift', 'kotlin']`. Off by default.  |
 
-Rule names are ESLint's names. Use `biome:group/name` for a rule only Biome has. Any other name pawl does not know is passed to ESLint. An option pawl does not know stops the run, so a typo never passes in silence. `pawl.config.json` can point `$schema` at `./node_modules/@santi020k/pawl/pawl.config.schema.json` for editor completion.
+Rule names are ESLint's names. Use `biome:group/name` for a rule only Biome has. Any other name pawl does not know is passed to ESLint. An option pawl does not know stops the run, and so does a value it cannot use, such as a level that is not `off`, `warn` or `error`, so a typo never passes in silence. `pawl.config.json` can point `$schema` at `./node_modules/@santi020k/pawl/pawl.config.schema.json` for editor completion.
 
 ### What pawl skips
 
@@ -162,7 +164,7 @@ Repos extend it. A repo can still tighten any rule, but an attempt to loosen a l
 
 - Findings within those counts are allowed.
 - Anything beyond them fails the check.
-- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
+- A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
 - When the code improves, `pawl check` says so. Run `pawl baseline` to lock the improvement in.
 
 Counts are per file and rule, not per line, so moving code around does not break the baseline. The cost is that when a file goes over its count, every finding of that rule in the file is shown.
@@ -211,10 +213,10 @@ Findings keep the tool's rule name, such as `clippy:unwrap_used`, and `rules` an
 
 Pawl has no dependencies. Every tool is an optional peer, and `init` installs the ones you pick.
 
-| Job    | Choices           | Default on auto |
-| ------ | ----------------- | --------------- |
-| Lint   | Biome or ESLint   | Biome           |
-| Format | Biome or Prettier | Biome           |
+| Job    | Choices                 | Default on auto |
+| ------ | ----------------------- | --------------- |
+| Lint   | Biome, Oxlint or ESLint | Biome           |
+| Format | Biome or Prettier       | Biome           |
 
 ```sh
 pawl init                                      # ask, or use auto without a terminal
@@ -227,7 +229,7 @@ Biome is pinned to one exact version, because pawl reads a report format Biome m
 
 Biome also lints and formats CSS and GraphQL, sorts `package.json` fields in the usual order, and parses Tailwind's at-rules in projects that use Tailwind.
 
-Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Its type-aware rules are not driven by pawl yet.
+Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Nine more need type information and run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects. Pawl writes them where the project depends on it.
 
 ## Packs
 
@@ -269,22 +271,24 @@ The root keeps the config independent of the folder an editor starts ESLint in.
 
 A guard is a set of checks for one library that needs no plugin. It switches on when the project depends on the library.
 
-| Guard                                          | On when the project uses                 | What it refuses                                                                                                               |
-| ---------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `ai-keys`                                      | Any AI SDK below                         | An API key written in the code, and `dangerouslyAllowBrowser: true`                                                           |
-| `ai-sdk`                                       | `ai`, `@ai-sdk/*`                        | Imports of package internals                                                                                                  |
-| `openai`, `anthropic`                          | `openai`, `@anthropic-ai/sdk`            | Imports of package internals                                                                                                  |
-| `openai-agents`                                | `@openai/agents`                         | Internals, and agents from the base OpenAI client                                                                             |
-| `google-genai`                                 | `@google/genai`, `@google/generative-ai` | Internals, and the legacy `@google/generative-ai` SDK                                                                         |
-| `langchain`, `llamaindex`, `mastra`, `autogen` | Those packages                           | Imports of package internals                                                                                                  |
-| `mcp`                                          | `@modelcontextprotocol/sdk`              | Imports of internal modules                                                                                                   |
-| `hono`                                         | `hono`                                   | Internals, and a hand-written wildcard CORS header                                                                            |
-| `zod`                                          | `zod`                                    | `.optional().nullable()`, `z.object().strict()` or `.passthrough()`, `.trim()` after a length check, a method after `.meta()` |
-| `testing-library`                              | Any Testing Library package              | `await` on a synchronous `getBy` or `queryBy` query                                                                           |
-| `testing-library-debug`                        | Any Testing Library package              | `screen.debug()`, `prettyDOM()` and other debugging calls (warn)                                                              |
-| `testing-library-dom`                          | A framework's Testing Library package    | Imports of `@testing-library/dom` in place of the framework's one                                                             |
-| `nuxt`                                         | `nuxt`                                   | `process.client`, `process.server` and the other flags `import.meta` has                                                      |
-| `de-morgan`                                    | Opt-in: `pawl add de-morgan`             | `!(a && b)` and `!(a \|\| b)`                                                                                                 |
+| Guard                                          | On when the project uses                 | What it refuses                                                                                                                                           |
+| ---------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ai-keys`                                      | Any AI SDK below, but AutoGen            | An API key written in the code, and `dangerouslyAllowBrowser: true`                                                                                       |
+| `ai-sdk`                                       | `ai`, `@ai-sdk/*`                        | Imports of package internals                                                                                                                              |
+| `openai`, `anthropic`                          | `openai`, `@anthropic-ai/sdk`            | Imports of package internals                                                                                                                              |
+| `openai-agents`                                | `@openai/agents`                         | Internals, and agents from the base OpenAI client                                                                                                         |
+| `google-genai`                                 | `@google/genai`, `@google/generative-ai` | Internals, and the legacy `@google/generative-ai` SDK                                                                                                     |
+| `langchain`, `llamaindex`, `mastra`, `autogen` | Those packages                           | Imports of package internals                                                                                                                              |
+| `mcp`                                          | `@modelcontextprotocol/sdk`              | Imports of internal modules                                                                                                                               |
+| `hono`                                         | `hono`                                   | Internals, and a hand-written wildcard CORS header                                                                                                        |
+| `zod`                                          | `zod`                                    | `.optional().nullable()`, `z.object().strict()` or `.passthrough()`, `.trim()` after a length check, a method after `.meta()`, a union of string literals |
+| `testing-library`                              | Any Testing Library package              | `await` on a synchronous `getBy` or `queryBy` query, and queries taken from `render()` instead of `screen`                                                |
+| `testing-library-find-by`                      | Any Testing Library package              | `waitFor()` around a `getBy` or `queryBy` query, where `findBy` waits by itself (warn)                                                                    |
+| `testing-library-debug`                        | Any Testing Library package              | `screen.debug()`, `prettyDOM()` and other debugging calls (warn)                                                                                          |
+| `testing-library-dom`                          | A framework's Testing Library package    | Imports of `@testing-library/dom` in place of the framework's one                                                                                         |
+| `nuxt`                                         | `nuxt`                                   | `process.client`, `process.server` and the other flags `import.meta` has                                                                                  |
+| `de-morgan`                                    | Opt-in: `pawl add de-morgan`             | `!(a && b)` and `!(a \|\| b)`                                                                                                                             |
+| `zod-meta`                                     | Opt-in: `pawl add zod-meta`              | `.describe()` in place of Zod 4's `.meta()`                                                                                                               |
 
 - Import restrictions are enforced by the linter you use: Biome, Oxlint or ESLint.
 - Code patterns (keys, `dangerouslyAllowBrowser`, the CORS header, the Zod, Testing Library and Nuxt patterns, De Morgan) run in Biome as rules pawl writes itself, into `.pawl/rules/`. Commit that folder; `pawl sync` keeps it current. ESLint runs the same patterns as selectors.
@@ -325,11 +329,12 @@ Pawl also checks Markdown files itself, skipping code blocks, code spans, HTML c
 | ------------------------------------- | ----- | -------------------------------------------------------------- |
 | `pawl/markdown-no-empty-links`        | error | A link with no destination: `[text]()` or `[text](#)`          |
 | `pawl/markdown-no-duplicate-headings` | off   | A heading with the same text as an earlier one in the document |
+| `pawl/markdown-no-invalid-label-refs` | error | A reference with whitespace between its brackets: `[text][ ]`  |
 | `pawl/markdown-no-missing-label-refs` | off   | A reference such as `[text][label]` with no `[label]:` line    |
 
 ## API
 
-Everything the CLI does is exported: `check`, `doctor`, `planInit`, `applyInit`, `detect`, `loadPolicy`, `definePolicy`, `eslint`, `biomeProjectConfig`, `RULES`, `POLICY_SCHEMA` and the types. See `src/index.ts`. The policy's JSON schema is `@santi020k/pawl/schema.json`.
+Everything the CLI does is exported: `check`, `doctor`, `planInit`, `applyPlan`, `detect`, `loadPolicy`, `definePolicy`, `eslint`, `biomeProjectConfig`, `RULES`, `POLICY_SCHEMA` and the types. See `src/index.ts`. The policy's JSON schema is `@santi020k/pawl/schema.json`.
 
 ## License
 

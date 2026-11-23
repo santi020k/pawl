@@ -33,6 +33,8 @@ Here is a real run, after an agent added a file that imports a package that is n
 
 {agentRun && <Terminal lines={agentRun.lines} title="agent run" />}
 
+An agent gets this format without asking for it. Pawl knows Claude Code, Cursor, Codex, Gemini CLI and other agents by the variables they set on the commands they run, so a plain `pawl check` from an agent prints JSON lines too, and no command shows an agent colors, spinners or a question it cannot answer. `--format` still picks another format, and `PAWL_AGENT=0` says a person is running pawl. The [CLI reference](/reference/cli/#output) lists the variables.
+
 `--changed` limits the run to files changed against `HEAD`, plus untracked ones, so the agent hears about its own work only. In a folder that is not a git repository it checks every file. `--format json` prints the whole result as one document instead.
 
 ## Disable comments fail

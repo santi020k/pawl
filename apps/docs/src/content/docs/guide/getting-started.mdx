@@ -55,13 +55,13 @@ Node 22.18 or later.
      </TabItem>
    </Tabs>
 
-   `init` looks at the repo, shows what it will change, and asks before writing. In a terminal it offers a menu; in CI or under a coding agent it uses `auto`.
+   `init` looks at the repo, shows what it will change, and asks before writing. In a terminal it asks how to set up the tools, then what else to add: the editor, coding agents, a pre-commit hook or a GitHub workflow. In CI or under a coding agent it asks nothing, uses `auto`, and adds what the options say.
 
 2. Review the plan and accept it. `init` writes:
 
    - `biome.json`, a few lines that extend the standard;
    - `check` and `fix` scripts in `package.json`;
-   - `.vscode/settings.json`, so the editor formats and fixes on save, and `.vscode/extensions.json`, which recommends the editor extension;
+   - `.vscode/settings.json`, so the editor formats and fixes on save, `.vscode/extensions.json`, which recommends the editor extension, and `.vscode/tasks.json`, with tasks that put pawl's findings in the Problems panel (see [Editors](/guide/editors/));
    - `.pawl/baseline.json`, the findings the repo already has.
 
 3. Commit the result, baseline included. From now on, `pawl check` fails only on new findings.

@@ -115,4 +115,26 @@ const { lines, title = 'zsh', class: className } = Astro.props
   .t-plain {
     color: hsl(var(--ink-soft));
   }
+
+  /* The badges of a check's summary, as a terminal draws them: the text on a block of color. */
+  .t-pass,
+  .t-fail,
+  .t-caution {
+    font-weight: 600;
+  }
+
+  .t-pass {
+    color: hsl(var(--pawl-ink-on-lime));
+    background: hsl(var(--pawl-lime));
+  }
+
+  .t-fail {
+    color: hsl(var(--on-danger));
+    background: hsl(var(--danger));
+  }
+
+  .t-caution {
+    color: hsl(var(--on-danger));
+    background: hsl(var(--warning));
+  }
 </style>

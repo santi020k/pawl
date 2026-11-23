@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { type Finding } from '../../types.ts'
-import { chunkFiles, EngineError, findOnPath, readReport, runProgram } from '../engine.ts'
+import { chunkFiles, EngineError, findOnPath, readReport } from '../engine.ts'
 import {
   asArgument,
   commandIn,
@@ -11,6 +11,7 @@ import {
   type LanguageRun,
   onlyFiles,
   position,
+  runTool,
   ToolMissingError
 } from './tool.ts'
 
@@ -66,7 +67,7 @@ export const runSwiftLint = async ({ root, dir, files = [], write = false }: Lan
 
   for (const batch of chunkFiles(files.map(asArgument))) {
     if (write) {
-      const fixed = await runProgram(
+      const fixed = await runTool(
         program,
         ['lint', '--fix', '--quiet', '--force-exclude', ...batch],
         cwd,
@@ -76,7 +77,7 @@ export const runSwiftLint = async ({ root, dir, files = [], write = false }: Lan
       if (!commands.includes(fixed.command)) commands.push(fixed.command)
 
       // A fix that worked exits with 0, whatever is left to report. Anything else did not run.
-      if (fixed.code !== 0 && !fixed.stderr.includes(NOTHING_TO_LINT)) {
+      if (fixed.code !== 0 && !(fixed.code === 1 && fixed.stderr.includes(NOTHING_TO_LINT))) {
         throw new EngineError(fixed.stderr.trim() || `SwiftLint exited with code ${fixed.code}.`, {
           command: fixed.command
         })
@@ -84,7 +85,7 @@ export const runSwiftLint = async ({ root, dir, files = [], write = false }: Lan
     }
 
     const args = ['lint', '--reporter', 'json', '--quiet', '--force-exclude', ...batch]
-    const result = await runProgram(program, args, cwd, commandIn(dir, 'swiftlint lint'))
+    const result = await runTool(program, args, cwd, commandIn(dir, 'swiftlint lint'))
 
     if (!commands.includes(result.command)) commands.push(result.command)
 
@@ -95,7 +96,12 @@ export const runSwiftLint = async ({ root, dir, files = [], write = false }: Lan
     try {
       if (result.code !== 0 && !result.stdout.includes('[')) throw new Error('no report')
 
-      findings.push(...parseSwiftLint(root, cwd, result.stdout))
+      const found = parseSwiftLint(root, cwd, result.stdout)
+
+      // It said it found something, and the report names nothing in this repo: do not pass that.
+      if (result.code !== 0 && found.length === 0) throw new Error('empty report')
+
+      findings.push(...found)
     } catch (cause) {
       throw new EngineError(result.stderr.trim() || `SwiftLint exited with code ${result.code}.`, {
         command: result.command,
@@ -149,9 +155,11 @@ export const swiftFormatterFor = (root: string, dir: string): SwiftFormatter => 
   const chosen = pick()
 
   if (!chosen) {
+    const uses = (config('.swift-format') && 'swift-format') || (config('.swiftformat') && 'SwiftFormat')
+
     throw new ToolMissingError(
-      config('.swift-format')
-        ? 'Swift is in the policy and the project uses swift-format, but swift-format is not installed.'
+      uses
+        ? `Swift is in the policy and the project uses ${uses}, but ${uses} is not installed.`
         : 'Swift is in the policy, but neither SwiftFormat nor swift-format is installed.'
     )
   }
@@ -227,7 +235,7 @@ export const runSwiftFormat = async ({
 
   for (const batch of chunkFiles(files.map(asArgument))) {
     if (write) {
-      const formatted = await runProgram(formatter.program, formatArgs(formatter, batch, true), cwd, label(true))
+      const formatted = await runTool(formatter.program, formatArgs(formatter, batch, true), cwd, label(true))
 
       if (!commands.includes(formatted.command)) commands.push(formatted.command)
 
@@ -238,7 +246,7 @@ export const runSwiftFormat = async ({
       }
     }
 
-    const result = await runProgram(formatter.program, formatArgs(formatter, batch, false), cwd, label(false))
+    const result = await runTool(formatter.program, formatArgs(formatter, batch, false), cwd, label(false))
     // The diagnostics go to stderr; some versions print them to stdout.
     const found = parseSwiftFormat(root, cwd, `${result.stderr}\n${result.stdout}`, formatter.engine)
 

@@ -11,3 +11,6 @@ The Swift and Kotlin checks, run against the real SwiftLint, SwiftFormat, swift-
 - A `swiftlint lint --fix` that fails, as on a config it cannot read, stops the fix with the error, where it was hidden.
 - A file ktlint cannot parse is the finding `ktlint:parse`.
 - `pawl doctor` names the Swift formatter each project uses, SwiftFormat or swift-format, by the config it has, and lists a missing tool for every Swift project, not only the first.
+- A finding in a linked file keeps the name the repo has for it, and a non-zero exit with a report that names nothing in the repo is a failed check, not a clean one.
+- A `ktlint --format` that fails, as on a file it cannot write, stops the fix with the error.
+- SwiftLint, the Swift formatters and ktlint are stopped after ten minutes on one batch of files, so a tool that hangs cannot hang `pawl check`.

@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { check } from '../src/check/check.ts'
-import { chunkFiles, EngineError, FILES_BUDGET, runChunked, runNode } from '../src/engines/engine.ts'
+import { chunkFiles, EngineError, FILES_BUDGET, runChunked, runNode, runProgram } from '../src/engines/engine.ts'
 import { link, project } from './helpers.ts'
 
 /** File names as a large pull request has them: `count` of them, each in a folder a few levels down. */
@@ -142,5 +142,29 @@ describe('thousands of files, with the real Biome', { timeout: 60_000 }, () => {
     expect(result.findings.map(finding => `${finding.file} ${finding.rule}`)).toEqual(
       broken.map(file => `${file} no-var`)
     )
+  })
+})
+
+describe('a program that hangs', () => {
+  it('is stopped after its time, and that is an engine error, not a result', async () => {
+    const started = Date.now()
+    const error = await runProgram(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      process.cwd(),
+      'hang',
+      {},
+      200
+    ).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(EngineError)
+    expect(String(error)).toContain('did not finish')
+    expect(Date.now() - started).toBeLessThan(5000)
+  })
+
+  it('is left alone when it finishes in time', async () => {
+    const result = await runProgram(process.execPath, ['-e', 'console.log("done")'], process.cwd(), 'quick', {}, 30_000)
+
+    expect(result).toMatchObject({ code: 0, stdout: 'done\n' })
   })
 })

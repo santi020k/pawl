@@ -61,9 +61,10 @@ export const toolStates = (
 
       return { name: formatter.engine === 'swiftformat' ? 'SwiftFormat' : 'swift-format', installed: true }
     } catch {
-      const own = existsSync(join(project.root, project.dir, '.swift-format'))
+      const config = (name: string): boolean => existsSync(join(project.root, project.dir, name))
+      const uses = (config('.swift-format') && 'swift-format') || (config('.swiftformat') && 'SwiftFormat')
 
-      return { name: own ? 'swift-format' : tool.title, installed: false }
+      return { name: uses || tool.title, installed: false }
     }
   })
 

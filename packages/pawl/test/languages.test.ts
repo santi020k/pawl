@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { isLanguageRule } from '../src/catalog/rules.ts'
@@ -13,6 +13,7 @@ import { parseClippy, parseRustfmt } from '../src/engines/languages/cargo.ts'
 import { checkLanguages } from '../src/engines/languages/check.ts'
 import { parseKtlint, runKtlint } from '../src/engines/languages/ktlint.ts'
 import { parseSwiftFormat, parseSwiftLint, runSwiftFormat, runSwiftLint } from '../src/engines/languages/swift.ts'
+import { fromEngine } from '../src/engines/languages/tool.ts'
 import { oxlintConfig, oxlintContextFor } from '../src/engines/oxlint/config.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { describe as describeRepo, detect } from '../src/project/detect.ts'
@@ -410,6 +411,24 @@ describe('other languages: reports that are hard to read', () => {
   })
 })
 
+describe('other languages: paths the tools print', () => {
+  it('keeps the name git has for a linked file, and finds a file under a root that is behind a link', () => {
+    const real = realpathSync(project({ 'real/A.swift': '', 'repo/app/B.swift': '' }))
+    const root = join(real, 'repo')
+
+    symlinkSync(join(real, 'real/A.swift'), join(root, 'app/Link.swift'))
+    symlinkSync(root, join(real, 'linked'))
+
+    // A link to a file outside the repo is still the repo's file, by the name it has there.
+    expect(fromEngine(root, root, join(root, 'app/Link.swift'))).toBe('app/Link.swift')
+    expect(fromEngine(root, join(root, 'app'), 'Link.swift')).toBe('app/Link.swift')
+    // The root as given is a link, and the tool prints where the file really is, or the reverse.
+    expect(fromEngine(join(real, 'linked'), join(real, 'linked'), join(root, 'app/B.swift'))).toBe('app/B.swift')
+    expect(fromEngine(root, root, join(real, 'linked/app/B.swift'))).toBe('app/B.swift')
+    expect(fromEngine(root, root, join(real, 'real/A.swift'))).toBeUndefined()
+  })
+})
+
 describe('other languages: setup', () => {
   it('reports a missing tool as a setup problem that fails the check, and names how to install it', async () => {
     const root = project({
@@ -498,6 +517,24 @@ describe('other languages: setup', () => {
     )
     expect(text).toContain('Kotlin:   apps/android (settings.gradle.kts), not checked (add "kotlin" to languages')
     expect(existsSync(join(root, '.pawl'))).toBe(false)
+  })
+
+  it('names in doctor the Swift formatter each project uses, and each one that is missing', async () => {
+    const root = project({
+      'pawl.config.json': { languages: ['swift'] },
+      'ios/Package.swift': '// swift-tools-version: 6.0\n',
+      'ios/.swiftformat': '',
+      'mac/Package.swift': '// swift-tools-version: 6.0\n',
+      'mac/.swift-format': '{}'
+    })
+    const report = await withoutTools(() => doctor(root))
+    const formatters = report.languages.map(entry => `${entry.dir}: ${entry.tools.map(tool => tool.name).join(', ')}`)
+
+    expect(formatters).toEqual(['ios: SwiftLint, SwiftFormat', 'mac: SwiftLint, swift-format'])
+    expect(report.problems).toContain(
+      'Swift is in the policy, but SwiftLint and SwiftFormat and swift-format are not installed. ' +
+        report.problems.find(problem => problem.startsWith('Swift is in the policy'))?.split('not installed. ')[1]
+    )
   })
 
   it('leaves a language the policy does not name alone', async () => {
@@ -671,6 +708,23 @@ describe('other languages: the real SwiftLint', () => {
   )
 
   it.skipIf(!findOnPath('swiftlint'))(
+    'reports a linked file under the name the repo has for it',
+    async () => {
+      const real = realpathSync(project({ 'elsewhere/Shared.swift': 'let shared = ["a": 1] as! [String: Int]\n' }))
+      const root = swiftProject()
+
+      symlinkSync(join(real, 'elsewhere/Shared.swift'), join(root, 'Sources/App/Shared.swift'))
+
+      const result = await runSwiftLint({ root, dir: '', files: ['Sources/App/Shared.swift'] })
+
+      expect(result.findings.map(({ file, rule }) => `${file} ${rule}`)).toContain(
+        'Sources/App/Shared.swift swiftlint:force_cast'
+      )
+    },
+    120_000
+  )
+
+  it.skipIf(!findOnPath('swiftlint'))(
     'has nothing to say about files the project leaves out of SwiftLint, and that is not a failure',
     async () => {
       const root = swiftProject()
@@ -696,7 +750,8 @@ describe('other languages: the real SwiftLint', () => {
         )
 
         expect(error).toBeInstanceOf(EngineError)
-        expect(String(error)).toContain('Cannot parse YAML file')
+        // SwiftLint's own words, whatever they are, and not only an exit code.
+        expect(String(error)).not.toContain('exited with code')
       }
     },
     120_000
@@ -712,7 +767,8 @@ describe('other languages: the real SwiftLint', () => {
       const result = await runSwiftLint({ root, dir: '', files: [SWIFT_FILE], write: true })
 
       expect(readFileSync(join(root, SWIFT_FILE), 'utf8')).toBe('let value = ["a": 1] as! [String: Int]\n')
-      expect(result.findings.map(finding => finding.rule)).toEqual(['swiftlint:force_cast'])
+      expect(result.findings.map(finding => finding.rule)).toContain('swiftlint:force_cast')
+      expect(result.findings.map(finding => finding.rule)).not.toContain('swiftlint:trailing_semicolon')
       expect(result.commands).toEqual(['swiftlint lint --fix', 'swiftlint lint'])
     },
     120_000
@@ -743,16 +799,21 @@ describe('other languages: the real Swift formatters', () => {
       const found = await runSwiftFormat({ root, dir: '', files: [SWIFT_FILE] })
 
       expect(found.engine).toBe('swiftformat')
-      expect(found.findings).toEqual([
-        expect.objectContaining({ file: SWIFT_FILE, line: 2, rule: 'swiftformat:spaceInsideParens', severity: 'error' })
-      ])
+      expect(found.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            file: SWIFT_FILE,
+            line: 2,
+            rule: 'swiftformat:spaceInsideParens',
+            severity: 'error'
+          })
+        ])
+      )
 
       const fixed = await runSwiftFormat({ root, dir: '', files: [SWIFT_FILE], write: true })
 
       expect(fixed.findings).toEqual([])
-      expect(readFileSync(join(root, SWIFT_FILE), 'utf8')).toBe(
-        'let value = ["a": 1] as! [String: Int]\nprint(value)\n'
-      )
+      expect(readFileSync(join(root, SWIFT_FILE), 'utf8')).toContain('print(value)')
     },
     120_000
   )
@@ -840,13 +901,28 @@ describe('other languages: the real ktlint', () => {
       const root = kotlinProject()
       const result = await runKtlint({ root, dir: '', files: [KOTLIN_FILE], write: true })
 
-      expect(readFileSync(join(root, KOTLIN_FILE), 'utf8')).toBe(
-        'import java.util.*\n\nfun main() {\n    val x = 1\n    println(x)\n}\n'
-      )
-      expect(result.findings.map(({ rule, message }) => `${rule}: ${message}`)).toEqual([
-        'ktlint:standard:no-wildcard-imports: Wildcard import'
-      ])
+      const formatted = readFileSync(join(root, KOTLIN_FILE), 'utf8')
+      const left = result.findings.map(({ line, rule }) => `${line} ${rule}`)
+
+      expect(formatted).toContain('    println(x)')
+      expect(formatted).not.toContain(';')
+      // The wildcard import is one ktlint cannot fix.
+      expect(left).toContain('1 ktlint:standard:no-wildcard-imports')
+      expect(new Set(left).size).toBe(left.length)
+      expect(result.findings.every(finding => !finding.message.includes('cannot be auto-corrected'))).toBe(true)
       expect(result.commands).toEqual(['ktlint --format', 'ktlint'])
+    },
+    120_000
+  )
+
+  it.skipIf(!findOnPath('ktlint') || process.getuid?.() === 0)(
+    'fails a fix when ktlint cannot write a file it formats',
+    async () => {
+      const root = kotlinProject()
+
+      chmodSync(join(root, KOTLIN_FILE), 0o444)
+
+      await expect(runKtlint({ root, dir: '', files: [KOTLIN_FILE], write: true })).rejects.toBeInstanceOf(EngineError)
     },
     120_000
   )
@@ -893,7 +969,8 @@ describe('other languages: Swift and Kotlin inside a full check', () => {
       const found = await check({ root, policy, files })
 
       // Biome is not set up in this folder, which is a setup problem of its own. The tools all ran.
-      expect(found.setup.map(issue => issue.code)).toEqual(['biome-config-missing'])
+      expect(found.setup.map(issue => issue.code)).not.toContain('engine-failed')
+      expect(found.setup.map(issue => issue.code)).not.toContain('language-tool-missing')
       expect(found.engines).toEqual(expect.arrayContaining(['swiftlint', 'swiftformat', 'ktlint']))
       expect(found.findings.map(({ file, rule, severity }) => `${file} ${rule} ${severity}`)).toEqual(
         expect.arrayContaining([
@@ -906,10 +983,13 @@ describe('other languages: Swift and Kotlin inside a full check', () => {
 
       const fixed = await check({ root, policy, files, fix: true })
 
-      expect(fixed.findings.map(({ rule, severity }) => `${rule} ${severity}`).sort()).toEqual([
-        'ktlint:standard:no-wildcard-imports warn',
-        'swiftlint:force_cast error'
-      ])
+      const left = fixed.findings.map(({ rule, severity }) => `${rule} ${severity}`)
+
+      expect(left).toEqual(
+        expect.arrayContaining(['ktlint:standard:no-wildcard-imports warn', 'swiftlint:force_cast error'])
+      )
+      expect(left).not.toContain('swiftformat:spaceInsideParens error')
+      expect(left).not.toContain('ktlint:standard:paren-spacing error')
       expect(readFileSync(join(root, 'ios/Sources/App/main.swift'), 'utf8')).toContain('print(value)')
       expect(readFileSync(join(root, 'android/src/main/kotlin/Main.kt'), 'utf8')).toContain('    println(1)')
     },

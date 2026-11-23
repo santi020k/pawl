@@ -64,7 +64,7 @@ export default definePolicy({
 
 Swift has two formatters. Pawl uses the one whose config the project has, `.swiftformat` for [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) or `.swift-format` for Apple's [swift-format](https://github.com/swiftlang/swift-format). With neither, it uses SwiftFormat when it is installed, else swift-format.
 
-Every finding lands in the same report as the JavaScript ones, with the tool's own rule name: `clippy:needless_return`, `rustc:unused_variables` for a warning of the compiler, `swiftlint:force_cast`, `swiftformat:indent`, `ktlint:standard:no-wildcard-imports`. A file rustfmt would change is `pawl/format`, as a file Biome would change is.
+Every finding lands in the same report as the JavaScript ones, with the tool's own rule name: `clippy:needless_return`, `rustc:unused_variables` for a warning of the compiler, `swiftlint:force_cast`, `swiftformat:indent`, `ktlint:standard:no-wildcard-imports`. A file rustfmt would change is `pawl/format`, as a file Biome would change is, and a Kotlin file ktlint cannot read is `ktlint:parse`.
 
 Then the rest of pawl works as it does for JavaScript:
 

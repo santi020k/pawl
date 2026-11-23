@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { type Finding } from '../../types.ts'
-import { chunkFiles, EngineError, findOnPath, readReport, runProgram } from '../engine.ts'
+import { chunkFiles, EngineError, findOnPath, readReport } from '../engine.ts'
 import {
   asArgument,
   commandIn,
@@ -10,6 +10,7 @@ import {
   type LanguageRun,
   onlyFiles,
   position,
+  runTool,
   ToolMissingError
 } from './tool.ts'
 
@@ -67,19 +68,20 @@ export const runKtlint = async ({ root, dir, files = [], write = false }: Langua
 
   for (const batch of chunkFiles(files.map(asArgument))) {
     if (write) {
-      const formatted = await runProgram(program, ['--format', ...batch], cwd, commandIn(dir, 'ktlint --format'))
+      const formatted = await runTool(program, ['--format', ...batch], cwd, commandIn(dir, 'ktlint --format'))
 
       if (!commands.includes(formatted.command)) commands.push(formatted.command)
 
-      // With 1, ktlint formatted the files and something is left that it cannot fix, which the lint below reports.
-      if (formatted.code > 1) {
+      // ktlint exits with 1 both when something is left that it cannot fix, which the lint below
+      // reports, and when it failed, as on a file it cannot write. Only a failure prints an error.
+      if (formatted.code !== 0 && formatted.stderr.trim()) {
         throw new EngineError(formatted.stderr.trim() || `ktlint exited with code ${formatted.code}.`, {
           command: formatted.command
         })
       }
     }
 
-    const result = await runProgram(program, ['--reporter=json', '--relative', ...batch], cwd, commandIn(dir, 'ktlint'))
+    const result = await runTool(program, ['--reporter=json', '--relative', ...batch], cwd, commandIn(dir, 'ktlint'))
 
     if (!commands.includes(result.command)) commands.push(result.command)
 
@@ -87,9 +89,16 @@ export const runKtlint = async ({ root, dir, files = [], write = false }: Langua
     try {
       if (result.code > 1 || (result.code === 1 && !result.stdout.includes('['))) throw new Error('no report')
 
-      findings.push(...parseKtlint(root, cwd, result.stdout))
+      const found = parseKtlint(root, cwd, result.stdout)
+
+      // It said it found something, and the report names nothing in this repo: do not pass that.
+      if (result.code !== 0 && found.length === 0) throw new Error('empty report')
+
+      findings.push(...found)
     } catch (cause) {
-      throw new EngineError(result.stderr.trim() || `ktlint exited with code ${result.code}.`, {
+      const said = result.stderr.trim() || result.stdout.trim().split('\n').slice(-5).join('\n')
+
+      throw new EngineError(said || `ktlint exited with code ${result.code}.`, {
         command: result.command,
         cause
       })

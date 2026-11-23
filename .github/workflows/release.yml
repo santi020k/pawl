@@ -79,6 +79,7 @@ jobs:
           REQUIRED_CHECKS: |-
             Required checks (Node 22)
             Required checks (Node 24)
+            Language tools (macOS)
         run: |
           passed_on_pull_request() {
             local found number head name conclusions

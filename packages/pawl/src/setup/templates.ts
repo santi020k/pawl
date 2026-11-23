@@ -118,7 +118,7 @@ export const PROBLEM_MATCHER: JsonRecord = {
   // VS Code's own variable, put together so it does not read as a template string left unfilled.
   fileLocation: ['relative', ['$', '{workspaceFolder}'].join('')],
   pattern: {
-    regexp: '^(.+?):(\\d+):(\\d+): (error|warning): (.*) \\[([^\\]]+)\\]$',
+    regexp: '^(.+?):(\\d+):(\\d+): (error|warning|info): (.*) \\[([^\\]]+)\\]$',
     file: 1,
     line: 2,
     column: 3,

@@ -33,7 +33,7 @@ The tasks run `npx pawl check --format editor`, and a problem matcher reads its 
     "source": "pawl",
     "fileLocation": ["relative", "${workspaceFolder}"],
     "pattern": {
-      "regexp": "^(.+?):(\\d+):(\\d+): (error|warning): (.*) \\[([^\\]]+)\\]$",
+      "regexp": "^(.+?):(\\d+):(\\d+): (error|warning|info): (.*) \\[([^\\]]+)\\]$",
       "file": 1,
       "line": 2,
       "column": 3,
@@ -44,6 +44,8 @@ The tasks run `npx pawl check --format editor`, and a problem matcher reads its 
   }
 }
 ```
+
+The severity takes `info` as well, so the same matcher reads the `--format editor` lines of [Quality](/guide/quality/), which prints them too.
 
 Pawl does not overwrite a `tasks.json` you already have. It adds the tasks it does not find by label, so a `pawl: check` task of your own stays as you wrote it. A file with comments is left alone, with a note to add the task by hand.
 

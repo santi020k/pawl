@@ -38,6 +38,15 @@ describe('editor tasks', () => {
     expect(
       pattern.exec('src/a b.ts:3:7: warning: Use [] not Array(). [biome:style/useConsistentArrayType]')?.slice(1)
     ).toEqual(['src/a b.ts', '3', '7', 'warning', 'Use [] not Array().', 'biome:style/useConsistentArrayType'])
+    // Quality prints the same shape, with an info severity as well, so the matcher reads its lines too.
+    expect(pattern.exec('src/lib.rs:7:5: info: Unneeded unit expression. [clippy::unused_unit]')?.slice(1)).toEqual([
+      'src/lib.rs',
+      '7',
+      '5',
+      'info',
+      'Unneeded unit expression.',
+      'clippy::unused_unit'
+    ])
     expect(pattern.exec('pawl: error: No biome.json found. [pawl/setup:biome-config-missing]')).toBeNull()
   })
 

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { accessSync, constants, existsSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { delimiter, dirname, join } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { type Project } from '../policy/project.ts'
 import { type Toolset } from '../project/toolset.ts'
 import { type EngineName, type Finding, type SetupIssue } from '../types.ts'
@@ -80,7 +80,8 @@ export const findOnPath = (name: string, env: NodeJS.ProcessEnv = process.env): 
 
   for (const dir of dirs) {
     for (const extension of extensions) {
-      const file = join(dir, `${name}${extension}`)
+      // Absolute, so a relative PATH entry names the same file from the folder the program runs in.
+      const file = resolve(dir, `${name}${extension}`)
 
       try {
         accessSync(file, constants.X_OK)

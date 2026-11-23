@@ -5,6 +5,7 @@ import { TYPE_AWARE_PACKAGE } from '../engines/oxlint/config.ts'
 import { OXLINT_VERSION, TSGOLINT_VERSION } from '../engines/oxlint/rules.ts'
 import { type Detection, type PackageManager } from '../project/detect.ts'
 import { readJson } from '../utils/json.ts'
+import { installedVersion } from '../utils/semver.ts'
 import { PACKAGE_NAME, VERSION } from '../version.ts'
 
 const INSTALL: Record<PackageManager, string> = {
@@ -26,14 +27,20 @@ const TOOL_RANGES: Record<string, string> = {
   prettier: '^3.0.0'
 }
 
-export const rangeFor = (name: string): string => {
+/** The range to write for a package: the one pawl works with, else the version the project has installed. */
+export const rangeFor = (name: string, root?: string): string => {
   const known = TOOL_RANGES[name]
 
   if (known) return known
 
   const major = /(\d+)/.exec(PACKS.find(pack => pack.plugin === name)?.range ?? '')?.[1]
 
-  return major ? `^${major}.0.0` : '*'
+  if (major) return `^${major}.0.0`
+
+  // Any other package, such as a company policy, is one the project already loads.
+  const installed = root === undefined ? undefined : installedVersion(root, name)
+
+  return installed ? `^${installed}` : '*'
 }
 
 /** The command that adds packages to the project with its own package manager. */

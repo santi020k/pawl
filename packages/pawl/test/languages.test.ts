@@ -599,6 +599,22 @@ describe('other languages: the real Clippy and rustfmt', () => {
     },
     120_000
   )
+
+  it.skipIf(!findOnPath('cargo'))(
+    'is a setup problem when Cargo stops before it builds, and prints no report to say so',
+    async () => {
+      const root = project({
+        'Cargo.toml':
+          '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nnope = { path = "./missing" }\n',
+        'src/lib.rs': 'pub fn one() -> u8 {\n    1\n}\n'
+      })
+      const policy = mergeLayers([{ source: 'repo', input: { engine: 'biome', languages: ['rust'] } }])
+      const result = await check({ root, policy, files: ['src/lib.rs'] })
+
+      expect(result.setup.map(issue => issue.code)).toContain('engine-failed')
+    },
+    120_000
+  )
 })
 
 const swiftProject = (): string =>

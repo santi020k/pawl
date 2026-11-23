@@ -49,7 +49,7 @@ export const planScripts = (root: string, notes: string[], packages: readonly st
 
   const devDependencies = isRecord(manifest.devDependencies) ? { ...manifest.devDependencies } : {}
 
-  for (const name of packages) devDependencies[name] = rangeFor(name)
+  for (const name of packages) devDependencies[name] = rangeFor(name, root)
 
   // Under Nx, the root becomes a project whose check and fix scripts are targets, never cached:
   // pawl checks the whole repo in one run, and a cached result would hide new findings.

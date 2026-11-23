@@ -60,6 +60,8 @@ export default definePolicy({
 | Swift    | `swiftlint lint`                         | `swiftformat --lint`, or `swift-format lint` | `swiftlint lint --fix`, then the formatter |
 | Kotlin   | `ktlint`                                 | `ktlint`, which also checks the style        | `ktlint --format`                          |
 
+`pawl fix` on some files, as with `--changed`, still fixes the whole Cargo workspace: Clippy and `cargo fmt --all` work on a workspace, not on files. The Swift and Kotlin tools fix only the files they are given.
+
 Swift has two formatters. Pawl uses the one whose config the project has, `.swiftformat` for [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) or `.swift-format` for Apple's [swift-format](https://github.com/swiftlang/swift-format). With neither, it uses SwiftFormat when it is installed, else swift-format.
 
 Every finding lands in the same report as the JavaScript ones, with the tool's own rule name: `clippy:needless_return`, `rustc:unused_variables` for a warning of the compiler, `swiftlint:force_cast`, `swiftformat:indent`, `ktlint:standard:no-wildcard-imports`. A file rustfmt would change is `pawl/format`, as a file Biome would change is.
@@ -81,10 +83,10 @@ The policy can still set the level of a tool's rule, by the name pawl reports it
 export default definePolicy({
   languages: ['rust'],
   rules: {
-    'clippy:unwrap_used': 'error',
+    'clippy:needless_return': 'error',
     'rustc:dead_code': 'off'
   },
-  overrides: [{ files: ['crates/*/tests/**'], rules: { 'clippy:unwrap_used': 'off' } }]
+  overrides: [{ files: ['crates/*/tests/**'], rules: { 'clippy:needless_return': 'off' } }]
 })
 ```
 

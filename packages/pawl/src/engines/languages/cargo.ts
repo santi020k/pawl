@@ -81,7 +81,8 @@ export const parseClippy = (root: string, cwd: string, stdout: string): { findin
 
     if (diagnostic.level !== 'warning' && diagnostic.level !== 'error') continue
 
-    const span = diagnostic.spans.find(part => part.is_primary) ?? diagnostic.spans[0]
+    const spans = diagnostic.spans ?? []
+    const span = spans.find(part => part.is_primary) ?? spans[0]
     const file = span ? fromEngine(root, cwd, span.file_name) : undefined
 
     // A summary such as "2 warnings emitted" has no place, and a dependency outside the repo is not the project's.
@@ -179,8 +180,10 @@ export const runClippy = async ({ root, dir, files, write = false }: LanguageRun
 
   commands.push(result.command.replace(' --message-format=json', ''))
 
-  // A failed build with no error to show means Cargo itself failed, such as a dependency it could not fetch.
-  if (failed && !errors) {
+  // A failed build with no error to show means Cargo itself failed, such as a dependency it could not
+  // fetch. Cargo can also stop before it builds anything, as on a manifest it cannot read: then it
+  // prints no message at all, and only its exit code says so.
+  if ((failed || result.code !== 0) && !errors) {
     throw new EngineError(result.stderr.trim() || `cargo clippy exited with code ${result.code}.`, {
       command: result.command
     })

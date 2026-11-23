@@ -1,7 +1,15 @@
 import { join } from 'node:path'
 import { type Finding } from '../../types.ts'
 import { chunkFiles, EngineError, findOnPath, runProgram } from '../engine.ts'
-import { commandIn, fromEngine, type LanguageResult, type LanguageRun, onlyFiles, ToolMissingError } from './tool.ts'
+import {
+  asArgument,
+  commandIn,
+  fromEngine,
+  type LanguageResult,
+  type LanguageRun,
+  onlyFiles,
+  ToolMissingError
+} from './tool.ts'
 
 interface KtlintFile {
   file: string
@@ -52,7 +60,7 @@ export const runKtlint = async ({ root, dir, files = [], write = false }: Langua
   const findings: Finding[] = []
   const commands: string[] = []
 
-  for (const batch of chunkFiles(files)) {
+  for (const batch of chunkFiles(files.map(asArgument))) {
     const args = [...(write ? ['--format'] : []), '--reporter=json', '--relative', ...batch]
     const result = await runProgram(program, args, cwd, commandIn(dir, `ktlint${write ? ' --format' : ''}`))
 

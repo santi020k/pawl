@@ -2,7 +2,15 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { type Finding } from '../../types.ts'
 import { chunkFiles, EngineError, findOnPath, runProgram } from '../engine.ts'
-import { commandIn, fromEngine, type LanguageResult, type LanguageRun, onlyFiles, ToolMissingError } from './tool.ts'
+import {
+  asArgument,
+  commandIn,
+  fromEngine,
+  type LanguageResult,
+  type LanguageRun,
+  onlyFiles,
+  ToolMissingError
+} from './tool.ts'
 
 interface SwiftLintViolation {
   file?: string | null
@@ -54,7 +62,7 @@ export const runSwiftLint = async ({ root, dir, files = [], write = false }: Lan
   const findings: Finding[] = []
   const commands: string[] = []
 
-  for (const batch of chunkFiles(files)) {
+  for (const batch of chunkFiles(files.map(asArgument))) {
     if (write) {
       const fixed = await runProgram(
         program,
@@ -204,7 +212,7 @@ export const runSwiftFormat = async ({
   const findings: Finding[] = []
   const commands: string[] = []
 
-  for (const batch of chunkFiles(files)) {
+  for (const batch of chunkFiles(files.map(asArgument))) {
     if (write) {
       const formatted = await runProgram(formatter.program, formatArgs(formatter, batch, true), cwd, label(true))
 

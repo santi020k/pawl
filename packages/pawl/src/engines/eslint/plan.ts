@@ -157,18 +157,24 @@ const scopeTechnologies = (config: FlatConfig[], options: EslintPlanOptions): Fl
   const scoped: FlatConfig[] = []
 
   for (const block of config) {
-    scoped.push(block)
+    if (!isRecord(block.rules)) {
+      scoped.push(block)
 
-    if (!isRecord(block.rules)) continue
+      continue
+    }
 
+    // A copy: the block may be a preset the plugin exports, which is not pawl's to change.
+    const kept: Rules = { ...block.rules }
     const moved = new Map<string, Rules>()
+
+    scoped.push({ ...block, rules: kept })
 
     for (const [name, value] of Object.entries(block.rules)) {
       const tag = getRule(name)?.tag
 
       if (!tag || !isGated(tag) || shared.includes(tag)) continue
 
-      delete block.rules[name]
+      delete kept[name]
 
       for (const dir of usedIn(tag)) moved.set(dir, { ...moved.get(dir), [name]: value })
     }

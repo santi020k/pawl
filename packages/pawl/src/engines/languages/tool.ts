@@ -38,6 +38,12 @@ export const fromEngine = (root: string, cwd: string, path: string): string | un
   return file.startsWith('../') || file === '..' || isAbsolute(file) ? undefined : file
 }
 
+/**
+ * A file as an argument a tool reads as a file. A name that starts with a dash would be read as an
+ * option, and ktlint reads a leading `!` as "not this one", so such a name gets `./` in front.
+ */
+export const asArgument = (file: string): string => (/^[-!]/.test(file) ? `./${file}` : file)
+
 /** The command as a person would type it, with the folder it runs in. */
 export const commandIn = (dir: string, command: string): string => (dir ? `(cd ${dir} && ${command})` : command)
 

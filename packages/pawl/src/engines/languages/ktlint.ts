@@ -1,46 +1,50 @@
 import { join } from 'node:path'
 import { type Finding } from '../../types.ts'
-import { chunkFiles, EngineError, findOnPath, runProgram } from '../engine.ts'
+import { chunkFiles, EngineError, findOnPath, readReport, runProgram } from '../engine.ts'
 import {
   asArgument,
   commandIn,
   fromEngine,
+  isRecordList,
   type LanguageResult,
   type LanguageRun,
   onlyFiles,
+  position,
   ToolMissingError
 } from './tool.ts'
 
-interface KtlintFile {
-  file: string
-  errors?: { line?: number; column?: number; message?: string; rule?: string }[]
-}
+const text = (value: unknown): string | undefined => (typeof value === 'string' && value ? value : undefined)
 
-/** Turn ktlint's JSON report into findings. ktlint's rules are about style, so each one is an error. */
+/**
+ * Turn ktlint's JSON report into findings. ktlint's rules are about style, so each one is an error.
+ * ktlint prints its own log lines before the report. Throws when the output has no report to read.
+ */
 export const parseKtlint = (root: string, cwd: string, stdout: string): Finding[] => {
-  const start = stdout.indexOf('[')
+  if (!stdout.includes('[')) return []
 
-  if (start === -1) return []
+  const files = readReport<unknown>(stdout, '[')
 
-  const files = JSON.parse(stdout.slice(start)) as KtlintFile[]
+  if (!isRecordList(files)) throw new Error("Could not read ktlint's report.")
 
-  return files.flatMap(({ file: path, errors = [] }) => {
-    const file = fromEngine(root, cwd, path)
+  return files.flatMap(({ file: path, errors }) => {
+    const file = typeof path === 'string' ? fromEngine(root, cwd, path) : undefined
 
-    if (!file) return []
+    if (!file || !isRecordList(errors)) return []
 
     return errors.map(error => {
-      const engineRule = error.rule ?? 'ktlint'
+      const message = text(error.message)
+      // A file ktlint cannot parse comes back with no rule.
+      const engineRule = text(error.rule) ?? (message?.startsWith('Not a valid Kotlin file') ? 'parse' : 'ktlint')
 
       return {
         file,
-        line: Math.max(1, error.line ?? 1),
-        column: Math.max(1, error.column ?? 1),
+        line: position(error.line),
+        column: position(error.column),
         engine: 'ktlint',
         engineRule,
         rule: `ktlint:${engineRule}`,
         severity: 'error',
-        message: error.message ?? engineRule,
+        message: message ?? engineRule,
         fixable: false
       } satisfies Finding
     })
@@ -48,8 +52,9 @@ export const parseKtlint = (root: string, cwd: string, stdout: string): Finding[
 }
 
 /**
- * Lint, and with `write` format, a Kotlin project with ktlint, in the project's .editorconfig.
- * ktlint is both the linter and the formatter, so one run does both.
+ * Lint, and with `write` format first, a Kotlin project with ktlint, in the project's .editorconfig.
+ * ktlint is both the linter and the formatter. The report of a format run words and counts what
+ * is left differently, so the findings always come from a lint run.
  */
 export const runKtlint = async ({ root, dir, files = [], write = false }: LanguageRun): Promise<LanguageResult> => {
   const program = findOnPath('ktlint')
@@ -61,8 +66,20 @@ export const runKtlint = async ({ root, dir, files = [], write = false }: Langua
   const commands: string[] = []
 
   for (const batch of chunkFiles(files.map(asArgument))) {
-    const args = [...(write ? ['--format'] : []), '--reporter=json', '--relative', ...batch]
-    const result = await runProgram(program, args, cwd, commandIn(dir, `ktlint${write ? ' --format' : ''}`))
+    if (write) {
+      const formatted = await runProgram(program, ['--format', ...batch], cwd, commandIn(dir, 'ktlint --format'))
+
+      if (!commands.includes(formatted.command)) commands.push(formatted.command)
+
+      // With 1, ktlint formatted the files and something is left that it cannot fix, which the lint below reports.
+      if (formatted.code > 1) {
+        throw new EngineError(formatted.stderr.trim() || `ktlint exited with code ${formatted.code}.`, {
+          command: formatted.command
+        })
+      }
+    }
+
+    const result = await runProgram(program, ['--reporter=json', '--relative', ...batch], cwd, commandIn(dir, 'ktlint'))
 
     if (!commands.includes(result.command)) commands.push(result.command)
 

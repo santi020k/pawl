@@ -1,56 +1,58 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { type Finding } from '../../types.ts'
-import { chunkFiles, EngineError, findOnPath, runProgram } from '../engine.ts'
+import { chunkFiles, EngineError, findOnPath, readReport, runProgram } from '../engine.ts'
 import {
   asArgument,
   commandIn,
   fromEngine,
+  isRecordList,
   type LanguageResult,
   type LanguageRun,
   onlyFiles,
+  position,
   ToolMissingError
 } from './tool.ts'
 
-interface SwiftLintViolation {
-  file?: string | null
-  line?: number | null
-  character?: number | null
-  severity?: string
-  rule_id?: string
-  reason?: string
-}
+const text = (value: unknown): string | undefined => (typeof value === 'string' && value ? value : undefined)
 
-/** Turn SwiftLint's JSON report into findings. */
+/**
+ * Turn SwiftLint's JSON report into findings. Throws when the output has no report to read, so
+ * other output is never taken for a clean one.
+ */
 export const parseSwiftLint = (root: string, cwd: string, stdout: string): Finding[] => {
-  const start = stdout.indexOf('[')
+  if (!stdout.includes('[')) return []
 
-  if (start === -1) return []
+  const violations = readReport<unknown>(stdout, '[')
 
-  const violations = JSON.parse(stdout.slice(start)) as SwiftLintViolation[]
+  if (!isRecordList(violations)) throw new Error("Could not read SwiftLint's report.")
 
   return violations.flatMap(violation => {
-    const file = violation.file ? fromEngine(root, cwd, violation.file) : undefined
+    const path = text(violation.file)
+    const file = path ? fromEngine(root, cwd, path) : undefined
 
     if (!file) return []
 
-    const engineRule = violation.rule_id ?? 'swiftlint'
+    const engineRule = text(violation.rule_id) ?? 'swiftlint'
 
     return [
       {
         file,
-        line: Math.max(1, violation.line ?? 1),
-        column: Math.max(1, violation.character ?? 1),
+        line: position(violation.line),
+        column: position(violation.character),
         engine: 'swiftlint',
         engineRule,
         rule: `swiftlint:${engineRule}`,
-        severity: violation.severity?.toLowerCase() === 'error' ? 'error' : 'warn',
-        message: violation.reason ?? engineRule,
+        severity: text(violation.severity)?.toLowerCase() === 'error' ? 'error' : 'warn',
+        message: text(violation.reason) ?? engineRule,
         fixable: false
       } satisfies Finding
     ]
   })
 }
+
+/** What SwiftLint says, with exit code 1, when its own `excluded` list leaves none of the files it was given. */
+const NOTHING_TO_LINT = 'No lintable files found'
 
 /** Lint a Swift project with SwiftLint, in its own config. `--force-exclude` keeps its `excluded` list in force. */
 export const runSwiftLint = async ({ root, dir, files = [], write = false }: LanguageRun): Promise<LanguageResult> => {
@@ -72,6 +74,13 @@ export const runSwiftLint = async ({ root, dir, files = [], write = false }: Lan
       )
 
       if (!commands.includes(fixed.command)) commands.push(fixed.command)
+
+      // A fix that worked exits with 0, whatever is left to report. Anything else did not run.
+      if (fixed.code !== 0 && !fixed.stderr.includes(NOTHING_TO_LINT)) {
+        throw new EngineError(fixed.stderr.trim() || `SwiftLint exited with code ${fixed.code}.`, {
+          command: fixed.command
+        })
+      }
     }
 
     const args = ['lint', '--reporter', 'json', '--quiet', '--force-exclude', ...batch]
@@ -79,6 +88,10 @@ export const runSwiftLint = async ({ root, dir, files = [], write = false }: Lan
 
     if (!commands.includes(result.command)) commands.push(result.command)
 
+    // The project's own config left these files out, so there is nothing to say about them.
+    if (result.code === 1 && result.stderr.includes(NOTHING_TO_LINT)) continue
+
+    // SwiftLint exits with 2 when it finds an error, with a report. Without one, it did not run.
     try {
       if (result.code !== 0 && !result.stdout.includes('[')) throw new Error('no report')
 

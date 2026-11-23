@@ -26,6 +26,8 @@ Options for check and fix
   --ci                  Also fail when the setup has drifted from the policy
   --max-warnings <n>    Fail when there are more than n new warnings
   --verbose             Show the engine commands that ran
+  --hook                For a coding agent's post-edit hook: read the files it edited from
+                        the hook's input, and answer in the shape that agent reads back
 
 Options for doctor
   --format <kind>       pretty (default) or json
@@ -58,6 +60,7 @@ export const OPTIONS = {
   ci: { type: 'boolean' },
   'max-warnings': { type: 'string' },
   verbose: { type: 'boolean' },
+  hook: { type: 'boolean' },
   mode: { type: 'string' },
   yes: { type: 'boolean', short: 'y' },
   'dry-run': { type: 'boolean' },
@@ -143,4 +146,23 @@ export const oneOf = <T extends string>(
   if (!allowed.includes(value as T)) throw new UsageError(`Unknown ${flag} "${value}". Use ${orList(allowed)}.`)
 
   return value as T
+}
+
+/**
+ * Refuse what does not go with --hook: the hook's input names the files, and the agent reads
+ * pawl's answer in its own shape.
+ */
+export const assertHookFlags = (flags: Flags, files: readonly string[]): void => {
+  const clash = [
+    files.length > 0 ? 'a list of files' : '',
+    flags.changed === true ? '--changed' : '',
+    flags.since === undefined ? '' : '--since',
+    flags.format === undefined ? '' : '--format'
+  ].filter(Boolean)
+
+  if (clash.length > 0) {
+    throw new UsageError(
+      `--hook reads the files from the hook's input and answers in the agent's own shape. Leave out ${orList(clash)}.`
+    )
+  }
 }

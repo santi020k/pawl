@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
 import { BASELINE_FILE } from '../src/check/baseline.ts'
@@ -426,6 +426,103 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         rule: 'biome:suspicious/noDebugger',
         message: 'This is an unexpected use of the debugger statement.'
       })
+    })
+
+    test("fixes only the files an agent's hook names, and answers in the shape that agent reads", () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': 'export const a = 1\n'
+      })
+      const hook = (input: object): { code: number; stdout: string; stderr: string } => {
+        const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'fix', '--hook'], {
+          cwd: root,
+          encoding: 'utf8',
+          input: JSON.stringify(input),
+          env: { ...process.env, CI: '', NO_COLOR: '1' }
+        })
+
+        return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
+      }
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      write(root, { 'src/edited.js': 'export const   b = 1\ndebugger\n', 'src/other.js': 'export const   c = 1\n' })
+
+      const claude = hook({
+        hook_event_name: 'PostToolUse',
+        cwd: root,
+        tool_name: 'Write',
+        tool_input: { file_path: join(root, 'src/edited.js') }
+      })
+      const context = (JSON.parse(claude.stdout) as { hookSpecificOutput: Record<string, string> }).hookSpecificOutput
+
+      expect(claude).toMatchObject({ code: 0, stderr: '' })
+      expect(context.hookEventName).toBe('PostToolUse')
+      expect(context.additionalContext).toContain('1 problem left:')
+      expect(context.additionalContext).toContain(
+        '"file":"src/edited.js","line":2,"rule":"biome:suspicious/noDebugger"'
+      )
+      // The edited file is formatted. The one the agent did not touch is not.
+      expect(readFileSync(join(root, 'src/edited.js'), 'utf8')).toBe('export const b = 1\ndebugger\n')
+      expect(readFileSync(join(root, 'src/other.js'), 'utf8')).toBe('export const   c = 1\n')
+
+      // Codex names its files in the patch, relative to its folder.
+      const codex = hook({
+        hook_event_name: 'PostToolUse',
+        cwd: root,
+        tool_name: 'apply_patch',
+        tool_input: { command: '*** Begin Patch\n*** Update File: src/edited.js\n@@\n*** End Patch' }
+      })
+
+      expect(codex.stdout).toContain('noDebugger')
+      // Copilot reads a top-level additionalContext, and its hook also runs after tools that edit nothing.
+      expect(
+        JSON.parse(hook({ toolName: 'edit', toolArgs: JSON.stringify({ path: 'src/edited.js' }), cwd: root }).stdout)
+      ).toHaveProperty('additionalContext')
+      expect(hook({ toolName: 'view', toolArgs: { path: 'src/other.js' }, cwd: root })).toEqual({
+        code: 0,
+        stdout: '',
+        stderr: ''
+      })
+      // Cursor reads nothing back, so pawl fixes the file and prints nothing.
+      expect(hook({ hook_event_name: 'afterFileEdit', file_path: join(root, 'src/other.js') })).toEqual({
+        code: 0,
+        stdout: '',
+        stderr: ''
+      })
+      expect(readFileSync(join(root, 'src/other.js'), 'utf8')).toBe('export const c = 1\n')
+      // A file outside the project is not pawl's to fix.
+      expect(
+        hook({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/tmp/x.js' } })
+      ).toEqual({ code: 0, stdout: '', stderr: '' })
+    })
+
+    test('tells the person, not the agent, when the hook could not check the edit', () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': 'export const a = 1\n'
+      })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      rmSync(join(root, 'node_modules/@santi020k/pawl'))
+
+      const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'fix', '--hook'], {
+        cwd: root,
+        encoding: 'utf8',
+        input: JSON.stringify({
+          hook_event_name: 'PostToolUse',
+          tool_name: 'Edit',
+          tool_input: { file_path: join(root, 'src/a.js') }
+        })
+      })
+
+      // 2 would hand the message to the agent. Any other failing code goes to the person.
+      expect(result.status).toBe(1)
+      expect(result.stdout).toBe('')
+      expect(result.stderr).toMatch(
+        /^pawl: biome\.json extends @santi020k\/pawl\/biome, but @santi020k\/pawl is not installed/
+      )
     })
 
     test("explains pawl's own rules and guards, by the names its findings carry", () => {

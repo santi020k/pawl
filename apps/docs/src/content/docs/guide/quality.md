@@ -7,6 +7,8 @@ head: [{ tag: title, content: "Run pawl with Quality | pawl" }]
 
 [Quality](https://quality.santi020k.com) runs the code-quality tools of a whole repo with one command: Rust, Swift, Kotlin and Python analyzers, Astro Check, CSpell, Knip, Actionlint and more, configured in `quality.yml`. Pawl owns the JavaScript and TypeScript side: Biome, Oxlint, ESLint, Prettier and the baseline. Use them together and each does its own part.
 
+Pawl can also check Rust, Swift and Kotlin itself, with `languages` in the policy. Leave that out when Quality checks them, so no tool runs twice. See [Rust, Swift and Kotlin](/guide/languages/#with-quality).
+
 :::note
 The integration is in beta. Quality plans a dedicated `pawl` adapter once pawl's JSON report is stable. Until then, run pawl as a Quality task, as shown below.
 :::

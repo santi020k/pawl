@@ -1,11 +1,11 @@
 import { activeGuards, type Guard, getGuard, guardLevel } from '../catalog/guards.ts'
-import { defaultLevel, findRule } from '../catalog/rules.ts'
+import { defaultLevel, findRule, LANGUAGE_ENGINES } from '../catalog/rules.ts'
 import { oxlintCatalogName } from '../engines/oxlint/config.ts'
 import { OXLINT_RULES, OXLINT_TYPE_AWARE_RULES } from '../engines/oxlint/rules.ts'
 import { effectiveRules } from '../policy/levels.ts'
 import { detect } from '../project/detect.ts'
 import { findOwnRule } from '../scans/registry.ts'
-import { type Policy } from '../types.ts'
+import { type LanguageEngine, type Policy } from '../types.ts'
 import { kebabCase } from '../utils/text.ts'
 
 /** Findings pawl names itself that are neither in the catalog nor a check of its own. */
@@ -38,9 +38,20 @@ const OWN_RULES: Record<string, { summary: string; checkedBy: string; advice: st
   }
 }
 
+/** The tools of the other languages, as people call them. */
+const LANGUAGE_TOOL_TITLES: Record<LanguageEngine, string> = {
+  clippy: 'Clippy',
+  rustc: 'the Rust compiler',
+  rustfmt: 'rustfmt',
+  swiftlint: 'SwiftLint',
+  swiftformat: 'SwiftFormat',
+  'swift-format': 'swift-format',
+  ktlint: 'ktlint'
+}
+
 /**
  * A name pawl gives a finding of an engine's own, with no rule of the catalog behind it, such as
- * `biome:style/noDefaultExport`, `biome:fs/cantRead` or `oxlint:unicorn/no-null`.
+ * `biome:style/noDefaultExport`, `biome:fs/cantRead`, `oxlint:unicorn/no-null` or `clippy:needless_return`.
  */
 const engineName = (query: string): { title: string; name: string; docs?: string } | undefined => {
   const [prefix, ...rest] = query.split(':')
@@ -69,6 +80,10 @@ const engineName = (query: string): { title: string; name: string; docs?: string
       ...(rule ? { docs: `https://oxc.rs/docs/guide/usage/linter/rules/${scope}/${rule[2]}.html` } : {})
     }
   }
+
+  const tool = LANGUAGE_ENGINES.find(engine => engine === prefix)
+
+  if (tool) return { title: LANGUAGE_TOOL_TITLES[tool], name }
 
   return prefix === 'eslint' ? { title: 'ESLint', name } : undefined
 }

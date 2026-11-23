@@ -28,8 +28,10 @@ export {
   biomeTechPreset
 } from './engines/biome/config.ts'
 export { checkBiomeConfig } from './engines/biome/state.ts'
-export type { EslintOptions, EslintPlan, EslintPlanOptions, FlatConfig } from './engines/eslint/plan.ts'
+export type { EslintOptions, EslintPlan, EslintPlanOptions, FlatConfig, PackageScope } from './engines/eslint/plan.ts'
 export { eslint, eslintPlan, eslintPlanFor } from './engines/eslint/plan.ts'
+export type { LanguageCheckOptions, LanguageCheckResult } from './engines/languages/check.ts'
+export { checkLanguages } from './engines/languages/check.ts'
 export type { OxlintContext } from './engines/oxlint/config.ts'
 export { checkOxlintConfig, oxlintConfig, oxlintCovers } from './engines/oxlint/config.ts'
 export { OXLINT_RULES, OXLINT_VERSION } from './engines/oxlint/rules.ts'
@@ -54,6 +56,8 @@ export {
   technologies
 } from './project/detect.ts'
 export { ALWAYS_IGNORED, DEFAULT_IGNORES } from './project/ignores.ts'
+export type { Language, LanguageInfo, LanguageProject } from './project/languages.ts'
+export { LANGUAGE_INFO, LANGUAGES } from './project/languages.ts'
 export type { Toolset } from './project/toolset.ts'
 export { toolset } from './project/toolset.ts'
 export type { Compatibility, DoctorReport } from './report/doctor.ts'
@@ -78,6 +82,9 @@ export type {
   FormatterChoice,
   FormatterName,
   Framework,
+  LanguageEngine,
+  LanguagesInput,
+  LanguageTools,
   Level,
   LockViolation,
   Override,

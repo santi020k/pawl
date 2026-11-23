@@ -35,7 +35,7 @@ Quality (`quality.yml`) runs `pnpm ok` as the repository check and owns the Git 
 
 `src/types.ts` and `src/version.ts` are shared by every layer and import none of them.
 
-A new engine is an `Engine` in `engines/<name>/engine.ts`, added to `engines/registry.ts`: the check and the doctor pick it up from there. A rule only one engine has is named `biome:`, `oxlint:` or `eslint:` through `scopedName` and `scopedRule` in `catalog/rules.ts`.
+A new engine is an `Engine` in `engines/<name>/engine.ts`, added to `engines/registry.ts`: the check and the doctor pick it up from there. The tools of the other languages (Clippy, rustfmt, SwiftLint, SwiftFormat, swift-format, ktlint) are not `Engine`s: they are programs on the `PATH` that run once per project folder with the project's own config, so they live in `engines/languages/`, one module per toolchain behind `tool.ts`, and `check.ts` there runs them for the check and reports them to the doctor. The languages themselves, and how their projects are found, are in `project/languages.ts`. A rule only one engine has is named `biome:`, `oxlint:` or `eslint:` through `scopedName` and `scopedRule` in `catalog/rules.ts`.
 
 ## Rules of the codebase
 
@@ -53,6 +53,7 @@ A new engine is an `Engine` in `engines/<name>/engine.ts`, added to `engines/reg
 - The Docker checks in `src/scans/docker.ts` and the Markdown checks in `src/scans/markdown.ts` are the only rules pawl implements itself as line scans, because no engine reads those files. Keep each one a plain line scan that skips what is not prose or instructions, with a test for a file that is wrong and one that is fine. They honour the same ignores as the engines (`src/project/ignores.ts`).
 - A new pack needs its plugin as an optional peer in `packages/pawl/package.json`, and a run against the real plugin before it ships.
 - Every engine failure must reach the user as a setup problem with exit code 2. Never report success when part of the check did not run.
+- Pawl has no standard of its own for Rust, Swift or Kotlin. A language runs only when the policy names it in `languages`, with the project's own config; pawl applies the policy's levels to what the tool reports, by the tool's rule name (`clippy:needless_return`). A tool that is not installed is `language-tool-missing`, a blocking setup problem.
 - Do not name a file `biome.json` anywhere but a project root: Biome treats each one as a nested configuration.
 
 <!-- commitprompt:start -->

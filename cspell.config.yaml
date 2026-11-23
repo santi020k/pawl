@@ -12,11 +12,13 @@ words:
   - bunx
   - classlist
   - clinerules
+  - clippy
   - cntrl
   - codegen
   - commitprompt
   - Containerfile
   - darraghor
+  - detekt
   - distroless
   - Dockerfiles
   - esbuild
@@ -31,6 +33,7 @@ words:
   - isnan
   - kiro
   - knip
+  - ktlint
   - langchain
   - lede
   - linejoin
@@ -49,9 +52,13 @@ words:
   - opencode
   - opencontainers
   - pagefind
+  - pathext
+  - pbxproj
   - proptypes
   - punct
   - Qwik
+  - rustc
+  - rustup
   - santi
   - santi020k
   - serviceworker
@@ -59,6 +66,8 @@ words:
   - Slidev
   - spinbutton
   - stylesheet
+  - swiftformat
+  - swiftlint
   - swiftpm
   - tabindex
   - textnodes
@@ -74,6 +83,11 @@ words:
   - WCAG
   - wildmatch
   - workerd
+  - xcassets
+  - xcframework
+  - xcodeproj
+  - xcuserdata
+  - xcworkspace
   - xdigit
 ignorePaths:
   - node_modules

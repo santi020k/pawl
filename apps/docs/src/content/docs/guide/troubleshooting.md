@@ -88,6 +88,15 @@ setup  biome.json extends @santi020k/pawl/biome, but @santi020k/pawl is not inst
 
 The project's `biome.json` loads the standard from the package, so pawl has to be in the project's own `node_modules`. Running it through `npx` alone is not enough, and neither is a fresh clone before its first install. Install the dependencies, or add the package.
 
+### A tool for Rust, Swift or Kotlin is not installed
+
+```txt
+setup  Rust is in the policy, but cargo is not installed.
+       Install Rust with rustup, then run "rustup component add clippy rustfmt".
+```
+
+The policy names the language in `languages`, so pawl runs its tools, and they are not on the `PATH`. They are not npm packages, so pawl does not install them: follow the line under the problem, or take the language out of `languages`. In CI, install them in the job before `pawl check`. `pawl baseline` records nothing until they run, so the baseline cannot lose what it allowed. See [Rust, Swift and Kotlin](/guide/languages/#installing-the-tools).
+
 ### The check did not complete
 
 ```txt

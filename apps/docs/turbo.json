@@ -10,6 +10,7 @@
         "!public/og/**",
         "!.og-cache.json",
         "$TURBO_ROOT$/packages/*/CHANGELOG.md",
+        "$TURBO_ROOT$/packages/pawl/package.json",
         "$TURBO_ROOT$/.changeset/*.md"
       ],
       "outputs": ["dist/**", "public/og/**"]
@@ -18,6 +19,7 @@
       "dependsOn": []
     },
     "typecheck": {
+      "dependsOn": ["build"],
       "inputs": ["$TURBO_DEFAULT$", "!dist/**", "!.astro/**", "!public/og/**", "!.og-cache.json"]
     }
   }

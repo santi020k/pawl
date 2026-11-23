@@ -1,5 +1,6 @@
 import { RUNTIMES } from '../catalog/runtimes.ts'
 import { DETECTABLE } from '../project/detect.ts'
+import { LANGUAGES } from '../project/languages.ts'
 import { type PolicyInput } from '../types.ts'
 
 /** The part of JSON Schema the policy schema uses. */
@@ -49,6 +50,20 @@ const biomeOptions: JsonSchema = {
 }
 
 const runtime: JsonSchema = { type: 'string', enum: RUNTIMES }
+
+const languageTools: JsonSchema = {
+  anyOf: [
+    { type: 'boolean' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        lint: { type: 'boolean', description: "Run the language's linter." },
+        format: { type: 'boolean', description: "Check the formatting with the language's formatter." }
+      }
+    }
+  ]
+}
 
 /**
  * Every option of a policy. Typed by `PolicyInput`'s keys, so the schema cannot leave one out
@@ -127,6 +142,18 @@ const PROPERTIES: Record<keyof PolicyInput, JsonSchema> = {
         type: 'object',
         additionalProperties: false,
         properties: { exclude: { type: 'array', items: { type: 'string', enum: DETECTABLE }, uniqueItems: true } }
+      }
+    ]
+  },
+  languages: {
+    description:
+      'Other languages to check with their own tools: Rust (Clippy, rustfmt), Swift (SwiftLint, SwiftFormat or swift-format), Kotlin (ktlint). Off unless named.',
+    anyOf: [
+      { type: 'array', items: { type: 'string', enum: LANGUAGES }, uniqueItems: true },
+      {
+        type: 'object',
+        additionalProperties: false,
+        properties: Object.fromEntries(LANGUAGES.map(language => [language, languageTools]))
       }
     ]
   }

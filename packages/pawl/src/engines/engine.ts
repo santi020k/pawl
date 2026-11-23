@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { accessSync, constants, existsSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { type Project } from '../policy/project.ts'
 import { type Toolset } from '../project/toolset.ts'
 import { type EngineName, type Finding, type SetupIssue } from '../types.ts'
@@ -71,6 +71,31 @@ export interface RunResult {
 }
 
 /**
+ * Find a program on the PATH, as a shell would. Reads the file system only, so `pawl doctor`
+ * can say what is missing without running anything.
+ */
+export const findOnPath = (name: string, env: NodeJS.ProcessEnv = process.env): string | undefined => {
+  const dirs = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean)
+  const extensions = process.platform === 'win32' ? (env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : ['']
+
+  for (const dir of dirs) {
+    for (const extension of extensions) {
+      const file = join(dir, `${name}${extension}`)
+
+      try {
+        accessSync(file, constants.X_OK)
+
+        if (statSync(file).isFile()) return file
+      } catch {
+        // Not here.
+      }
+    }
+  }
+
+  return undefined
+}
+
+/**
  * Run a Node script and collect its output. Never rejects on a non-zero exit. A process that could
  * not start at all, such as one whose command line is too long, rejects with an EngineError.
  * `shown` is what the command reports as having run: the arguments a person would type,
@@ -83,9 +108,20 @@ export const runNode = (
   label: string,
   shown: readonly string[] = args,
   env?: Record<string, string>
+): Promise<RunResult> => runProgram(process.execPath, [script, ...args], cwd, [label, ...shown].join(' '), env)
+
+/**
+ * Run a program and collect its output, as `runNode` does for a Node script. `command` is the
+ * command as a person would type it.
+ */
+export const runProgram = (
+  program: string,
+  args: readonly string[],
+  cwd: string,
+  command: string,
+  env?: Record<string, string>
 ): Promise<RunResult> =>
   new Promise((resolvePromise, reject) => {
-    const command = [label, ...shown].join(' ')
     const notStarted = (cause: unknown): void => {
       const reason = cause instanceof Error ? cause.message : String(cause)
 
@@ -96,7 +132,7 @@ export const runNode = (
       // Pawl reads what an engine prints and formats its own output, so no engine colours its text.
       // A task runner such as Turborepo sets FORCE_COLOR, and Prettier then colours even its errors.
       const childEnv = { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', ...env }
-      const child = spawn(process.execPath, [script, ...args], {
+      const child = spawn(program, args, {
         cwd,
         env: childEnv,
         stdio: ['ignore', 'pipe', 'pipe']

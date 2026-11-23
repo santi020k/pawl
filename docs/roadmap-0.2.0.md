@@ -30,6 +30,7 @@ Taken from "What is left" and "Not built yet" in the README and from `docs/rules
 - [ ] Give more of the 55 rules with no home a check without a plugin. The largest groups: Stencil (18), Angular, typescript-eslint and ESLint core (6 each), Testing Library and Zod (2 each). Angular needs a parser for decorators, which ESLint without typescript-eslint does not have.
 - [ ] Packs for Vite and Slidev.
 - [ ] Decide on `profile`, `snapshot` and `diff`, and the ESLint MCP scaffold. The README lists them as not planned.
+- [ ] Rust, Swift and Kotlin, and monorepos that mix stacks (`feature/polyglot-monorepos`): detection of Cargo, Swift Package Manager, Xcode and Gradle projects and their generated files, `languages` in the policy to run Clippy, rustfmt, SwiftLint, SwiftFormat or swift-format and ktlint under the baseline, and technology rules per package under Oxlint and ESLint. Next: Detekt, Java, and a Quality adapter that reads `languages`.
 
 ## Closing the release
 

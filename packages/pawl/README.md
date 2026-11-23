@@ -129,12 +129,13 @@ Then run `pawl sync`. `pawl.config.js`, `.mjs` and `.json` work too.
 | `defaultIgnores` | Skip build output, caches, lockfiles, AI tool folders and generated code. On by default.       |
 | `runtime`        | `node`, `browser`, `bun`, `deno` or `worker`, instead of what pawl detects.                    |
 | `detect`         | `false` turns detection off; `{ exclude: ['tailwind'] }` leaves a technology out.              |
+| `languages`      | Other languages to check with their own tools: `['rust', 'swift', 'kotlin']`. Off by default.  |
 
 Rule names are ESLint's names. Use `biome:group/name` for a rule only Biome has. Any other name pawl does not know is passed to ESLint. An option pawl does not know stops the run, and so does a value it cannot use, such as a level that is not `off`, `warn` or `error`, so a typo never passes in silence. `pawl.config.json` can point `$schema` at `./node_modules/@santi020k/pawl/pawl.config.schema.json` for editor completion.
 
 ### What pawl skips
 
-Every engine skips the same files: build output and caches, test reports, lockfiles, the folders AI coding tools keep (`.claude`, `.cursor` and others), generated code (`__generated__`, `*.gen.*`, `.prisma`), `CHANGELOG.md`, what the root `.gitignore` lists, and your `ignore` list. Biome reads the `.gitignore` through its git integration, pawl turns it into ESLint's patterns, and Oxlint reads it itself.
+Every engine skips the same files: build output and caches, test reports, lockfiles, the folders AI coding tools keep (`.claude`, `.cursor` and others), generated code (`__generated__`, `*.gen.*`, `.prisma`), what the tools of other languages write (Cargo's `target`, `Cargo.lock`, `Package.resolved`, Xcode's asset catalogs and project bundles, `Pods`, `.gradle`), `CHANGELOG.md`, what the root `.gitignore` lists, and your `ignore` list. Biome reads the `.gitignore` through its git integration, pawl turns it into ESLint's patterns, and Oxlint reads it itself.
 
 ### Runtimes
 
@@ -184,13 +185,29 @@ The standard has 200 rules, named with ESLint's names. They started from `@santi
 
 Pawl detects pnpm, npm and yarn workspaces, Turborepo and Nx. It runs once from the root and covers every package. In a Turborepo, `init` also adds `check` and `fix` to `turbo.json` as root tasks, uncached, so `turbo run check` runs pawl with the rest. Under Nx it makes the root a project with `check` and `fix` as uncached targets, so `nx run-many -t check` does the same.
 
-When one package uses a technology the rest of the repo does not, `init` gives that package its own small `biome.json`:
+A rule for a technology runs only in the packages that use it, under every linter. With Biome, `init` gives such a package its own small `biome.json`:
 
 ```json
 { "root": false, "extends": ["../../biome.json", "@santi020k/pawl/biome/react"] }
 ```
 
-So React rules apply in the React app and nowhere else. `pawl check` reports a package that starts using a new technology until `pawl sync` has been run.
+With Oxlint, `.oxlintrc.json` has an override for the package, with the rules and the plugins they need. With ESLint, the flat config has a block for it, and a pack only some packages depend on, such as `react-hooks`, runs in those packages only. So React rules apply in the React app and not in the Vue app next to it. `pawl check` reports a package that starts using a new technology until `pawl sync` has been run.
+
+## Rust, Swift and Kotlin
+
+Pawl finds Cargo, Swift Package Manager, Xcode and Gradle projects anywhere in the repo, keeps the JavaScript engines out of what their tools write, and lists them in `pawl doctor`. Name a language in the policy and `pawl check` runs its own tools there, with the project's own config, under the same baseline and report:
+
+```ts
+export default definePolicy({ languages: ['rust', 'swift', 'kotlin'] })
+```
+
+| Language | Lint      | Format                      |
+| -------- | --------- | --------------------------- |
+| Rust     | Clippy    | rustfmt                     |
+| Swift    | SwiftLint | SwiftFormat or swift-format |
+| Kotlin   | ktlint    | ktlint                      |
+
+Findings keep the tool's rule name, such as `clippy:unwrap_used`, and `rules` and `overrides` can set their levels. A tool that is missing is a setup problem with exit code 2. Pawl does not install these tools. Leave `languages` out when [Quality](https://quality.santi020k.com) already runs them, so nothing runs twice.
 
 ## Choosing tools
 

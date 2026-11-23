@@ -27,7 +27,9 @@ suite('detect', () => {
       typescript: true,
       frameworks: ['react'],
       tools: { eslint: 'eslint.config.js', prettier: '.prettierrc' },
-      workspace: { tool: undefined, packages: [], frameworks: {} }
+      workspace: { tool: undefined, packages: [], frameworks: {}, dependencies: {} },
+      languages: [],
+      ignores: []
     })
     expect(technologies(detection)).toEqual(['react'])
     expect(packageTechnologies(detection)).toEqual({})
@@ -52,8 +54,10 @@ suite('detect', () => {
     expect(detection.workspace).toEqual({
       tool: 'turbo',
       packages: ['apps/web', 'packages/ui'],
-      frameworks: { 'apps/web': ['vue'], 'packages/ui': ['react'] }
+      frameworks: { 'apps/web': ['vue'], 'packages/ui': ['react'] },
+      dependencies: { 'apps/web': ['vue'], 'packages/ui': ['react'] }
     })
+    expect(detection.rootDependencies).toEqual([])
     // Nothing but Turborepo is repo-wide here; each package brings its own technology.
     expect(technologies(detection)).toEqual(['turbo'])
     expect(packageTechnologies(detection)).toEqual({ 'apps/web': ['vue'], 'packages/ui': ['react'] })
@@ -171,7 +175,12 @@ suite('detect', () => {
     const detection = detect(root)
 
     expect(detection.packageManager).toBe('yarn')
-    expect(detection.workspace).toEqual({ tool: 'nx', packages: ['libs/core'], frameworks: { 'libs/core': [] } })
+    expect(detection.workspace).toEqual({
+      tool: 'nx',
+      packages: ['libs/core'],
+      frameworks: { 'libs/core': [] },
+      dependencies: { 'libs/core': [] }
+    })
     expect(describe(detection)).toBe('JavaScript, Nx with 1 package, yarn')
   })
 

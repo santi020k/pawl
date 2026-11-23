@@ -62,11 +62,13 @@ export interface ScanOptions {
   policy: Policy
   /** Only look at these files, relative to the root. */
   files?: readonly string[]
+  /** Patterns to skip that detection found, such as the target folder of a Rust project. */
+  ignores?: readonly string[]
 }
 
 /** Run a scan over the project's files, or the ones given, and turn what it reports into findings. */
-export const runScan = (scan: Scan, { root, policy, files }: ScanOptions): Finding[] => {
-  const ignored = ignoreMatcher(root, policy)
+export const runScan = (scan: Scan, { root, policy, files, ignores }: ScanOptions): Finding[] => {
+  const ignored = ignoreMatcher(root, policy, ignores)
   const rules = new Map(scan.rules.map(rule => [rule.name, rule]))
   const findings: Finding[] = []
 

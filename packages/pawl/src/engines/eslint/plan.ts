@@ -1,11 +1,11 @@
 import { IMPORTS_RULE, importRestrictions, SYNTAX_RULE, syntaxRestrictions } from '../../catalog/guards.ts'
 import { PACKS, type Pack } from '../../catalog/packs.ts'
-import { getRule, notFor, scopedRule, type Technology } from '../../catalog/rules.ts'
+import { getRule, isGated, notFor, scopedRule, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { findProjectRoot } from '../../policy/load.ts'
 import { loadProject } from '../../policy/project.ts'
-import { allTechnologies } from '../../project/detect.ts'
+import { allTechnologies, packageTechnologies, technologies as repoTechnologies } from '../../project/detect.ts'
 import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../../project/ignores.ts'
 import { type Policy, type Runtime } from '../../types.ts'
 import { isRecord } from '../../utils/json.ts'
@@ -83,6 +83,115 @@ export interface EslintPlanOptions {
    * shared configs the old setup got its plugins from, so the comparison sees the same plugins.
    */
   pluginRoots?: readonly string[]
+  /** Patterns to skip that detection found, such as the target folder of a Rust project. */
+  ignores?: readonly string[]
+  /**
+   * The technologies the whole repo uses. A rule for any other technology in `technologies`
+   * runs only in the packages that use it. Defaults to `technologies`.
+   */
+  sharedTechnologies?: readonly Technology[]
+  /** For a monorepo: each package's own technologies and dependencies, by package directory. */
+  packages?: Record<string, PackageScope>
+  /** The dependencies of the root package.json. A pack the root needs is repo-wide. */
+  rootDependencies?: readonly string[]
+}
+
+/** What one package of a monorepo uses beyond the rest of the repo. */
+export interface PackageScope {
+  technologies: readonly Technology[]
+  dependencies: readonly string[]
+}
+
+/**
+ * File patterns limited to one folder: `**\/*.ts` in apps/web is `apps/web/**\/*.ts`. A pattern
+ * already in that folder stays as it is, and one in another of `dirs` is left out.
+ */
+const within = (files: readonly unknown[], dir: string, dirs: readonly string[] = []): unknown[] =>
+  files.flatMap((file): unknown[] => {
+    // A list inside `files` means every pattern in it must match, so the folder joins it.
+    if (typeof file !== 'string') return [[`${dir}/**`, ...toList(file as string | readonly string[])]]
+
+    const pattern = file.replace(/^\.?\//, '')
+
+    if (pattern.startsWith(`${dir}/`)) return [pattern]
+
+    return dirs.some(other => pattern.startsWith(`${other}/`)) ? [] : [`${dir}/${pattern}`]
+  })
+
+/**
+ * The packages a pack is for, when only some packages of a monorepo depend on what it is for.
+ * Undefined means the whole repo: the policy named it, the root depends on it, or it has its own files.
+ */
+const packDirs = (
+  pack: Pack,
+  reason: 'named' | 'auto' | 'suggested',
+  options: EslintPlanOptions
+): string[] | undefined => {
+  const packages = Object.entries(options.packages ?? {})
+
+  if (reason !== 'suggested' || pack.spread || packages.length === 0) return undefined
+
+  if (pack.when.some(name => (options.rootDependencies ?? []).includes(name))) return undefined
+
+  const dirs = packages.flatMap(([dir, scope]) =>
+    pack.when.some(name => scope.dependencies.includes(name)) ? [dir] : []
+  )
+
+  return dirs.length > 0 ? dirs : undefined
+}
+
+/**
+ * Move the rules for a technology only some packages use into blocks for those packages, so
+ * React rules run in the React app and not in the Vue one next to it. Biome does the same with
+ * a biome.json per package.
+ */
+const scopeTechnologies = (config: FlatConfig[], options: EslintPlanOptions): FlatConfig[] => {
+  const packages = Object.entries(options.packages ?? {})
+
+  if (packages.length === 0) return config
+
+  const shared = options.sharedTechnologies ?? options.technologies ?? []
+  const dirs = packages.map(([dir]) => dir)
+  const usedIn = (technology: Technology): string[] =>
+    packages.flatMap(([dir, scope]) => (scope.technologies.includes(technology) ? [dir] : []))
+  const scoped: FlatConfig[] = []
+
+  for (const block of config) {
+    scoped.push(block)
+
+    if (!isRecord(block.rules)) continue
+
+    const moved = new Map<string, Rules>()
+
+    for (const [name, value] of Object.entries(block.rules)) {
+      const tag = getRule(name)?.tag
+
+      if (!tag || !isGated(tag) || shared.includes(tag)) continue
+
+      delete block.rules[name]
+
+      for (const dir of usedIn(tag)) moved.set(dir, { ...moved.get(dir), [name]: value })
+    }
+
+    for (const [dir, rules] of moved) {
+      const { name, files, ignores, plugins, languageOptions } = block
+      // A block a pack already gave to some packages keeps to them.
+      const scopedFiles = within(Array.isArray(files) ? files : ['**'], dir, dirs)
+
+      if (scopedFiles.length === 0) continue
+
+      scoped.push({
+        name: `${typeof name === 'string' ? name : 'pawl/block'}/${dir}`,
+        files: scopedFiles,
+        ...(ignores ? { ignores } : {}),
+        ...(plugins ? { plugins } : {}),
+        ...(languageOptions ? { languageOptions } : {}),
+        rules
+      })
+    }
+  }
+
+  return scoped
 }
 
 const splitRule = (name: string): string | undefined => {
@@ -114,6 +223,8 @@ interface PackBlock {
   plugin: Record<string, unknown>
   /** The rules that came from the plugin's own preset, which the installed plugin is sure to have. */
   fromPlugin: Set<string>
+  /** The packages it runs in, when only some packages depend on what it is for. Undefined means the whole repo. */
+  dirs: string[] | undefined
 }
 
 /** What the plan is built from and into, phase by phase. */
@@ -176,7 +287,12 @@ const loadPacks = async (build: Build): Promise<void> => {
     else if (pack.name === 'typescript') Object.assign(tsRules, rules)
     else {
       packRules.set(pack.name, rules)
-      packBlocks.push({ pack, plugin: loaded.module, fromPlugin: new Set(Object.keys(preset)) })
+      packBlocks.push({
+        pack,
+        plugin: loaded.module,
+        fromPlugin: new Set(Object.keys(preset)),
+        dirs: packDirs(pack, reason, options)
+      })
     }
 
     build.needsTypes ||= pack.typeAware === true
@@ -308,7 +424,10 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
 
   // The defaults, the root .gitignore and the policy's own patterns, in that order, as pawl reads them.
   const ignores = [
-    ...new Set([...ALWAYS_IGNORED.map(dir => `**/${dir}/**`), ...allIgnores(root, policy).flatMap(toEslintIgnores)])
+    ...new Set([
+      ...ALWAYS_IGNORED.map(dir => `**/${dir}/**`),
+      ...allIgnores(root, policy, options.ignores).flatMap(toEslintIgnores)
+    ])
   ]
   const config: FlatConfig[] = [{ name: 'pawl/ignores', ignores }]
   const tseslint = ts.module
@@ -352,7 +471,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
 const packConfigs = ({ covered, packRules, packBlocks, notEnforced }: Build): FlatConfig[] => {
   const config: FlatConfig[] = []
 
-  for (const { pack, plugin, fromPlugin } of packBlocks) {
+  for (const { pack, plugin, fromPlugin, dirs } of packBlocks) {
     const rules = packRules.get(pack.name) ?? {}
 
     const known = isRecord(plugin.rules) ? plugin.rules : undefined
@@ -387,9 +506,12 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced }: Build): Fl
     } else {
       const parser = follow(plugin, pack.parser ?? [])
 
+      const files = pack.files ?? SCRIPT_FILES
+
       config.push({
         name: `pawl/pack/${pack.name}`,
-        files: pack.files ?? SCRIPT_FILES,
+        // A pack for what only some packages depend on runs in those packages.
+        files: dirs ? dirs.flatMap(dir => within(files, dir)) : files,
         ...(pack.ignores ? { ignores: pack.ignores } : {}),
         ...(pack.parser && parser ? { languageOptions: { parser } } : {}),
         plugins: { [pack.prefix]: plugin },
@@ -508,7 +630,9 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
   applyGuards(build)
   applyOptions(build)
 
-  const config = [...(await baseConfigs(build)), ...packConfigs(build), ...(await overrideConfigs(build))]
+  // The rules for a technology only some packages use move to those packages, before the overrides.
+  const blocks = scopeTechnologies([...(await baseConfigs(build)), ...packConfigs(build)], options)
+  const config = [...blocks, ...(await overrideConfigs(build))]
   const { coveredByBiome, notEnforced, activePacks, availablePacks } = build
 
   return { config, coveredByBiome, notEnforced, activePacks, availablePacks }
@@ -534,10 +658,23 @@ export const eslintPlanFor = async (root: string, policy?: Policy): Promise<Esli
     oxlintActive: tools.linter === 'oxlint',
     oxlintTypeAware: tsgolintInstalled(root),
     typescript: detection.typescript,
-    // One ESLint config covers the whole repo, so it takes every technology in it.
+    // One ESLint config covers the whole repo. It takes every technology in it, and gives the
+    // rules for a technology only some packages use to those packages.
     technologies: allTechnologies(detection),
+    sharedTechnologies: repoTechnologies(detection),
+    packages: Object.fromEntries(
+      detection.workspace.packages.map(dir => [
+        dir,
+        {
+          technologies: packageTechnologies(detection)[dir] ?? [],
+          dependencies: detection.workspace.dependencies[dir] ?? []
+        }
+      ])
+    ),
+    rootDependencies: detection.rootDependencies,
     dependencies: detection.dependencies,
-    runtimes: detection.runtimes
+    runtimes: detection.runtimes,
+    ignores: detection.ignores
   })
 }
 

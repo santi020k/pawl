@@ -27,15 +27,28 @@ export const DEFAULT_IGNORES = [
   'playwright-report',
   'test-results',
   '*.tsbuildinfo',
-  '.build',
-  '.swiftpm',
   '.pnpm-store',
-  // Lockfiles: written by the package manager, never by people.
+  // Lockfiles: written by the package manager, never by people. Cargo.lock is TOML and
+  // Package.resolved is JSON, so a pack or Biome would otherwise reformat them.
   'pnpm-lock.yaml',
   'yarn.lock',
   'package-lock.json',
   'bun.lock',
   'bun.lockb',
+  'Cargo.lock',
+  'Package.resolved',
+  // What the Swift, Xcode and Gradle tools write. Asset catalogs hold JSON that Xcode rewrites.
+  '.build',
+  '.swiftpm',
+  'DerivedData',
+  'xcuserdata',
+  'Pods',
+  '*.xcassets',
+  '*.xcodeproj',
+  '*.xcworkspace',
+  '.gradle',
+  '.kotlin',
+  '.cxx',
   // Changesets parses the front matter of these files, which a Markdown formatter would rewrite.
   '.changeset',
   // Rules and skills that AI coding tools keep for themselves.
@@ -120,18 +133,27 @@ export const gitignorePatterns = (root: string): string[] => {
 
 /**
  * The patterns an engine config file carries: pawl's own folder, the defaults unless turned off,
- * then the policy's own. Biome skips node_modules and .git by itself; Oxlint is told to in its own config.
+ * the build folders detection found, then the policy's own. Biome skips node_modules and .git by itself;
+ * Oxlint is told to in its own config.
  */
-export const configIgnores = (policy: Pick<Policy, 'defaultIgnores' | 'ignore'>): string[] => [
-  ...new Set(['.pawl', ...(policy.defaultIgnores ? DEFAULT_IGNORES : []), ...policy.ignore])
+export const configIgnores = (
+  policy: Pick<Policy, 'defaultIgnores' | 'ignore'>,
+  detected: readonly string[] = []
+): string[] => [
+  ...new Set(['.pawl', ...(policy.defaultIgnores ? [...DEFAULT_IGNORES, ...detected] : []), ...policy.ignore])
 ]
 
 /**
- * Every pattern pawl skips for a project: the defaults, the root .gitignore when the policy
- * respects it, then the policy's own patterns. Order matters for the `!` lines of a .gitignore.
+ * Every pattern pawl skips for a project: the defaults and the build folders detection found,
+ * the root .gitignore when the policy respects it, then the policy's own patterns. Order
+ * matters for the `!` lines of a .gitignore.
  */
-export const allIgnores = (root: string, policy: Pick<Policy, 'defaultIgnores' | 'gitignore' | 'ignore'>): string[] => [
-  ...(policy.defaultIgnores ? DEFAULT_IGNORES : []),
+export const allIgnores = (
+  root: string,
+  policy: Pick<Policy, 'defaultIgnores' | 'gitignore' | 'ignore'>,
+  detected: readonly string[] = []
+): string[] => [
+  ...(policy.defaultIgnores ? [...DEFAULT_IGNORES, ...detected] : []),
   ...(policy.gitignore ? gitignorePatterns(root) : []),
   ...policy.ignore
 ]
@@ -331,8 +353,9 @@ const globToRegExp = (pattern: string): RegExp => {
 /** A matcher for pawl's own checks, which follows every ignore the engines follow. */
 export const ignoreMatcher = (
   root: string,
-  policy: Pick<Policy, 'defaultIgnores' | 'gitignore' | 'ignore'>
-): ((file: string) => boolean) => makeIgnore(allIgnores(root, policy))
+  policy: Pick<Policy, 'defaultIgnores' | 'gitignore' | 'ignore'>,
+  detected: readonly string[] = []
+): ((file: string) => boolean) => makeIgnore(allIgnores(root, policy, detected))
 
 /**
  * Match files against pawl globs. The last pattern that matches decides, so a `!` pattern

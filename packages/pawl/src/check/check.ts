@@ -1,12 +1,13 @@
 import { join } from 'node:path'
 import { type Engine, EngineError, type RunOptions } from '../engines/engine.ts'
+import { checkLanguages } from '../engines/languages/check.ts'
 import { activeEngines } from '../engines/registry.ts'
 import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../policy/project.ts'
 import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
 import { configIgnores, ignoreMatcher } from '../project/ignores.ts'
 import { runScans } from '../scans/registry.ts'
-import { type EngineName, type Finding, type Policy, type SetupIssue } from '../types.ts'
+import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
 import {
   applyBaseline,
@@ -123,11 +124,11 @@ const namedScope = (root: string, named: readonly string[]): Scope | undefined =
 /** Run every active engine, then pawl's own checks, and compare with the baseline. */
 export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const project = await loadProject(options.root, options.policy)
-  const { root, policy } = project
+  const { root, policy, detection } = project
   const setup: SetupIssue[] = []
   const commands: string[] = []
-  const engines: EngineName[] = []
-  const ignored = ignoreMatcher(root, policy)
+  const engines: CheckResult['engines'] = []
+  const ignored = ignoreMatcher(root, policy, detection.ignores)
   const asked = options.files ? namedScope(root, options.files) : gitScope(root, options, setup)
   const scoped = asked && {
     targets: asked.targets.filter(file => !ignored(file)),
@@ -149,7 +150,7 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     ...(scoped ? { files: scoped.targets } : {}),
     write: options.fix === true,
     // For Prettier, which has no config file of pawl's to read them from.
-    ignore: configIgnores(policy),
+    ignore: configIgnores(policy, detection.ignores),
     gitignore: policy.gitignore
   }
 
@@ -165,7 +166,17 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   }
 
   // Pawl's own checks for the files no engine reads.
-  if (!idle) findings.push(...runScans({ root, policy, ...own }))
+  if (!idle) {
+    findings.push(...runScans({ root, policy, ignores: detection.ignores, ...own }))
+
+    // The other languages the policy names, each with its own tools.
+    const languages = await checkLanguages({ root, policy, detection, ignored, write: options.fix === true, ...own })
+
+    engines.push(...languages.engines)
+    commands.push(...languages.commands)
+    setup.push(...languages.setup)
+    findings.push(...languages.findings)
+  }
 
   const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
   const limit = maxWarnings === undefined ? {} : { maxWarnings }
@@ -204,8 +215,8 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     engines,
     commands,
     hasBaseline: baseline !== undefined,
-    // A partial run cannot tell whether findings elsewhere are gone.
-    canShrinkBaseline: scoped === undefined && canShrink,
+    // A partial run cannot tell whether findings elsewhere are gone, nor can a run where an engine failed.
+    canShrinkBaseline: scoped === undefined && !isBlocked(setup) && canShrink,
     nothingToCheck: empty,
     ...limit
   }

@@ -1,4 +1,4 @@
-import { type Level } from '../types.ts'
+import { type LanguageEngine, type Level } from '../types.ts'
 
 /** What a rule is about. The tags in `GATED_TAGS` name a technology the project must use. */
 export type RuleTag = 'core' | 'typescript' | 'imports' | 'tests' | 'formats' | 'pawl' | Technology
@@ -1142,9 +1142,31 @@ export const scopedName = (engine: ScopedEngine, rule: string): string => `${eng
 export const scopedRule = (name: string, engine: ScopedEngine): string | undefined =>
   name.startsWith(`${engine}:`) ? name.slice(engine.length + 1) : undefined
 
-/** True for a name another engine runs, or one of pawl's own rules, which `engine` must leave alone. */
+/**
+ * The tools of the other languages, each of which names its rules itself: `clippy:needless_return`,
+ * `swiftlint:force_cast`.
+ */
+export const LANGUAGE_ENGINES: readonly LanguageEngine[] = [
+  'clippy',
+  'rustc',
+  'rustfmt',
+  'swiftlint',
+  'swiftformat',
+  'swift-format',
+  'ktlint'
+]
+
+/** True for a rule of another language's tool, which ESLint, Oxlint and Biome never see. */
+export const isLanguageRule = (name: string): boolean => LANGUAGE_ENGINES.some(engine => name.startsWith(`${engine}:`))
+
+/**
+ * True for a name another engine runs, one of pawl's own rules, or a rule of another language's
+ * tool, which `engine` must leave alone.
+ */
 export const notFor = (name: string, engine: ScopedEngine): boolean =>
-  name.startsWith('pawl/') || SCOPED.some(other => other !== engine && scopedRule(name, other) !== undefined)
+  name.startsWith('pawl/') ||
+  isLanguageRule(name) ||
+  SCOPED.some(other => other !== engine && scopedRule(name, other) !== undefined)
 
 /** The name the catalog files a rule under. Names it does not know are returned as they are. */
 export const canonicalName = (name: string): string => BY_NAME.get(name)?.name ?? name

@@ -30,7 +30,8 @@ export const biomeContextFor = (
   lint: tools.linter === 'biome',
   format: tools.formatter === 'biome',
   vcs: biomeVcs(root, policy),
-  runtimes: detection.runtimes
+  runtimes: detection.runtimes,
+  ignores: detection.ignores
 })
 
 export interface RuleFileState {

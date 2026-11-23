@@ -9,6 +9,7 @@ import { TYPE_AWARE_PACKAGE } from '../engines/oxlint/config.ts'
 import { loadProject } from '../policy/project.ts'
 import { ESLINT_CONFIG_FILES, hasAny } from '../project/config-files.ts'
 import { type Detection, describe, filePacks, needsEslint } from '../project/detect.ts'
+import { LANGUAGE_INFO, type Language, languagesOf } from '../project/languages.ts'
 import { type EngineName, type FormatterName, type Policy, type PolicyInput } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
 import { plural } from '../utils/text.ts'
@@ -195,6 +196,25 @@ const packSuggestions = (
   return `Optional packs that fit this project: ${names}. Each needs an ESLint plugin. Add them with "pawl add ${names}".`
 }
 
+/** What init says about code in other languages, which is left alone until the policy names the language. */
+const languagesNote = (detection: Detection, policy: Policy): string | undefined => {
+  const unchecked = languagesOf(detection.languages).filter(language => policy.languages[language] === undefined)
+
+  if (unchecked.length === 0) return undefined
+
+  const where = (language: Language): string =>
+    detection.languages
+      .filter(project => project.language === language)
+      .map(project => project.dir || 'the root')
+      .join(', ')
+  const parts = unchecked.map(language => `${LANGUAGE_INFO[language].title} in ${where(language)}`)
+  const found = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts.join('')
+  const named = unchecked.map(language => `'${language}'`).join(', ')
+  const [them, their] = unchecked.length === 1 ? ['it', 'its'] : ['them', 'their']
+
+  return `Found ${found}. Pawl leaves ${them} to ${their} own tools. To check ${them} with pawl and the baseline, add languages: [${named}] to the policy.`
+}
+
 /** Work out everything `init` would do, without touching the disk. */
 export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const {
@@ -247,6 +267,10 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const suggestion = packSuggestions(detection, policy, requested, present)
 
   if (suggestion) notes.push(suggestion)
+
+  const languages = languagesNote(detection, policy)
+
+  if (languages) notes.push(languages)
 
   actions.push(planScripts(root, notes, install ? [] : packages), planTurboTasks(root, notes))
 

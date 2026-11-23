@@ -22,6 +22,8 @@ A pawl is the part of a ratchet that stops it slipping backward. This tool does 
 - **Output for coding agents.** `pawl check --changed --format agent` prints one compact JSON line per finding, with the fix.
 - **A shared standard.** A team publishes one policy package, like [`@santi020k/pawl-policy`](packages/pawl-policy). Repos extend it, and the company can lock rules so repos cannot loosen them.
 - **Engines stay visible.** `biome check` and `eslint .` keep working on their own, and every finding shows the engine's own rule name.
+- **Monorepos that mix stacks.** React rules run in the React app and not in the Vue app next to it, under Biome, Oxlint and ESLint alike.
+- **Rust, Swift and Kotlin next to it.** Pawl finds them, keeps the JavaScript engines out of what their tools write, and with `languages` in the policy runs Clippy, rustfmt, SwiftLint, SwiftFormat and ktlint under the same baseline.
 
 ## Usage
 
@@ -73,7 +75,8 @@ Requires Node 22.18 or later.
 - **Biome by default, not by force.** It lints and formats in one binary, so it is what auto picks. ESLint and Prettier are equal choices.
 - **ESLint's rule names are the vocabulary.** `biome:group/name` reaches a Biome-only rule; any other unknown name is passed to ESLint.
 - **Thin config files.** A project's `biome.json` extends `@santi020k/pawl/biome` and holds only what its policy changes.
-- **Rules follow the technology.** React, Qwik, Vue, Svelte and Turborepo rules ship as separate presets. In a monorepo each package gets only the ones it uses.
+- **Rules follow the technology.** React, Qwik, Vue, Svelte and Turborepo rules ship as separate presets. In a monorepo each package gets only the ones it uses, under every linter.
+- **Other languages keep their own tools.** Pawl runs Clippy, SwiftLint or ktlint with the project's config and adds the baseline and the report. It writes no standard of its own for them.
 - **A missing rule is reported, never papered over.** `pawl doctor` lists what an engine cannot enforce. Pawl does not install a second engine silently.
 - **The baseline counts findings per file and rule, not per line,** so it survives edits and merges.
 
@@ -156,17 +159,20 @@ An optional pack runs through ESLint next to Biome, or with ESLint as the only l
 
 ### Languages and formats
 
-| Format                      | eslint-config-basic                | Pawl through Biome                                         |
-| --------------------------- | ---------------------------------- | ---------------------------------------------------------- |
-| JavaScript, TypeScript, JSX | Lint, and style through lint rules | Lint and format                                            |
-| JSON, JSONC, `package.json` | Lint                               | Lint and format through Biome; more with the optional pack |
-| CSS                         | Lint                               | Lint and format                                            |
-| GraphQL                     | Lint                               | Lint and format                                            |
-| YAML                        | Lint                               | Format through Biome; lint with the optional pack          |
-| Markdown                    | Lint                               | Format through Biome; lint with the optional pack          |
-| HTML                        | Lint                               | Experimental in Biome; lint with the optional pack         |
-| MDX                         | Lint                               | Not verified                                               |
-| TOML                        | Lint                               | Lint with the optional pack                                |
+| Format                      | eslint-config-basic                | Pawl                                                        |
+| --------------------------- | ---------------------------------- | ----------------------------------------------------------- |
+| JavaScript, TypeScript, JSX | Lint, and style through lint rules | Lint and format                                             |
+| JSON, JSONC, `package.json` | Lint                               | Lint and format through Biome; more with the optional pack  |
+| CSS                         | Lint                               | Lint and format                                             |
+| GraphQL                     | Lint                               | Lint and format                                             |
+| YAML                        | Lint                               | Format through Biome; lint with the optional pack           |
+| Markdown                    | Lint                               | Format through Biome; lint with the optional pack           |
+| HTML                        | Lint                               | Experimental in Biome; lint with the optional pack          |
+| MDX                         | Lint                               | Not verified                                                |
+| TOML                        | Lint                               | Lint with the optional pack                                 |
+| Rust                        | No                                 | Clippy and rustfmt, with `languages: ['rust']`              |
+| Swift                       | No                                 | SwiftLint and SwiftFormat or swift-format, with `languages` |
+| Kotlin                      | No                                 | ktlint, with `languages`                                    |
 
 ### Testing
 
@@ -243,7 +249,7 @@ An optional pack runs through ESLint next to Biome, or with ESLint as the only l
 | ESLint MCP scaffold              | Yes                      | Not planned                                                                                  |
 | GitHub Action                    | Yes                      | `init --workflow` writes a workflow                                                          |
 | Company policy with locked rules | No                       | Yes                                                                                          |
-| Per-package rules in a monorepo  | Not checked              | Yes, through per-package Biome configs                                                       |
+| Per-package rules in a monorepo  | Not checked              | Yes, under Biome, Oxlint and ESLint                                                          |
 
 ### Optional packs
 
@@ -273,7 +279,8 @@ A pack can also start from the plugin's own preset: `unicorn/recommended` is the
 - Code-pattern guards under Oxlint alone. They run in Biome and in ESLint. Oxlint's own plugin system is in alpha and crashed where pawl was built, so it is not used yet.
 - Rewriting the larger plugins. Pawl's own rules match shapes of code; plugins such as unicorn, regexp or typescript-eslint analyse it, and stay optional packs.
 - Linting an OpenAPI document itself. The `swagger` pack checks the NestJS decorators that produce it.
-- Languages other than JavaScript and TypeScript.
+- A standard of pawl's own for Rust, Swift and Kotlin. Pawl runs their tools with the project's config; it does not compile its rules for them.
+- Java, Go and Python. Pawl finds no project in them.
 
 ## License
 

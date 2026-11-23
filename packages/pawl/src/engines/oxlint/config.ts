@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { IMPORTS_RULE, importRestrictions } from '../../catalog/guards.ts'
-import { getRule, scopedRule, type Technology } from '../../catalog/rules.ts'
+import { getRule, isGated, isLanguageRule, scopedRule, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, oxlintEnv } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules, type RuleContext } from '../../policy/levels.ts'
 import { OXLINT_CONFIG_FILE } from '../../project/config-files.ts'
-import { allTechnologies, type Detection } from '../../project/detect.ts'
+import { type Detection, packageTechnologies, technologies as repoTechnologies } from '../../project/detect.ts'
 import { ALWAYS_IGNORED, configIgnores, toEngineGlob } from '../../project/ignores.ts'
 import { type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
 import { ancestors } from '../../utils/fs.ts'
@@ -39,13 +39,14 @@ export const TYPE_AWARE_PACKAGE = 'oxlint-tsgolint'
  * rules and the other engines' rules are not Oxlint's to enforce, so they are left out.
  */
 export const oxlintGaps = (policy: Policy, context?: OxlintContext): Array<{ rule: string; needs: string }> =>
-  [...effectiveRules(policy, context)]
+  [...effectiveRules(policy, everywhere(context))]
     .filter(
       ([name, level]) =>
         level !== 'off' &&
         !name.startsWith('pawl/') &&
         !name.startsWith('biome:') &&
         !name.startsWith('oxlint:') &&
+        !isLanguageRule(name) &&
         !oxlintCovers(name, context?.typeAware)
     )
     .map(([rule]) => ({ rule, needs: OXLINT_TYPE_AWARE_RULES[rule] ? TYPE_AWARE_PACKAGE : NO_OXLINT_EQUIVALENT }))
@@ -60,7 +61,23 @@ export interface OxlintContext extends RuleContext {
    * whether the install has run yet, and a check says so when it has not.
    */
   typeAware?: boolean
+  /** Patterns to skip that detection found, such as the target folder of a Rust project. */
+  ignores?: readonly string[]
+  /**
+   * For a monorepo: the technologies each package uses beyond `technologies`, by package
+   * directory. Their rules, and the plugins those rules need, apply in that package only.
+   */
+  packages?: Record<string, readonly Technology[]>
 }
+
+/** The technologies used anywhere in the repo: the repo-wide ones, then each package's own. */
+const everyTechnology = (context?: OxlintContext): Technology[] => [
+  ...new Set([...(context?.technologies ?? []), ...Object.values(context?.packages ?? {}).flat()])
+]
+
+/** The context with every technology in the repo, for what is not tied to one package. */
+const everywhere = (context?: OxlintContext): OxlintContext | undefined =>
+  context && { ...context, technologies: everyTechnology(context) }
 
 /**
  * True when the root package.json has oxlint-tsgolint in its dependencies or devDependencies. Oxlint
@@ -74,8 +91,9 @@ export const rootDeclaresTsgolint = (root: string): boolean => {
 }
 
 /**
- * The Oxlint context for a project. One Oxlint config covers the whole repo, so it takes every
- * technology in it. `adding` is what `pawl init` is about to add to the root package.json.
+ * The Oxlint context for a project. One Oxlint config covers the whole repo: what the whole repo
+ * uses goes at the top, and what only some packages use goes in an override for each of them.
+ * `adding` is what `pawl init` is about to add to the root package.json.
  */
 export const oxlintContextFor = (
   detection: Detection,
@@ -83,9 +101,11 @@ export const oxlintContextFor = (
   adding: readonly string[] = []
 ): OxlintContext => ({
   typescript: true,
-  technologies: allTechnologies(detection),
+  technologies: repoTechnologies(detection),
+  packages: packageTechnologies(detection),
   dependencies: detection.dependencies,
   runtimes: detection.runtimes,
+  ignores: detection.ignores,
   typeAware:
     adding.includes(TYPE_AWARE_PACKAGE) ||
     (root === undefined
@@ -141,7 +161,11 @@ const standardOverrides = (technologies: readonly Technology[] = []): Record<str
  */
 export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<string, unknown> => {
   const plugins = new Set<string>()
-  const toRules = (levels: Iterable<[string, Level]>, options: (name: string) => unknown[] | undefined) => {
+  const toRules = (
+    levels: Iterable<[string, Level]>,
+    options: (name: string) => unknown[] | undefined,
+    used: Set<string> = plugins
+  ) => {
     const rules: Record<string, unknown> = {}
 
     for (const [name, level] of levels) {
@@ -153,7 +177,7 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
 
       rules[rule] = ruleOptions ? [level, ...ruleOptions] : level
 
-      if (rule.includes('/')) plugins.add(rule.slice(0, rule.indexOf('/')))
+      if (rule.includes('/')) used.add(rule.slice(0, rule.indexOf('/')))
     }
 
     return rules
@@ -172,9 +196,30 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
 
   if (restricted) rules[IMPORTS_RULE] = [restricted.level, restricted.eslint]
 
+  // What a technology only some packages use applies there. A plugin switched on at the top would
+  // run its default rules everywhere, so the override switches it on for the package alone.
+  const shared = context?.technologies ?? []
+  const packages = Object.entries(context?.packages ?? {}).filter(([, technologies]) => technologies.length > 0)
+  const forPackages = packages.flatMap(([dir, technologies]) => {
+    const used = new Set<string>()
+    const levels = [...effectiveRules(policy, { ...context, technologies: [...shared, ...technologies] })].filter(
+      ([name]) => {
+        const tag = getRule(name)?.tag
+
+        return tag !== undefined && isGated(tag) && technologies.includes(tag)
+      }
+    )
+    const scoped = toRules(levels, baseOptions, used)
+    const extra = [...used].filter(plugin => !plugins.has(plugin)).sort()
+
+    return Object.keys(scoped).length > 0
+      ? [{ files: [`${dir}/**`], ...(extra.length > 0 ? { plugins: extra } : {}), rules: sortKeys(scoped) }]
+      : []
+  })
+  // The policy's own overrides may name a rule for any technology in the repo.
   const own = policy.overrides.flatMap(override => {
     const overridden = toRules(
-      overrideRules(override, context, policy),
+      overrideRules(override, everywhere(context), policy),
       name => override.options[name] ?? baseOptions(name)
     )
 
@@ -183,8 +228,9 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
       : []
   })
   const overrides = [
-    ...standardOverrides(context?.technologies),
+    ...standardOverrides(everyTechnology(context)),
     ...(Object.keys(typeAware).length > 0 ? [{ files: TYPESCRIPT_FILES, rules: sortKeys(typeAware) }] : []),
+    ...forPackages,
     ...own
   ]
   const runtimes = context?.runtimes ?? ['node', 'browser']
@@ -197,7 +243,7 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
     ...(globals.length > 0 ? { globals: Object.fromEntries(globals.map(name => [name, 'readonly'])) } : {}),
     // Oxlint skips node_modules only where a .gitignore lists it, so without one "oxlint --fix" would
     // rewrite the project's dependencies. Pawl never checks these folders, and says so to Oxlint itself.
-    ignorePatterns: [...new Set([...ALWAYS_IGNORED, ...configIgnores(policy)])].map(toEngineGlob),
+    ignorePatterns: [...new Set([...ALWAYS_IGNORED, ...configIgnores(policy, context?.ignores)])].map(toEngineGlob),
     rules: sortKeys(rules),
     ...(overrides.length > 0 ? { overrides } : {}),
     // Oxlint runs the rules that need type information only with this option, and fails without oxlint-tsgolint.

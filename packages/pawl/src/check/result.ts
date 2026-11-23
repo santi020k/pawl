@@ -1,4 +1,4 @@
-import { type EngineName, type Finding, type SetupIssue } from '../types.ts'
+import { type EngineName, type Finding, type LanguageEngine, type SetupIssue } from '../types.ts'
 
 export interface CheckResult {
   /** Findings the baseline does not cover, sorted by file and position. */
@@ -7,7 +7,8 @@ export interface CheckResult {
   baselined: number
   /** Problems with the setup itself. */
   setup: SetupIssue[]
-  engines: EngineName[]
+  /** The engines that ran, and the tools of the other languages the policy names. */
+  engines: (EngineName | LanguageEngine)[]
   /** The engine commands that ran, as a person would type them. */
   commands: string[]
   hasBaseline: boolean
@@ -36,7 +37,8 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'biome-config-missing',
   'since-unresolved',
   'baseline-unreadable',
-  'pawl-missing'
+  'pawl-missing',
+  'language-tool-missing'
 ]
 
 /** True when the setup problems mean part of the check did not run. */

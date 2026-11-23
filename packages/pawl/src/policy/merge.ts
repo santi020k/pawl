@@ -1,8 +1,10 @@
 import { getGuard } from '../catalog/guards.ts'
 import { canonicalName, defaultLevel, getRule, scopedRule } from '../catalog/rules.ts'
 import { expandBraces, literalBrackets } from '../project/ignores.ts'
+import { type Language } from '../project/languages.ts'
 import { findOwnRule } from '../scans/registry.ts'
 import {
+  type LanguageTools,
   type Level,
   type Override,
   type Policy,
@@ -48,6 +50,7 @@ const emptyPolicy = (): Policy => ({
   defaultIgnores: true,
   runtime: undefined,
   detect: { enabled: true, exclude: [] },
+  languages: {},
   maxWarnings: undefined,
   lockViolations: [],
   sources: ['pawl defaults']
@@ -110,6 +113,8 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
 
     if (input.runtime !== undefined) policy.runtime = [...new Set(toList(input.runtime))]
 
+    mergeLanguages(policy, input.languages)
+
     if (input.detect === false || input.detect === true) policy.detect = { ...policy.detect, enabled: input.detect }
     else if (input.detect) {
       policy.detect = {
@@ -122,6 +127,27 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
   requireLevels(policy)
 
   return policy
+}
+
+const BOTH_TOOLS: LanguageTools = { lint: true, format: true }
+
+/**
+ * A layer's languages over the ones before it. A name in a list switches the language on and
+ * keeps the tools an earlier layer chose; `false` switches it off; an object picks the tools.
+ */
+const mergeLanguages = (policy: Policy, input: PolicyInput['languages']): void => {
+  if (Array.isArray(input)) {
+    for (const language of input as readonly Language[]) policy.languages[language] ??= { ...BOTH_TOOLS }
+
+    return
+  }
+
+  for (const [language, value] of Object.entries(input ?? {}) as [Language, boolean | Partial<LanguageTools>][]) {
+    const tools = typeof value === 'boolean' ? { lint: value, format: value } : { ...BOTH_TOOLS, ...value }
+
+    if (tools.lint || tools.format) policy.languages[language] = tools
+    else delete policy.languages[language]
+  }
 }
 
 /**

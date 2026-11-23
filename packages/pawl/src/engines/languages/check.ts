@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { type Detection } from '../../project/detect.ts'
 import { listFiles } from '../../project/files.ts'
 import { LANGUAGE_INFO, type Language, type LanguageProject } from '../../project/languages.ts'
@@ -6,7 +8,7 @@ import { type Finding, type LanguageEngine, type LanguageTools, type Policy, typ
 import { EngineError, findOnPath } from '../engine.ts'
 import { runClippy, runRustfmt } from './cargo.ts'
 import { runKtlint } from './ktlint.ts'
-import { runSwiftFormat, runSwiftLint } from './swift.ts'
+import { runSwiftFormat, runSwiftLint, swiftFormatterFor } from './swift.ts'
 import { type LanguageResult, type LanguageRun, ToolMissingError } from './tool.ts'
 
 type Runner = (run: LanguageRun) => Promise<LanguageResult>
@@ -40,12 +42,30 @@ const TOOLS: Record<Language, { lint: Tool; format?: Tool }> = {
   kotlin: { lint: { engine: 'ktlint', title: 'ktlint', run: runKtlint, programs: ['ktlint'] } }
 }
 
-/** Each tool that runs for a language, and whether it is on the PATH. Reads the file system only. */
-export const toolStates = (language: Language, tools: LanguageTools): { name: string; installed: boolean }[] =>
-  toolsFor(language, tools).map(tool => ({
-    name: tool.title,
-    installed: tool.programs.some(program => findOnPath(program) !== undefined)
-  }))
+/**
+ * Each tool that runs for a language, and whether it is on the PATH. Reads the file system only.
+ * With a project, the Swift formatter is the one that project uses, by the config it has.
+ */
+export const toolStates = (
+  language: Language,
+  tools: LanguageTools,
+  project?: { root: string; dir: string }
+): { name: string; installed: boolean }[] =>
+  toolsFor(language, tools).map(tool => {
+    if (tool.engine !== 'swiftformat' || !project) {
+      return { name: tool.title, installed: tool.programs.some(program => findOnPath(program) !== undefined) }
+    }
+
+    try {
+      const formatter = swiftFormatterFor(project.root, project.dir)
+
+      return { name: formatter.engine === 'swiftformat' ? 'SwiftFormat' : 'swift-format', installed: true }
+    } catch {
+      const own = existsSync(join(project.root, project.dir, '.swift-format'))
+
+      return { name: own ? 'swift-format' : tool.title, installed: false }
+    }
+  })
 
 /** The tools that run for one language under a policy, linter first. */
 export const toolsFor = (language: Language, tools: LanguageTools): Tool[] => {

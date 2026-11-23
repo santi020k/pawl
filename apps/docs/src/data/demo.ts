@@ -107,7 +107,11 @@ export const sessions: readonly Session[] = [
       ],
       [['No new findings.', 'ok']],
       [['2 existing findings allowed by the baseline.', 'muted']],
-      [['The code has fewer findings than the baseline allows. Run "pawl baseline" to lock that in.']],
+      [
+        [
+          'The code has fewer findings, or stronger tests, than the baseline records. Run "pawl baseline" to lock that in.'
+        ]
+      ],
       blank,
       [
         ['$ ', 'prompt'],

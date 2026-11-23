@@ -39,6 +39,14 @@ Here is a real run, after an agent added a file that imports a package that is n
 
 A file that gains `biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` fails with `pawl/no-new-disable`. Switching a check off is not a way past it; fixing the code is. Existing disable comments are part of the [baseline](/guide/ratchet/), so this applies only to new ones.
 
+## Weaker tests fail
+
+A test file that loses assertions, swaps one for a check that passes for almost any value such as `toBeTruthy()`, or gains a skipped test fails with `pawl/no-weaker-tests`. Weakening the test that caught a problem is not a way past it either. The baseline counts each test file's assertions and skipped tests; see [Tests that get weaker](/guide/ratchet/#tests-that-get-weaker).
+
+## Hidden instructions fail
+
+A rules file, skill or `AGENTS.md` with characters that do not show on screen fails with `pawl/no-hidden-characters`. Such characters can hide instructions an agent follows and a reviewer never sees. Pawl reads the folders agents keep their files in for this, though its default ignores skip them for everything else; see [Hidden characters](/guide/guards/#hidden-characters).
+
 ## Set it up
 
 ```sh
@@ -106,7 +114,8 @@ Run `npx pawl fix` to apply formatting and safe fixes.
 
 Do not silence a problem with a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`).
 New ones fail the check. Fix the code instead. Do not run `pawl baseline` to make findings go
-away either: it accepts them as they are, and that is for a person to decide.
+away either: it accepts them as they are, and that is for a person to decide. A test that
+loses assertions or gets skipped fails the check too: make it pass instead.
 ```
 
 Codex, Copilot, Cursor and most other agents read `AGENTS.md` on their own. Two need a pointer:

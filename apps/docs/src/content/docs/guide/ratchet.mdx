@@ -1,6 +1,6 @@
 ---
 title: The ratchet
-description: "Adopt a lint standard without fixing everything first. Pawl records existing findings per file and rule, fails new ones, and lets you lock in each improvement."
+description: "Adopt a lint standard without fixing everything first. Pawl records existing findings per file and rule, fails new ones, stops tests from getting weaker, and lets you lock in each improvement."
 head: [{ tag: title, content: "The ratchet: a lint baseline that only moves forward | pawl" }]
 ---
 
@@ -12,7 +12,7 @@ A pawl is the part of a ratchet that stops it slipping backward. Pawl does the s
 
 ## The baseline
 
-`.pawl/baseline.json` records how many findings of each rule each file had when the repo adopted the standard. `pawl init` writes it. Commit it.
+`.pawl/baseline.json` records how many findings of each rule each file had when the repo adopted the standard, and how many assertions and skipped tests each test file had. `pawl init` writes it. Commit it.
 
 ```json title=".pawl/baseline.json"
 {
@@ -28,7 +28,10 @@ A pawl is the part of a ratchet that stops it slipping backward. Pawl does the s
       "eqeqeq": 1
     }
   },
-  "suppressions": {}
+  "suppressions": {},
+  "tests": {
+    "src/server.test.ts": { "assertions": 14, "skipped": 0 }
+  }
 }
 ```
 
@@ -38,7 +41,34 @@ A pawl is the part of a ratchet that stops it slipping backward. Pawl does the s
 - Anything beyond them fails the check.
 - A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`. Pawl looks for them in scripts and components, and in the stylesheets, JSON, GraphQL, YAML and TOML files a linter reads.
 
-That last rule matters most when an agent writes the code: switching a check off is not a way past it.
+- A test file that loses assertions or gains a skipped test fails with `pawl/no-weaker-tests`. See [Tests that get weaker](#tests-that-get-weaker).
+
+The last two matter most when an agent writes the code: switching a check off, or weakening the test that caught the problem, is not a way past it.
+
+## Tests that get weaker
+
+An agent can turn a failing test green without fixing anything: delete the assertion, swap `toEqual({ id: 7, status: 'settled' })` for `toBeTruthy()`, or skip the test. So the baseline counts, for each test file, two things:
+
+- **Assertions that pin a value**: `expect(...)`, `expect.soft` and `expect.poll`, `expectTypeOf`, `assertType`, and `node:assert`. A check that passes for almost any value takes one away from the count: `toBeTruthy()`, `toBeFalsy()`, `toBeDefined()`, `.not.toBeNull()`, `.not.toBeUndefined()`, `expect.anything()`, `expect.any()`, and a bare `assert()` or `assert.ok()`. So weakening an assertion lowers the count, and adding a new weak one leaves it as it was.
+- **Skipped tests**: `.skip`, `.todo` and Playwright's `.fixme` on `describe`, `it`, `test` and the like, and `xit`, `xdescribe` and `xtest`. A conditional skip such as `it.skipIf` is not counted.
+
+A test file is a `.test`, `.spec`, `.cy` or `.e2e` script, or any script under a `__tests__` folder.
+
+A file with fewer assertions than the baseline recorded fails, and so does each new skipped test in a file with more skips than it recorded. A test file the baseline has no count for, such as a new one, has no floor until the next `pawl baseline`. On a check of the whole repo, a counted test file that is gone fails too, unless new test files have at least as many assertions, as when the file was renamed or split; a check of some files cannot tell.
+
+Tests that got stronger count as an improvement, like fewer findings: `pawl check` says so, and `pawl baseline` raises the floor.
+
+Turn the rule down for some files with an override, as for any rule:
+
+```ts
+export default definePolicy({
+  overrides: [{ files: ['e2e/**'], rules: { 'pawl/no-weaker-tests': 'warn' } }]
+})
+```
+
+The counts come from a line scan, so an assertion inside a string, such as a code sample in a test of a linter, counts as one too. That keeps the counts stable; it only matters when such a string changes.
+
+A baseline written by a version of pawl before 0.4 has no test counts, so tests have no floor yet. `pawl check` says so when it finds nothing else to report; run `pawl baseline` then to start counting.
 
 ## Locking in improvements
 
@@ -47,7 +77,7 @@ When the code improves, `pawl check` says so:
 ```txt
 No new findings.
 2 existing findings allowed by the baseline.
-The code has fewer findings than the baseline allows. Run "pawl baseline" to lock that in.
+The code has fewer findings, or stronger tests, than the baseline records. Run "pawl baseline" to lock that in.
 ```
 
 Run `pawl baseline` to record the lower counts, and commit the file. From then on the repo cannot slip back past the improvement.

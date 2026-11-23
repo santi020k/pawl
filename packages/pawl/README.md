@@ -12,7 +12,7 @@ Fast guardrails for AI-written code. One standard, for the linter and formatter 
 npx @santi020k/pawl init
 ```
 
-`init` looks at the repo, shows what it will change, and asks before writing. In a terminal it offers a menu; in CI or under a coding agent it uses `auto`.
+`init` looks at the repo, shows what it will change, and asks before writing. In a terminal it asks how to set up the tools, then what else to add: the editor, coding agents, a pre-commit hook or a GitHub workflow. In CI or under a coding agent it asks nothing and uses `auto`.
 
 | Mode             | What it does                                                        |
 | ---------------- | ------------------------------------------------------------------- |
@@ -26,7 +26,7 @@ Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Action
 
 - `biome.json`, a few lines that extend the standard and turn on Biome's `.gitignore` support;
 - `check` and `fix` scripts in `package.json`;
-- `.vscode/settings.json`, so the editor formats and fixes on save, and `.vscode/extensions.json`, which recommends the editor extension;
+- `.vscode/settings.json`, so the editor formats and fixes on save, `.vscode/extensions.json`, which recommends the editor extension, and `.vscode/tasks.json`, with tasks that put the findings in the Problems panel;
 - `.pawl/baseline.json`, the findings the repo already has.
 
 Pawl never deletes or overwrites a tool config you already have. It tells you what you can remove.
@@ -92,7 +92,13 @@ One JSON object per line, errors first, and nothing at all when there is nothing
 }
 ```
 
-`--format json` prints the whole result as one document.
+A coding agent gets this format without asking: pawl knows Claude Code, Cursor, Codex, Gemini CLI and other agents by the variables they set, and shows them no colors, spinners or questions in any command. `PAWL_AGENT=0` says a person is running pawl.
+
+### Output for people and editors
+
+In a terminal, `pawl check` shows each finding with the line of code it points at, a mark under the part it means and how to fix it, then a summary. `pawl init` asks its questions and shows its plan step by step, and `pawl doctor` marks each part of the setup. In a pipe or a log, the same facts print as plain lines.
+
+`--format editor` prints `src/a.ts:3:7: error: message [rule]` lines, which VS Code's problem matchers, Vim's quickfix list and Emacs's compilation mode read. The tasks `init` writes for VS Code use it. `--format json` prints the whole result as one document.
 
 In a coding agent's post-edit hook, `pawl fix --hook` reads the files the agent edited from the hook's input, fixes and checks only those, and hands what is left back to the agent in the shape its tool reads: Claude Code, Codex and Copilot put it in front of the model, Cursor reads nothing back. `pawl init --agents` writes these hooks. See [Coding agents](https://pawl.santi020k.com/guide/agents/).
 

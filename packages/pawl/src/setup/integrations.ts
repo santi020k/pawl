@@ -21,7 +21,9 @@ import {
   PRETTIER_EDITOR_SETTINGS,
   SKILL_FILE,
   SKILL_MARKER,
-  workflowFile
+  VSCODE_TASKS,
+  workflowFile,
+  ZED_TASKS
 } from './templates.ts'
 
 /** Add the check and fix scripts, and, when pawl is not running the install, the packages to install. */
@@ -442,6 +444,55 @@ export const planHook = (root: string, detection: Detection, notes: string[]): S
   }
 }
 
+/** The list of tasks in a tasks file. VS Code keeps it under "tasks", which may not be there yet; Zed's file is the list. */
+const tasksIn = (value: unknown, shape: 'vscode' | 'zed'): unknown => {
+  if (shape === 'zed') return value
+
+  return isRecord(value) ? (value.tasks ?? []) : undefined
+}
+
+/** The label of a task in a tasks file, whatever else the entry holds. */
+const labelOf = (task: unknown): unknown => (isRecord(task) ? task.label : undefined)
+
+/**
+ * Add pawl's tasks to an editor's tasks file: a new file, or the tasks it does not have yet, by
+ * label. A task of the same name that the user wrote is theirs, and a file with comments is left
+ * alone, with a note, since writing it back would drop them.
+ */
+const planTasks = (
+  root: string,
+  file: string,
+  tasks: readonly JsonRecord[],
+  shape: 'vscode' | 'zed',
+  summary: string,
+  notes: string[]
+): SetupAction | undefined => {
+  const path = join(root, file)
+  const wrap = (list: readonly unknown[]): unknown => (shape === 'vscode' ? { version: '2.0.0', tasks: list } : list)
+
+  if (!existsSync(path)) return { path: file, kind: 'create', summary, apply: () => writeJson(path, wrap(tasks)) }
+
+  const { value, hasComments } = readJsonc<unknown>(path)
+  const list = tasksIn(value, shape)
+
+  if (!Array.isArray(list) || hasComments) {
+    notes.push(
+      `${file} has comments or could not be read, so pawl did not add its tasks. Add a "pawl: check" task by hand.`
+    )
+
+    return undefined
+  }
+
+  const labels = new Set(list.map(labelOf))
+  const missing = tasks.filter(task => !labels.has(task.label))
+
+  if (missing.length === 0) return undefined
+
+  const next = shape === 'vscode' ? { ...(value as JsonRecord), tasks: [...list, ...missing] } : [...list, ...missing]
+
+  return { path: file, kind: 'update', summary, apply: () => writeJson(path, next) }
+}
+
 /** VS Code settings that format on save with the project's formatter, and a recommendation for its extension. */
 export const planEditor = (root: string, formatter: FormatterName, notes: string[]): SetupAction[] => {
   const settings = formatter === 'biome' ? EDITOR_SETTINGS : PRETTIER_EDITOR_SETTINGS
@@ -461,6 +512,22 @@ export const planEditor = (root: string, formatter: FormatterName, notes: string
         notes
       )
     )
+  }
+
+  actions.push(
+    planTasks(
+      root,
+      '.vscode/tasks.json',
+      VSCODE_TASKS,
+      'vscode',
+      'tasks that put findings in the Problems panel',
+      notes
+    )
+  )
+
+  // Zed's tasks only where the repo already has Zed's folder, as for the agents' folders.
+  if (existsSync(join(root, '.zed'))) {
+    actions.push(planTasks(root, '.zed/tasks.json', ZED_TASKS, 'zed', 'tasks that check and fix from Zed', notes))
   }
 
   return actions.filter((action): action is SetupAction => action !== undefined)

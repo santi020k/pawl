@@ -380,58 +380,104 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
   }
 }
 
-/** The report for people, one line per part, then the problems. */
-export const formatDoctor = (report: DoctorReport): string => {
+/** How a line of the doctor's report stands: fine, worth a look, broken, or just so. */
+export type DoctorState = 'ok' | 'warn' | 'error' | 'info'
+
+/** One line of the doctor's report. A row with no label goes on with the row above it. */
+export interface DoctorRow {
+  /** The part of the report: the project and the policy, the tools, or what the ratchet and the guards do. */
+  group: 'project' | 'tools' | 'extras'
+  label: string
+  value: string
+  state: DoctorState
+}
+
+/** The rows of the report, in the order they print. */
+export const doctorRows = (report: DoctorReport): DoctorRow[] => {
   const { engines } = report
-  const versionOf = (name: string): string | undefined =>
-    report.compatibility.find(entry => entry.name === name)?.installed
-  const lines = [
-    `pawl ${report.version}`,
-    `Project:  ${report.project.summary}`,
-    `Runtime:  ${report.project.runtimes.join(', ')}`,
-    `Policy:   ${report.policy.file ? report.policy.sources.slice(1).join(' -> ') : 'default standard (no pawl.config file)'}${report.policy.strict ? ', strict' : ''}${report.policy.maxWarnings === undefined ? '' : `, at most ${report.policy.maxWarnings} warnings`}`,
-    `Lint:     ${LINTER_NAMES[report.linter]}${report.linter !== 'eslint' && engines.eslint ? ', with ESLint for the packs' : ''}`,
-    `Format:   ${report.formatter === 'biome' ? 'Biome' : 'Prettier'}`,
-    `Node:     ${process.versions.node}`
-  ]
+  const compat = (name: string): Compatibility | undefined => report.compatibility.find(entry => entry.name === name)
+  const versionOf = (name: string): string | undefined => compat(name)?.installed
+  const fits = (name: string): DoctorState => (compat(name)?.ok === false ? 'warn' : 'ok')
+  const engineState = (engine: { installed: boolean; status?: string }, name: string): DoctorState => {
+    if (!engine.installed) return 'error'
+
+    return engine.status !== undefined && engine.status !== 'ok' ? 'warn' : fits(name)
+  }
+  const rows: DoctorRow[] = []
+  const add = (group: DoctorRow['group'], label: string, value: string, state: DoctorState = 'info'): void => {
+    rows.push({ group, label, value, state })
+  }
+
+  add('project', 'Project', report.project.summary)
+  add('project', 'Runtime', report.project.runtimes.join(', '))
+  add(
+    'project',
+    'Policy',
+    `${report.policy.file ? report.policy.sources.slice(1).join(' -> ') : 'default standard (no pawl.config file)'}${report.policy.strict ? ', strict' : ''}${report.policy.maxWarnings === undefined ? '' : `, at most ${report.policy.maxWarnings} warnings`}`
+  )
+  add(
+    'tools',
+    'Lint',
+    `${LINTER_NAMES[report.linter]}${report.linter !== 'eslint' && engines.eslint ? ', with ESLint for the packs' : ''}`
+  )
+  add('tools', 'Format', report.formatter === 'biome' ? 'Biome' : 'Prettier')
+  add('project', 'Node', process.versions.node, fits('node'))
 
   if (engines.biome) {
-    lines.push(
-      `Biome:    ${engines.biome.installed ? (versionOf('@biomejs/biome') ?? BIOME_VERSION) : 'not installed'}, ${engines.biome.config ?? 'no config'} ${engines.biome.status === 'ok' ? 'in line with the policy' : `(${engines.biome.status})`}`
+    add(
+      'tools',
+      'Biome',
+      `${engines.biome.installed ? (versionOf('@biomejs/biome') ?? BIOME_VERSION) : 'not installed'}, ${engines.biome.config ?? 'no config'} ${engines.biome.status === 'ok' ? 'in line with the policy' : `(${engines.biome.status})`}`,
+      engineState(engines.biome, '@biomejs/biome')
     )
   }
 
   if (engines.oxlint) {
-    lines.push(
-      `Oxlint:   ${engines.oxlint.installed ? (versionOf('oxlint') ?? 'installed') : 'not installed'}, ${OXLINT_CONFIG_FILE} (${engines.oxlint.status})`
+    add(
+      'tools',
+      'Oxlint',
+      `${engines.oxlint.installed ? (versionOf('oxlint') ?? 'installed') : 'not installed'}, ${OXLINT_CONFIG_FILE} (${engines.oxlint.status})`,
+      engineState(engines.oxlint, 'oxlint')
     )
-  }
 
-  if (engines.oxlint) {
     const none = engines.oxlint.notEnforced.filter(({ needs }) => needs === NO_OXLINT_EQUIVALENT)
 
     if (none.length > 0) {
-      lines.push(`          not enforced, no Oxlint equivalent: ${nameRules(none.map(({ rule }) => rule))}`)
+      add('tools', '', `not enforced, no Oxlint equivalent: ${nameRules(none.map(({ rule }) => rule))}`)
     }
   }
 
   if (engines.prettier) {
-    lines.push(
-      `Prettier: ${engines.prettier.installed ? (versionOf('prettier') ?? 'installed') : 'not installed'}, ${engines.prettier.config ?? 'no config'} (${engines.prettier.status})`
+    add(
+      'tools',
+      'Prettier',
+      `${engines.prettier.installed ? (versionOf('prettier') ?? 'installed') : 'not installed'}, ${engines.prettier.config ?? 'no config'} (${engines.prettier.status})`,
+      engineState(engines.prettier, 'prettier')
     )
   }
 
   if (engines.eslint) {
-    lines.push(`ESLint:   ${engines.eslint.installed ? (versionOf('eslint') ?? 'installed') : 'not installed'}`)
-    lines.push(
-      `Packs:    ${engines.eslint.activePacks.length > 0 ? engines.eslint.activePacks.join(', ') : 'none active'}`
+    add(
+      'tools',
+      'ESLint',
+      engines.eslint.installed ? (versionOf('eslint') ?? 'installed') : 'not installed',
+      engines.eslint.installed ? fits('eslint') : 'error'
     )
+    add('tools', 'Packs', engines.eslint.activePacks.length > 0 ? engines.eslint.activePacks.join(', ') : 'none active')
 
     if (engines.eslint.availablePacks.length > 0) {
-      lines.push(
-        `          available for this project: ${engines.eslint.availablePacks.join(', ')} (pawl add ${engines.eslint.availablePacks.join(' ')})`
+      add(
+        'tools',
+        '',
+        `available for this project: ${engines.eslint.availablePacks.join(', ')} (pawl add ${engines.eslint.availablePacks.join(' ')})`
       )
     }
+  }
+
+  const languageState = (checked: boolean, missing: readonly string[]): DoctorState => {
+    if (!checked) return 'info'
+
+    return missing.length > 0 ? 'error' : 'ok'
   }
 
   for (const entry of report.languages) {
@@ -440,28 +486,59 @@ export const formatDoctor = (report: DoctorReport): string => {
     const missing = entry.tools.filter(tool => !tool.installed).map(tool => tool.name)
     const checked = `checked with ${entry.tools.map(tool => tool.name).join(' and ')}${missing.length > 0 ? ` (${missing.join(' and ')} not installed)` : ''}`
 
-    lines.push(
-      `${`${title}:`.padEnd(10)}${where}, ${entry.checked ? checked : `not checked (add "${entry.language}" to languages in the policy, or check it with Quality)`}`
+    add(
+      'tools',
+      title,
+      `${where}, ${entry.checked ? checked : `not checked (add "${entry.language}" to languages in the policy, or check it with Quality)`}`,
+      languageState(entry.checked, missing)
     )
   }
 
   if (report.suggestedPacks.length > 0) {
-    lines.push(
-      `Suggest:  ${report.suggestedPacks.join(', ')} for the files in this repo (pawl add ${report.suggestedPacks.join(' ')})`
+    add(
+      'extras',
+      'Suggest',
+      `${report.suggestedPacks.join(', ')} for the files in this repo (pawl add ${report.suggestedPacks.join(' ')})`
     )
   }
 
   if (report.guards.length > 0) {
-    lines.push(
-      `Guards:   ${report.guards.join(', ')}${report.guardsImportsOnly ? ' (imports only: with Oxlint as the linter, the code patterns need ESLint next to it)' : ''}`
+    add(
+      'extras',
+      'Guards',
+      `${report.guards.join(', ')}${report.guardsImportsOnly ? ' (imports only: with Oxlint as the linter, the code patterns need ESLint next to it)' : ''}`,
+      report.guardsImportsOnly ? 'warn' : 'ok'
     )
   }
 
   const { baseline } = report
+  const baselineState = (): DoctorState => {
+    if ('allowed' in baseline) return 'ok'
 
-  lines.push(
-    `Baseline: ${'allowed' in baseline ? `${plural(baseline.allowed, 'finding')} allowed` : `none (${baseline.missing === 'unreadable' ? 'unreadable' : 'run "pawl baseline"'})`}`
+    return baseline.missing === 'unreadable' ? 'error' : 'info'
+  }
+
+  add(
+    'extras',
+    'Baseline',
+    'allowed' in baseline
+      ? `${plural(baseline.allowed, 'finding')} allowed`
+      : `none (${baseline.missing === 'unreadable' ? 'unreadable' : 'run "pawl baseline"'})`,
+    baselineState()
   )
+
+  return rows
+}
+
+/** The report for people, one line per part, then the problems. */
+export const formatDoctor = (report: DoctorReport): string => {
+  const lines = [
+    `pawl ${report.version}`,
+    ...doctorRows(report).map(row =>
+      row.label ? `${`${row.label}:`.padEnd(10)}${row.value}` : `${' '.repeat(10)}${row.value}`
+    )
+  ]
+
   lines.push(
     '',
     ...(report.problems.length > 0 ? report.problems.map(problem => `Problem: ${problem}`) : ['No problems found.'])

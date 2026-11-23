@@ -1,13 +1,17 @@
 /** `pawl check`, `pawl fix` and `pawl baseline`: run the engines, then report or record what they found. */
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { BASELINE_FILE } from '../../check/baseline.ts'
-import { check } from '../../check/check.ts'
-import { format } from '../../check/output.ts'
-import { EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
+import { type CheckOptions, type CheckProgress, check } from '../../check/check.ts'
+import { engineTitle, format, type RichOptions } from '../../check/output.ts'
+import { type CheckResult, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
 import { plural } from '../../utils/text.ts'
 import { assertHookFlags, type Flags, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
+import { type Terminal, terminal } from '../audience.ts'
 import { hookFiles, hookMessage, hookReply, hookSetupProblems, readPayload, readStdin } from '../hook.ts'
-import { colorEnabled, out } from '../io.ts'
+import { out } from '../io.ts'
+import { spinner } from '../ui.ts'
 
 /**
  * The exit code of a hook that could not check the edit. Hosts read 2 as "show the agent", and
@@ -51,39 +55,121 @@ const runHook = async (root: string, files: string[], flags: Flags, fix: boolean
   }
 }
 
+/** A file's text, read once however many findings point into it. */
+const sourceReader = (root: string): ((file: string) => string | undefined) => {
+  const cache = new Map<string, string | undefined>()
+
+  return file => {
+    if (!cache.has(file)) {
+      try {
+        cache.set(file, readFileSync(join(root, file), 'utf8'))
+      } catch {
+        cache.set(file, undefined)
+      }
+    }
+
+    return cache.get(file)
+  }
+}
+
+/**
+ * Run the check with a spinner for a person watching, on stderr so the report on stdout stays
+ * clean when it is piped. The spinner names each engine as it starts and ends.
+ */
+const checkWithSpinner = async (
+  term: Terminal,
+  options: CheckOptions,
+  verb: string
+): Promise<{ result: CheckResult; elapsedMs: number }> => {
+  const started = performance.now()
+
+  if (!term.animate || process.stderr.isTTY !== true) {
+    const result = await check(options)
+
+    return { result, elapsedMs: performance.now() - started }
+  }
+
+  const { style, sym } = term
+  const running = new Set<string>()
+  const finished: string[] = []
+  const status = spinner(term, process.stderr, `${verb}${sym.ellipsis}`)
+  const label = (): string => {
+    const done = finished.map(name => `${style.accent(sym.tick)} ${engineTitle(name)}`)
+    const busy = [...running].map(name => style.dim(engineTitle(name)))
+
+    return `${verb} ${[...done, ...busy].join(style.dim('  '))}`
+  }
+  const progress = (event: CheckProgress): void => {
+    if (event.done) {
+      running.delete(event.engine)
+      finished.push(event.engine)
+    } else {
+      running.add(event.engine)
+    }
+
+    status.update(label())
+  }
+
+  try {
+    const result = await check({ ...options, progress })
+
+    return { result, elapsedMs: performance.now() - started }
+  } finally {
+    status.clear()
+  }
+}
+
 export const runCheck = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
   if (flags.hook === true) return runHook(root, files, flags, fix)
 
+  const term = terminal()
   const ci = flags.ci === true || inCi(process.env.CI)
   // Every option is read before anything runs: "fix" must not change files and then refuse a flag.
-  const kind = outputFormat(flags)
+  // A coding agent gets its own format unless it asks for another.
+  const kind = outputFormat(flags, term.agent ? 'agent' : 'pretty')
   const limit = maxWarnings(flags)
   const since = sinceRef(flags, files)
-  const result = await check({
+  const options: CheckOptions = {
     root,
     fix,
     changed: flags.changed === true,
     ...(files.length > 0 ? { files } : {}),
     ...(since === undefined ? {} : { since }),
     ...(limit === undefined ? {} : { maxWarnings: limit })
-  })
+  }
+  const rich = kind === 'pretty' && term.rich
 
-  out(format(result, kind, { color: colorEnabled(), verbose: flags.verbose === true }))
+  if (!rich) {
+    const result = await check(options)
+
+    out(format(result, kind, { verbose: flags.verbose === true }))
+
+    return exitCode(result, ci)
+  }
+
+  const { result, elapsedMs } = await checkWithSpinner(term, options, fix ? 'Fixing' : 'Checking')
+  const view: RichOptions = { ...term, source: sourceReader(root), elapsedMs, ci }
+
+  out(format(result, kind, { verbose: flags.verbose === true, rich: view }))
 
   return exitCode(result, ci)
 }
 
 export const runBaseline = async (root: string): Promise<number> => {
-  const result = await check({ root, updateBaseline: true })
+  const term = terminal()
+  const { result } = await checkWithSpinner(term, { root, updateBaseline: true }, 'Recording')
+  const { style, sym } = term
 
   if (isBlocked(result.setup)) {
-    out(format(result, 'pretty', { color: colorEnabled() }))
+    out(format(result, 'pretty', term.rich ? { rich: { ...term, ci: false } } : {}))
     out(`${BASELINE_FILE} was not changed.`)
 
     return EXIT_SETUP
   }
 
-  out(`Baseline updated: ${plural(result.baselined, 'finding')} recorded in ${BASELINE_FILE}.`)
+  const line = `Baseline updated: ${plural(result.baselined, 'finding')} recorded in ${BASELINE_FILE}.`
+
+  out(term.rich ? `${style.accent(sym.tick)} ${line}` : line)
 
   return EXIT_OK
 }

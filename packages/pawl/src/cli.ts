@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util'
 import { EXIT_OK, EXIT_SETUP } from './check/result.ts'
-import { type Flags, HELP, OPTIONS, UsageError } from './cli/args.ts'
+import { type Flags, helpText, OPTIONS, unknownCommand, usageFrom } from './cli/args.ts'
+import { terminal } from './cli/audience.ts'
 import { runAdd } from './cli/commands/add.ts'
 import { runBaseline, runCheck } from './cli/commands/check.ts'
 import { runDoctor } from './cli/commands/doctor.ts'
@@ -10,7 +11,11 @@ import { runInit } from './cli/commands/init.ts'
 import { runMigrate } from './cli/commands/migrate.ts'
 import { runSync } from './cli/commands/sync.ts'
 import { out } from './cli/io.ts'
+import { CancelledError } from './cli/prompt.ts'
 import { VERSION } from './version.ts'
+
+/** Ctrl+C or Escape at a question: nothing was changed, and the shell's code for an interrupt. */
+const EXIT_CANCELLED = 130
 
 interface Invocation {
   root: string
@@ -32,10 +37,19 @@ const COMMANDS: Readonly<Record<string, (invocation: Invocation) => Promise<numb
   doctor: ({ root, flags }) => runDoctor(root, flags)
 }
 
+const parse = (): ReturnType<typeof parseArgs<{ options: typeof OPTIONS; allowPositionals: true }>> => {
+  try {
+    return parseArgs({ options: OPTIONS, allowPositionals: true })
+  } catch (error) {
+    throw usageFrom(error)
+  }
+}
+
 const main = async (): Promise<number> => {
-  const { values: flags, positionals } = parseArgs({ options: OPTIONS, allowPositionals: true })
+  const { values: flags, positionals } = parse()
   const [command, ...rest] = positionals
   const root = process.cwd()
+  const term = terminal()
 
   if (flags.version) {
     out(VERSION)
@@ -44,7 +58,10 @@ const main = async (): Promise<number> => {
   }
 
   if (flags.help || command === undefined || command === 'help') {
-    out(HELP)
+    // "pawl help check" and "pawl check --help" both show the help of check.
+    const topic = command === 'help' ? rest[0] : command
+
+    process.stdout.write(helpText(topic, term.rich ? term.style : undefined))
 
     return EXIT_OK
   }
@@ -52,7 +69,7 @@ const main = async (): Promise<number> => {
   // Own keys only, so a name such as "constructor" is an unknown command too.
   const run = Object.hasOwn(COMMANDS, command) ? COMMANDS[command] : undefined
 
-  if (!run) throw new UsageError(`Unknown command "${command}". Run "pawl --help".`)
+  if (!run) throw unknownCommand(command)
 
   return run({ root, args: rest, flags })
 }
@@ -60,8 +77,17 @@ const main = async (): Promise<number> => {
 try {
   process.exitCode = await main()
 } catch (error) {
-  const message = error instanceof Error ? error.message : String(error)
+  const { rich, style, sym } = terminal()
 
-  process.stderr.write(`pawl: ${message}\n`)
-  process.exitCode = EXIT_SETUP
+  if (error instanceof CancelledError) {
+    if (rich) process.stdout.write(`${style.gray(sym.barEnd)}  Cancelled. Nothing was changed.\n\n`)
+    else process.stderr.write('pawl: Cancelled. Nothing was changed.\n')
+
+    process.exitCode = EXIT_CANCELLED
+  } else {
+    const message = error instanceof Error ? error.message : String(error)
+
+    process.stderr.write(rich ? `${style.red(sym.cross)} ${style.red(message)}\n` : `pawl: ${message}\n`)
+    process.exitCode = EXIT_SETUP
+  }
 }

@@ -14,7 +14,7 @@ export { applyBaseline, BASELINE_FILE, createBaseline, readBaseline, scanSuppres
 export type { CheckOptions } from './check/check.ts'
 export { check } from './check/check.ts'
 export type { OutputFormat } from './check/output.ts'
-export { format, formatAgent, formatJson, formatPretty } from './check/output.ts'
+export { format, formatAgent, formatEditor, formatJson, formatPretty } from './check/output.ts'
 export type { CheckResult } from './check/result.ts'
 export { EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check/result.ts'
 export type { BiomeContext } from './engines/biome/config.ts'

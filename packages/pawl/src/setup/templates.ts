@@ -108,6 +108,56 @@ export const EDITOR_SETTINGS: JsonRecord = {
   }
 }
 
+/**
+ * The problem matcher of the VS Code tasks: it reads the lines of `--format editor`, such as
+ * `src/a.ts:3:7: error: Unexpected debugger. [biome:suspicious/noDebugger]`, into the Problems panel.
+ */
+export const PROBLEM_MATCHER: JsonRecord = {
+  owner: 'pawl',
+  source: 'pawl',
+  // VS Code's own variable, put together so it does not read as a template string left unfilled.
+  fileLocation: ['relative', ['$', '{workspaceFolder}'].join('')],
+  pattern: {
+    regexp: '^(.+?):(\\d+):(\\d+): (error|warning): (.*) \\[([^\\]]+)\\]$',
+    file: 1,
+    line: 2,
+    column: 3,
+    severity: 4,
+    message: 5,
+    code: 6
+  }
+}
+
+/** VS Code tasks that run pawl and put what it finds in the Problems panel. */
+export const VSCODE_TASKS: readonly JsonRecord[] = [
+  {
+    label: 'pawl: check',
+    detail: 'Lint and check formatting; the findings go to the Problems panel',
+    type: 'shell',
+    command: 'npx pawl check --format editor',
+    problemMatcher: PROBLEM_MATCHER,
+    presentation: { clear: true }
+  },
+  {
+    label: 'pawl: fix',
+    detail: 'Apply safe fixes and format; what is left goes to the Problems panel',
+    type: 'shell',
+    command: 'npx pawl fix --format editor',
+    problemMatcher: PROBLEM_MATCHER,
+    presentation: { clear: true }
+  }
+]
+
+/**
+ * Zed tasks. Zed does not read diagnostics from a task, so they run pawl's view for people in
+ * Zed's terminal, where each file:line:col opens the file. Saving first means pawl sees what the
+ * editor shows.
+ */
+export const ZED_TASKS: readonly JsonRecord[] = [
+  { label: 'pawl: check', command: 'npx pawl check', use_new_terminal: false, reveal: 'always', save: 'all' },
+  { label: 'pawl: fix', command: 'npx pawl fix', use_new_terminal: false, reveal: 'always', save: 'all' }
+]
+
 export const AGENTS_START = '<!-- pawl:start -->'
 
 export const AGENTS_END = '<!-- pawl:end -->'

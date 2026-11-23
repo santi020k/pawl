@@ -1,3 +1,4 @@
+// cspell:ignore chek chnged
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -59,7 +60,8 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       'biome.json',
       'package.json',
       '.vscode/settings.json',
-      '.vscode/extensions.json'
+      '.vscode/extensions.json',
+      '.vscode/tasks.json'
     ])
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET] })
     expect(json(root, 'package.json')).toMatchObject({
@@ -289,6 +291,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       'package.json',
       '.vscode/settings.json',
       '.vscode/extensions.json',
+      '.vscode/tasks.json',
       '.github/workflows/pawl.yml',
       '.claude/settings.json',
       'AGENTS.md',
@@ -375,7 +378,8 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), ...args], {
         cwd: root,
         encoding: 'utf8',
-        env: { ...process.env, CI: '', NO_COLOR: '1' }
+        // A person's run in a pipe, even when the tests run under a coding agent.
+        env: { ...process.env, CI: '', NO_COLOR: '1', PAWL_AGENT: '0' }
       })
 
       return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
@@ -615,7 +619,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'fix', '--format', 'nope')).toEqual({
         code: 2,
         stdout: '',
-        stderr: 'pawl: Unknown format "nope". Use pretty, agent or json.\n'
+        stderr: 'pawl: Unknown format "nope". Use pretty, agent, editor or json.\n'
       })
       expect(run(root, 'fix', '--max-warnings', 'none').code).toBe(2)
       expect(readFileSync(join(root, 'src/a.js'), 'utf8')).toBe(unformatted)
@@ -706,6 +710,65 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         code: 2,
         stderr: 'pawl: Use --since or a list of files, not both.\n'
       })
+    })
+
+    test('gives a coding agent its own output, editors theirs, and a person the plain view in a pipe', () => {
+      const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      write(root, { 'src/b.js': 'debugger\n' })
+
+      // Whatever agent runs these tests, only the variable each case sets says who is running pawl.
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(
+          ([name]) =>
+            !/^(PAWL_AGENT|AGENT|AI_AGENT|CLAUDECODE|CLAUDE_CODE_ENTRYPOINT|CURSOR_AGENT|GEMINI_CLI|QWEN_CODE|CODEX_\w+|AMP_CURRENT_THREAD_ID|AUGMENT_AGENT|CLINE_ACTIVE|OPENCODE_CLIENT|ANTIGRAVITY_AGENT)$/.test(
+              name
+            )
+        )
+      )
+      const as = (extra: Record<string, string>, ...args: string[]): { code: number; stdout: string } => {
+        const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), ...args], {
+          cwd: root,
+          encoding: 'utf8',
+          env: { ...env, CI: '', NO_COLOR: '1', ...extra }
+        })
+
+        return { code: result.status ?? -1, stdout: result.stdout }
+      }
+
+      const agent = as({ CLAUDECODE: '1' }, 'check')
+
+      expect(agent.code).toBe(1)
+      expect(JSON.parse(agent.stdout)).toMatchObject({ file: 'src/b.js', line: 1, rule: 'biome:suspicious/noDebugger' })
+      expect(as({ CURSOR_AGENT: '1' }, 'check', '--format', 'pretty').stdout).toContain('src/b.js:1:1  error  biome')
+      expect(as({ CLAUDECODE: '1', PAWL_AGENT: '0' }, 'check').stdout).toContain('1 error.')
+      expect(as({}, 'check').stdout).toContain('src/b.js:1:1  error  biome')
+      expect(as({}, 'check', '--format', 'editor')).toEqual({
+        code: 1,
+        stdout:
+          'src/b.js:1:1: error: This is an unexpected use of the debugger statement. [biome:suspicious/noDebugger]\n'
+      })
+    })
+
+    test('shows the help of one command, and suggests the command or option that was meant', () => {
+      const root = project()
+      const help = run(root, 'help', 'check').stdout
+
+      expect(help).toContain('pawl check [files]  Lint, check formatting and apply the ratchet')
+      expect(help).toContain('$ pawl check --since origin/main --ci')
+      expect(help).not.toContain('Options for init')
+      expect(run(root, 'check', '--help').stdout).toBe(help)
+      expect(run(root, 'chek')).toMatchObject({
+        code: 2,
+        stderr: 'pawl: Unknown command "chek". Did you mean "pawl check"? Run "pawl --help".\n'
+      })
+      expect(run(root, 'check', '--chnged')).toMatchObject({
+        code: 2,
+        stderr: 'pawl: Unknown option "--chnged". Did you mean "--changed"? Run "pawl --help" for the options.\n'
+      })
+      expect(run(root, 'check', '--format')).toMatchObject({ code: 2, stderr: 'pawl: --format takes a value.\n' })
     })
 
     test('reports usage errors on stderr with exit code 2', () => {

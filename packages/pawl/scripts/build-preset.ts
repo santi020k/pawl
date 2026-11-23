@@ -6,10 +6,11 @@
  * The files are not named biome.json on purpose: Biome treats every biome.json it finds
  * in a repo as a nested configuration.
  */
+
 import { writeFileSync } from 'node:fs'
-import { biomeConfig, biomeTechConfig } from '../src/engines/biome.ts'
-import { defaultPolicy } from '../src/policy.ts'
-import { GATED_TAGS } from '../src/rules.ts'
+import { GATED_TAGS } from '../src/catalog/rules.ts'
+import { biomeConfig, biomeTechConfig } from '../src/engines/biome/config.ts'
+import { defaultPolicy } from '../src/policy/merge.ts'
 
 const write = (name: string, config: unknown): void => {
   writeFileSync(new URL(`../presets/${name}`, import.meta.url), `${JSON.stringify(config, null, 2)}\n`)

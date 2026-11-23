@@ -6,9 +6,10 @@
 import UIPrimitives from '@santi020k/lumen-astro/runtime'
 import MetadataHead from '@santi020k/og/astro/head'
 import { definePageMetadata } from '@santi020k/og/metadata'
-import { composeJsonLd, serializeJsonLd, softwareApplicationSchema } from '@santi020k/og/schema'
+import { composeJsonLd, serializeJsonLd } from '@santi020k/og/schema'
 
-import { author, locale, siteName, website } from '../metadata.ts'
+import { locale, siteName, software, sourceCode, website } from '../metadata.ts'
+import { currentVersion } from '../releases.ts'
 
 import '../styles/tokens.css'
 import '../styles/landing.css'
@@ -19,6 +20,7 @@ interface Props {
 }
 
 const { title, description } = Astro.props
+const version = await currentVersion()
 
 // @santi020k/og writes the title, description, canonical, robots, Open Graph and X tags. The card is the hand-made og.jpg.
 const page = definePageMetadata({
@@ -36,24 +38,11 @@ const page = definePageMetadata({
 })
 
 const site = { siteUrl: Astro.site ?? Astro.url.origin, siteName, locale }
-const canonical = new URL(Astro.url.pathname, site.siteUrl)
 
-// Only facts the page itself shows: the name, the description, the license and the author.
+// The site, the CLI as a product (version, price, npm and GitHub) and its repository, from metadata.ts.
+// The version is the newest one on npm, as the changelog has it, where metadata.ts has the one in package.json.
 const jsonLd = serializeJsonLd(
-  composeJsonLd(
-    website,
-    softwareApplicationSchema(
-      {
-        name: siteName,
-        description,
-        url: canonical,
-        applicationCategory: 'DeveloperApplication',
-        operatingSystem: 'Node.js',
-        author
-      },
-      { image: new URL('/og.jpg', site.siteUrl).href, license: 'https://opensource.org/licenses/MIT' }
-    )
-  )
+  composeJsonLd(website, { ...software, ...(version ? { softwareVersion: version } : {}) }, sourceCode)
 )
 ---
 

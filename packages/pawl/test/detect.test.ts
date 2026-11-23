@@ -1,4 +1,5 @@
 import { expect, it, describe as suite } from 'vitest'
+import { mergeLayers } from '../src/policy/merge.ts'
 import {
   allTechnologies,
   DETECTABLE,
@@ -7,10 +8,8 @@ import {
   filePacks,
   needsEslint,
   packageTechnologies,
-  technologies,
-  usesReact
-} from '../src/detect.ts'
-import { mergeLayers } from '../src/policy.ts'
+  technologies
+} from '../src/project/detect.ts'
 import { project } from './helpers.ts'
 
 suite('detect', () => {
@@ -28,9 +27,10 @@ suite('detect', () => {
       typescript: true,
       frameworks: ['react'],
       tools: { eslint: 'eslint.config.js', prettier: '.prettierrc' },
-      workspace: { tool: undefined, packages: [], frameworks: {} }
+      workspace: { tool: undefined, packages: [], frameworks: {}, dependencies: {} },
+      languages: [],
+      ignores: []
     })
-    expect(usesReact(detection)).toBe(true)
     expect(technologies(detection)).toEqual(['react'])
     expect(packageTechnologies(detection)).toEqual({})
     expect(needsEslint(detection)).toBe(false)
@@ -54,8 +54,10 @@ suite('detect', () => {
     expect(detection.workspace).toEqual({
       tool: 'turbo',
       packages: ['apps/web', 'packages/ui'],
-      frameworks: { 'apps/web': ['vue'], 'packages/ui': ['react'] }
+      frameworks: { 'apps/web': ['vue'], 'packages/ui': ['react'] },
+      dependencies: { 'apps/web': ['vue'], 'packages/ui': ['react'] }
     })
+    expect(detection.rootDependencies).toEqual([])
     // Nothing but Turborepo is repo-wide here; each package brings its own technology.
     expect(technologies(detection)).toEqual(['turbo'])
     expect(packageTechnologies(detection)).toEqual({ 'apps/web': ['vue'], 'packages/ui': ['react'] })
@@ -65,6 +67,102 @@ suite('detect', () => {
     expect(detection.tools).toEqual({ biome: 'biome.json' })
     expect(needsEslint(detection)).toBe(true)
     expect(describe(detection)).toBe('TypeScript, React, Vue, Turborepo with 2 packages, pnpm')
+  })
+
+  it('reads the pnpm workspace list in every form YAML allows', () => {
+    const packages = {
+      'package.json': { name: 'workspace', private: true },
+      'apps/site/package.json': { dependencies: { astro: '^5.0.0' } },
+      'packages/web/package.json': { dependencies: { react: '^19.0.0' } }
+    }
+
+    for (const yaml of [
+      'packages:\n  - \'apps/*\'\n  - "packages/*"\n',
+      // No indent, which is as valid, and what several formatters write.
+      'packages:\n- apps/*\n- packages/*\n',
+      '# The workspace.\npackages:\n  # Apps first.\n  - apps/*\n\n  - packages/* # libraries\ncatalog:\n  react: ^19.0.0\n',
+      "packages: ['apps/*', packages/*]\n",
+      'packages:\r\n  - apps/*\r\n  - packages/*\r\n',
+      // A flow list over more lines.
+      "packages: [\n  'apps/*',\n  packages/*, # libraries\n]\ncatalog:\n  react: ^19.0.0\n"
+    ]) {
+      const detection = detect(project({ ...packages, 'pnpm-workspace.yaml': yaml }))
+
+      expect(detection.workspace.packages, yaml).toEqual(['apps/site', 'packages/web'])
+      expect(detection.frameworks, yaml).toEqual(['react', 'astro'])
+    }
+  })
+
+  it('expands a wildcard inside a name, a ** and a pattern that takes packages out', () => {
+    const root = project({
+      'package.json': {
+        name: 'workspace',
+        private: true,
+        workspaces: ['plugins/plugin-*', './packages/**', 'tools/cli', '!packages/legacy', '!**/fixtures/**']
+      },
+      'plugins/plugin-a/package.json': {},
+      'plugins/shared/package.json': {},
+      'packages/core/package.json': {},
+      'packages/ui/button/package.json': {},
+      'packages/ui/node_modules/dep/package.json': {},
+      'packages/legacy/package.json': {},
+      'packages/core/fixtures/app/package.json': {},
+      'tools/cli/package.json': {},
+      'tools/other/package.json': {}
+    })
+
+    expect(detect(root).workspace.packages).toEqual([
+      'packages/core',
+      'packages/ui/button',
+      'plugins/plugin-a',
+      'tools/cli'
+    ])
+  })
+
+  it('finds the packages pnpm finds, at any depth, with braces, classes and exclusions matched as pnpm matches them', () => {
+    const folders = [
+      'packages/a',
+      'packages/test',
+      'components/x',
+      'components/x/test/fixture',
+      'components/test',
+      'apps/a',
+      'apps/a/b/c/d',
+      'apps/a/b/c/d/e/f',
+      'apps/a/node_modules/dep',
+      'apps/a/bower_components/old',
+      'apps/.cache/p',
+      'libs/one',
+      'libs/two',
+      'libs/three',
+      'tools/z'
+    ]
+    const root = project({
+      'package.json': { name: 'workspace', private: true },
+      // pnpm's own example of an exclusion, braces, a class, and the root, which is never a package.
+      'pnpm-workspace.yaml':
+        'packages:\n  - packages/*\n  - components/**\n  - "!**/test/**"\n  - apps/**\n  - "{libs,tools}/*"\n  - "!libs/t[^w]*"\n  - .\n',
+      ...Object.fromEntries(folders.map(folder => [`${folder}/package.json`, {}]))
+    })
+
+    // Checked against `pnpm ls -r` on the same tree.
+    expect(detect(root).workspace.packages).toEqual([
+      'apps/a',
+      'apps/a/b/c/d',
+      'apps/a/b/c/d/e/f',
+      'components/x',
+      'libs/one',
+      'libs/two',
+      'packages/a',
+      'tools/z'
+    ])
+  })
+
+  it('finds every config file name ESLint reads, flat and legacy', () => {
+    expect(detect(project({ 'eslint.config.cts': 'export default []\n' })).tools.eslint).toBe('eslint.config.cts')
+    expect(detect(project({ '.eslintrc.yaml': 'root: true\n' })).tools.eslint).toBe('.eslintrc.yaml')
+    // A flat config wins over a legacy one, as it does in ESLint.
+    expect(detect(project({ '.eslintrc': '{}', 'eslint.config.mjs': '' })).tools.eslint).toBe('eslint.config.mjs')
   })
 
   it('reads Nx and package.json workspaces', () => {
@@ -77,7 +175,12 @@ suite('detect', () => {
     const detection = detect(root)
 
     expect(detection.packageManager).toBe('yarn')
-    expect(detection.workspace).toEqual({ tool: 'nx', packages: ['libs/core'], frameworks: { 'libs/core': [] } })
+    expect(detection.workspace).toEqual({
+      tool: 'nx',
+      packages: ['libs/core'],
+      frameworks: { 'libs/core': [] },
+      dependencies: { 'libs/core': [] }
+    })
     expect(describe(detection)).toBe('JavaScript, Nx with 1 package, yarn')
   })
 

@@ -1,12 +1,16 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { check } from '../src/check.ts'
-import { biomeConfig, biomeProjectConfig } from '../src/engines/biome.ts'
-import { eslintPlan } from '../src/engines/eslint.ts'
-import { oxlintConfig } from '../src/engines/oxlint.ts'
-import { applyInit, planInit } from '../src/init.ts'
-import { mergeLayers } from '../src/policy.ts'
+import { check } from '../src/check/check.ts'
+import { biomeConfig, biomeProjectConfig, TEMPLATE_FILES } from '../src/engines/biome/config.ts'
+import { eslintPlan } from '../src/engines/eslint/plan.ts'
+import { oxlintConfig } from '../src/engines/oxlint/config.ts'
+import { mergeLayers } from '../src/policy/merge.ts'
+import { checkDocker } from '../src/scans/docker.ts'
+import { checkMarkdown } from '../src/scans/markdown.ts'
+import { levelForFile } from '../src/scans/scan.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { type PolicyInput } from '../src/types.ts'
 import { link, PACKAGE_ROOT, project } from './helpers.ts'
 
@@ -33,8 +37,13 @@ describe('overrides in the policy', () => {
     ])
 
     expect(policy.overrides).toEqual([
-      { files: ['scripts/**'], rules: { 'no-console': 'off' }, options: {} },
-      { files: ['*.test.ts'], rules: { 'no-unused-vars': 'off' }, options: { 'no-console': [{ allow: ['warn'] }] } }
+      { files: ['scripts/**'], rules: { 'no-console': 'off' }, options: {}, biomeOptions: {} },
+      {
+        files: ['*.test.ts'],
+        rules: { 'no-unused-vars': 'off' },
+        options: { 'no-console': [{ allow: ['warn'] }] },
+        biomeOptions: {}
+      }
     ])
   })
 
@@ -56,10 +65,13 @@ describe('overrides in the policy', () => {
     })
 
     // The second override is for React, which this project does not use, so Biome gets none for it.
-    expect(biomeConfig(policy).overrides).toEqual([
+    const own = [
       { includes: ['**/*.test.js', '**/*.test.ts'], linter: { rules: { suspicious: { noDebugger: 'off' } } } }
-    ])
-    expect(biomeProjectConfig(policy).overrides).toEqual(biomeConfig(policy).overrides)
+    ]
+
+    expect(biomeProjectConfig(policy).overrides).toEqual(own)
+    // In the whole config they follow the standard's own override for component files, so they can undo it.
+    expect(biomeConfig(policy).overrides).toEqual([{ includes: TEMPLATE_FILES, linter: expect.anything() }, ...own])
   })
 
   it('become Oxlint overrides, with the plugins they need and their options', () => {
@@ -139,6 +151,121 @@ describe('overrides in the policy', () => {
   })
 })
 
+describe("overrides for pawl's own checks", () => {
+  const files = {
+    'README.md': '# Notes\n\n## Setup\n\n## Setup\n',
+    'CHANGELOG.md': '# Changes\n\n## Patch\n\n## Patch\n',
+    'docs/api/README.md': '# API\n\n[empty]()\n',
+    Dockerfile: 'FROM node:22-slim\nUSER node\nMAINTAINER someone\n',
+    'examples/app/Dockerfile': 'FROM node:22-slim\nUSER node\nMAINTAINER someone\n'
+  }
+  const found = (policy: ReturnType<typeof policyWith>): string[] => {
+    const root = project(files)
+
+    return [...checkMarkdown({ root, policy }), ...checkDocker({ root, policy })]
+      .map(finding => `${finding.file} ${finding.rule.slice('pawl/'.length)} ${finding.severity}`)
+      .sort()
+  }
+
+  it('set the level of a Markdown or Docker check for the files they name', () => {
+    const policy = policyWith({
+      rules: { 'pawl/markdown-no-duplicate-headings': 'error' },
+      overrides: [
+        // A changelog repeats its headings by design.
+        { files: ['CHANGELOG.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'off' } },
+        { files: ['docs/**'], rules: { 'pawl/markdown-no-empty-links': 'warn' } },
+        { files: ['examples/**'], rules: { 'pawl/docker-no-maintainer': 'off' } }
+      ]
+    })
+
+    expect(found(policy)).toEqual([
+      'Dockerfile docker-no-maintainer warn',
+      'README.md markdown-no-duplicate-headings error',
+      'docs/api/README.md markdown-no-empty-links warn'
+    ])
+  })
+
+  it('let a later entry win, and can switch a check on for some files only', () => {
+    const policy = policyWith({
+      overrides: [
+        { files: ['*.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'warn' } },
+        { files: ['CHANGELOG.md'], rules: { 'pawl/markdown-no-duplicate-headings': 'off' } },
+        { files: ['Dockerfile'], rules: { 'pawl/docker-no-maintainer': 'error' } }
+      ]
+    })
+
+    expect(found(policy)).toEqual([
+      'Dockerfile docker-no-maintainer error',
+      'README.md markdown-no-duplicate-headings warn',
+      'docs/api/README.md markdown-no-empty-links error',
+      'examples/app/Dockerfile docker-no-maintainer error'
+    ])
+  })
+
+  it('cannot loosen a locked check', () => {
+    const policy = mergeLayers([
+      {
+        source: 'company',
+        input: { rules: { 'pawl/docker-no-maintainer': 'error' }, locked: ['pawl/docker-no-maintainer'] }
+      },
+      {
+        source: 'repo',
+        input: { overrides: [{ files: ['examples/**'], rules: { 'pawl/docker-no-maintainer': 'off' } }] }
+      }
+    ])
+
+    expect(found(policy).filter(line => line.includes('docker'))).toEqual([
+      'Dockerfile docker-no-maintainer error',
+      'examples/app/Dockerfile docker-no-maintainer error'
+    ])
+    expect(policy.lockViolations).toHaveLength(1)
+  })
+
+  it('cannot switch off a locked check at its own level, for some files or for all', () => {
+    const company = { source: 'company', input: { locked: ['pawl/docker-no-root', 'pawl/markdown-no-empty-links'] } }
+    const policy = mergeLayers([
+      company,
+      {
+        source: 'repo',
+        input: {
+          rules: { 'pawl/markdown-no-empty-links': 'off' },
+          overrides: [{ files: ['Dockerfile'], rules: { 'pawl/docker-no-root': 'off' } }]
+        }
+      }
+    ])
+
+    expect(policy.lockViolations.map(({ rule, wanted, kept }) => `${rule} ${wanted} ${kept}`)).toEqual([
+      'pawl/markdown-no-empty-links off error',
+      'pawl/docker-no-root off warn'
+    ])
+    expect(levelForFile(policy, 'pawl/docker-no-root', 'Dockerfile', 'warn')).toBe('warn')
+    expect(levelForFile(policy, 'pawl/markdown-no-empty-links', 'README.md', 'error')).toBe('error')
+    // A locked guard keeps its level too, and a check that is not locked can still be switched off.
+    expect(
+      mergeLayers([
+        { source: 'company', input: { locked: ['pawl/zod'] } },
+        { source: 'repo', input: { rules: { 'pawl/zod': 'off', 'pawl/docker-no-root': 'off' } } }
+      ]).lockViolations.map(violation => violation.rule)
+    ).toEqual(['pawl/zod'])
+    // An opt-in guard the policy never switched on is off already, so a later "off" loosens nothing.
+    const optIn = (packs: string[]) =>
+      mergeLayers([
+        { source: 'company', input: { locked: ['pawl/de-morgan'], packs } },
+        { source: 'repo', input: { rules: { 'pawl/de-morgan': 'off' } } }
+      ]).lockViolations.map(violation => violation.rule)
+
+    expect(optIn([])).toEqual([])
+    expect(optIn(['de-morgan'])).toEqual(['pawl/de-morgan'])
+    // Without `pawl/` the name is not one of pawl's own checks, so there is no level to keep.
+    expect(
+      mergeLayers([
+        { source: 'company', input: { locked: ['markdown-no-empty-links'] } },
+        { source: 'repo', input: { rules: { 'markdown-no-empty-links': 'off' } } }
+      ]).lockViolations
+    ).toEqual([])
+  })
+})
+
 describe('overrides, with the real engines', { timeout: 60_000 }, () => {
   const files = {
     'package.json': { name: 'fixture', private: true, type: 'module' },
@@ -152,7 +279,7 @@ describe('overrides, with the real engines', { timeout: 60_000 }, () => {
     const root = project({ ...files, 'pawl.config.json': { overrides: [TESTS] } })
 
     link(root)
-    applyInit(await planInit({ root, install: false, editor: false }))
+    applyPlan(await planInit({ root, install: false, editor: false }))
 
     expect(flagged(await check({ root }))).toEqual(['src/a.js'])
   })
@@ -161,7 +288,7 @@ describe('overrides, with the real engines', { timeout: 60_000 }, () => {
     const root = project({ ...files, 'pawl.config.json': { engine: 'oxlint', overrides: [TESTS] } })
 
     link(root)
-    applyInit(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
+    applyPlan(await planInit({ root, engine: 'oxlint', install: false, editor: false }))
 
     const result = await check({ root })
 

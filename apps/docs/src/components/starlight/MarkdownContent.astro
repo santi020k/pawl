@@ -1,0 +1,25 @@
+---
+/**
+ * Starlight's Markdown wrapper. On the generated Rules page it adds the `pawl-rules` class,
+ * which lays each row of its tables out as one rule entry (see starlight.css).
+ */
+import Default from '@astrojs/starlight/components/MarkdownContent.astro'
+
+const rules = Astro.locals.starlightRoute.id === 'reference/rules'
+---
+
+{
+  rules ?
+    (
+      <div class="pawl-rules">
+        <Default>
+          <slot />
+        </Default>
+      </div>
+    ) :
+    (
+      <Default>
+        <slot />
+      </Default>
+    )
+}

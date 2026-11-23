@@ -13,29 +13,47 @@ pnpm --filter @santi020k/pawl-docs run doctor      # Astro Doctor
 
 ## Layout
 
-| Path                        | What it is                                                                                |
-| --------------------------- | ----------------------------------------------------------------------------------------- |
-| `src/pages/index.astro`     | The landing page, composed from Lumen components                                          |
-| `src/layouts/Landing.astro` | The landing page shell. It shares Starlight's theme setting                               |
-| `src/content/docs/`         | The doc pages. `reference/rules.md` is generated; do not edit it by hand                  |
-| `src/components/`           | `Terminal`, `RatchetChart` and `PawlMark`, used on both the landing page and docs         |
-| `src/components/landing/`   | The landing header, with its mobile menu (a Lumen `Drawer`), and footer                   |
-| `src/components/starlight/` | Starlight overrides: `Head` adds the per-page social card, `Footer` adds the credit line  |
-| `src/data/demo.ts`          | Recorded runs of the pawl CLI, shown in the terminals                                     |
-| `src/metadata.ts`           | The site URL, name, author and `WebSite` node that both heads share                       |
-| `src/styles/tokens.css`     | The brand tokens, in the HSL format Lumen's semantic tokens use                           |
-| `src/styles/starlight.css`  | Maps the tokens onto Starlight's color scale and fonts                                    |
-| `src/assets/`, `public/`    | The mark, the hero art, the favicon, the social card, `robots.txt` and `site.webmanifest` |
-| `og.config.mjs`             | The doc pages' social cards, written by `@santi020k/og` to `public/og/` (not committed)   |
-| `og.audit.config.mjs`       | The settings for `santi-og audit`, which checks the built site's metadata                 |
+| Path                                                  | What it is                                                                                                                                   |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/pages/index.astro`                               | The landing page, composed from Lumen components                                                                                             |
+| `src/layouts/Landing.astro`                           | The landing page shell. It shares Starlight's theme setting                                                                                  |
+| `src/content/docs/`                                   | The doc pages. `reference/rules.md` is generated; do not edit it by hand                                                                     |
+| `src/content.config.ts`                               | The `docs` collection, and `releases`, the history the changelog page shows                                                                  |
+| `src/history.ts`                                      | Reads that history from the changelogs, the tags and the changesets; tested with Node                                                        |
+| `src/releases.ts`                                     | The history as the changelog, its table of contents and the landing page use it                                                              |
+| `src/route-data.ts`                                   | Starlight route middleware: adds the versions to the changelog's table of contents                                                           |
+| `src/components/`                                     | `Terminal`, `RatchetChart` and `PawlMark`, used on both the landing page and docs, and `Releases` for the changelog page                     |
+| `src/components/landing/`                             | The landing header with its mobile menu (a Lumen `Drawer`), the footer, and `facts.ts`: numbers read at build time                           |
+| `src/components/starlight/`                           | Starlight overrides: `Head` (social card, JSON-LD), `Footer` (credit line), `Hero` (the 404 page), `MarkdownContent` (the Rules page layout) |
+| `src/data/demo.ts`                                    | Recorded runs of the pawl CLI, shown in the terminals                                                                                        |
+| `src/pages/llms*.txt.ts`, `src/pages/[...slug].md.ts` | `llms.txt`, `llms-full.txt` and a Markdown copy of each doc page, built by `_llms.ts`                                                        |
+| `src/metadata.ts`                                     | The site URL, name, author, package facts and the JSON-LD nodes that both heads share                                                        |
+| `src/styles/tokens.css`                               | The brand tokens, in the HSL format Lumen's semantic tokens use                                                                              |
+| `src/styles/starlight.css`                            | Maps the tokens onto Starlight's color scale and fonts                                                                                       |
+| `src/assets/`, `public/`                              | The mark, the hero art, the favicon, the social card, `robots.txt` and `site.webmanifest`                                                    |
+| `public/_redirects`                                   | Cloudflare Pages redirects for pages that moved                                                                                              |
+| `og.config.mjs`                                       | The doc pages' social cards, written by `@santi020k/og` to `public/og/` (not committed)                                                      |
+| `og.audit.config.mjs`                                 | The settings for `santi-og audit`, which checks the built site's metadata                                                                    |
+
+## Changelog
+
+`/changelog/` shows every release, newest first, and nothing on it is written by hand. At build time, the `releases` collection reads:
+
+- `packages/*/CHANGELOG.md`, which Changesets writes on a release branch. Both packages share one version, so each release on the page has the notes of both.
+- The `v<version>` tags, for each release's date. A version without a tag is shown as not on npm yet. The release workflow creates the tag after publishing, then starts the docs deploy again, so the page catches up within minutes of a release.
+- The changesets in `.changeset/`, as "Next release" at the top, when there are any.
+
+The landing page's version badge and its `softwareVersion` in the JSON-LD come from the same history. A clone without tags, such as a shallow one, shows no dates and falls back to the newest version in the changelogs.
+
+`pnpm --filter @santi020k/pawl-docs run test` runs the tests of `src/history.ts`.
 
 ## Social cards
 
 The landing page uses the hand-made `public/og.jpg`. Every doc page gets its own card: `pnpm run og` (also the first step of `build`) reads each page's title and description and writes `public/og/<page>.webp`. The `Head` override points `og:image` and `twitter:image` at it.
 
-`@santi020k/og` also writes the metadata on both halves of the site. The landing layout renders its `MetadataHead` with the hand-made card, and the Starlight `Head` override adds the card tags to Starlight's own. Both add JSON-LD from the library's schema helpers: `WebSite` and `SoftwareApplication` on the landing page, `TechArticle` on each doc page.
+`@santi020k/og` also writes the metadata on both halves of the site. The landing layout renders its `MetadataHead` with the hand-made card, and the Starlight `Head` override adds the card tags to Starlight's own. Both add JSON-LD from the library's schema helpers: `WebSite`, `SoftwareApplication` and `SoftwareSourceCode` on the landing page, `TechArticle` and `BreadcrumbList` on each doc page.
 
-`pnpm --filter @santi020k/pawl-docs run audit` checks the built `dist/`: titles, descriptions, canonicals, robots, Open Graph and X tags, JSON-LD, that every social image exists at 1200×630, the sitemap and `robots.txt`. CI and the deploy workflow run it after the build.
+`pnpm --filter @santi020k/pawl-docs run audit` checks the built `dist/`: titles, descriptions, canonicals, robots, Open Graph and X tags, JSON-LD, that every social image exists at 1200×630, the sitemap, `robots.txt`, and `llms.txt` with the Markdown copy of every page. CI and the deploy workflow run it after the build.
 
 ## Deploy
 

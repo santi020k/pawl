@@ -5,6 +5,8 @@
 const policy = {
   // The stricter level of every rule that has one, including the type-aware promise rules.
   strict: true,
+  // A warning nobody has to act on is never acted on, so new warnings fail the check too.
+  maxWarnings: 0,
   rules: {
     // Bugs more often than style, so they fail the check instead of warning.
     'valid-typeof': 'error',
@@ -20,8 +22,14 @@ const policy = {
     // Types that say nothing, or assertions that change nothing.
     '@typescript-eslint/no-empty-object-type': 'error',
     '@typescript-eslint/no-invalid-void-type': 'error',
-    '@typescript-eslint/no-unnecessary-type-assertion': 'error'
+    '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+    // A declaration or an arrow function is the author's call. Strict would warn about it.
+    'func-style': 'off'
   },
+  overrides: [
+    // Scripts and command-line entry points talk to a person through the console.
+    { files: ['scripts/**', '**/scripts/**', '**/bin/**'], rules: { 'no-console': 'off' } }
+  ],
   // A repo that extends this policy may tighten these, but not loosen them.
   // Each one is a stable rule in every engine, so a lock never holds back a false positive.
   locked: [

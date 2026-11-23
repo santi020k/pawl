@@ -1,8 +1,29 @@
 /** Severity a rule runs at. */
 export type Level = 'off' | 'warn' | 'error'
 
+/**
+ * A language other than JavaScript and TypeScript. Pawl finds projects in these languages and,
+ * when the policy names the language, checks them with that language's own tools.
+ */
+export type Language = 'rust' | 'swift' | 'kotlin'
+
 /** Engines pawl can compile a policy for. */
 export type EngineName = 'biome' | 'oxlint' | 'eslint'
+
+/**
+ * The tools of other languages, which pawl runs with the project's own config. `rustc` is the
+ * Rust compiler, whose warnings arrive with Clippy's.
+ */
+export type LanguageEngine = 'clippy' | 'rustc' | 'rustfmt' | 'swiftlint' | 'swiftformat' | 'swift-format' | 'ktlint'
+
+/** Which of a language's tools run: its linter, its formatter, or both. */
+export interface LanguageTools {
+  lint: boolean
+  format: boolean
+}
+
+/** The languages to check, by name, or with some of their tools turned off. */
+export type LanguagesInput = readonly Language[] | Partial<Record<Language, boolean | Partial<LanguageTools>>>
 
 export type EngineChoice = 'auto' | EngineName
 
@@ -48,8 +69,8 @@ export type Framework =
   | 'tanstack-start'
   | 'vite'
 
-/** What detection can be told to leave out: a framework, or Turborepo's rules. */
-export type Detectable = Framework | 'turbo'
+/** What detection can be told to leave out: a framework, Turborepo's rules, or another language. */
+export type Detectable = Framework | 'turbo' | Language
 
 /** Rule levels and options for some files only. */
 export interface OverrideInput {
@@ -59,6 +80,8 @@ export interface OverrideInput {
   rules?: Record<string, Level>
   /** Rule options for those files, in ESLint's shape. ESLint and Oxlint take them. */
   options?: Record<string, readonly unknown[]>
+  /** Rule options for those files, in Biome's shape. Only Biome takes them. */
+  biomeOptions?: Record<string, Record<string, unknown>>
 }
 
 /** What a user or a company writes in `pawl.config.ts` or a policy package. */
@@ -85,9 +108,14 @@ export interface PolicyInput {
   rules?: Record<string, Level>
   /**
    * Options for rules, in ESLint's own shape, by the same names as `rules`.
-   * ESLint and Oxlint take them. Biome has its own option shapes and ignores them.
+   * ESLint and Oxlint take them. Biome has its own option shapes: see `biomeOptions`.
    */
   options?: Record<string, readonly unknown[]>
+  /**
+   * Options for Biome's rules, in Biome's own shape, by the same names as `rules`.
+   * They replace the options the standard gives the rule. Only Biome takes them.
+   */
+  biomeOptions?: Record<string, Record<string, unknown>>
   /** Rule levels and options for some files only, such as tests. Later entries win. */
   overrides?: readonly OverrideInput[]
   /** Rules that later layers may tighten but never loosen. */
@@ -105,13 +133,21 @@ export interface PolicyInput {
    * `false` turns detection off; `{ exclude }` leaves some technologies out.
    */
   detect?: boolean | { exclude?: readonly Detectable[] }
+  /**
+   * Other languages to check with their own tools: Rust with Clippy and rustfmt, Swift with
+   * SwiftLint and SwiftFormat or swift-format, Kotlin with ktlint. Off unless named, so a repo that already
+   * checks them another way, such as with Quality, does not check them twice.
+   */
+  languages?: LanguagesInput
 }
 
 /** An override, merged. */
 export interface Override {
+  /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   files: string[]
   rules: Record<string, Level>
   options: Record<string, unknown[]>
+  biomeOptions: Record<string, Record<string, unknown>>
 }
 
 /** A later layer tried to loosen a locked rule. The stricter level was kept. */
@@ -133,8 +169,11 @@ export interface Policy {
   rules: Record<string, Level>
   /** Options by rule, in ESLint's shape. */
   options: Record<string, unknown[]>
+  /** Options by rule, in Biome's shape. */
+  biomeOptions: Record<string, Record<string, unknown>>
   overrides: Override[]
   locked: string[]
+  /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   ignore: string[]
   gitignore: boolean
   defaultIgnores: boolean
@@ -142,6 +181,8 @@ export interface Policy {
   runtime: Runtime[] | undefined
   /** Detection on, off, or with some technologies left out. */
   detect: { enabled: boolean; exclude: Detectable[] }
+  /** The other languages pawl checks, and which of their tools run. */
+  languages: Partial<Record<Language, LanguageTools>>
   /** Undefined means warnings never fail the check. */
   maxWarnings: number | undefined
   lockViolations: LockViolation[]
@@ -155,7 +196,7 @@ export interface Finding {
   file: string
   line: number
   column: number
-  engine: EngineName | 'prettier' | 'pawl'
+  engine: EngineName | LanguageEngine | 'prettier' | 'pawl'
   /** The rule name as the engine reports it. */
   engineRule: string
   /** The neutral name when the rule is in the catalog, else `engine:rule`. */
@@ -173,8 +214,10 @@ export interface SetupIssue {
     | 'biome-config-missing'
     | 'biome-config-stale'
     | 'biome-config-foreign'
+    | 'biome-missing'
     | 'eslint-missing'
     | 'oxlint-missing'
+    | 'tsgolint-missing'
     | 'oxlint-config-missing'
     | 'oxlint-config-stale'
     | 'prettier-missing'
@@ -183,6 +226,10 @@ export interface SetupIssue {
     | 'pack-missing'
     | 'locked-rule'
     | 'engine-failed'
+    | 'language-tool-missing'
+    | 'since-unresolved'
+    | 'baseline-unreadable'
+    | 'pawl-missing'
   message: string
   fix?: string
 }

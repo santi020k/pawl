@@ -33,8 +33,10 @@ Use a Conventional Commit title, keep changes focused and add tests for behavior
 1. Start from an up-to-date `main` and create the branch. Changesets decides the version: run `pnpm changeset status` to see it, then `git switch -c release/v<version>`.
 2. Run `pnpm version-packages`. It consumes the changesets and writes the versions, the changelogs and the lockfile. It needs a `GITHUB_TOKEN` to link pull requests in the changelog. Commit the result.
 3. Run `pnpm release:check`, then push the branch and open the pull request with `gh pr create --template release.md`. CI runs the same check: the branch name, every package version and the changelogs must agree, no changeset may be left, and the version must be new on npm and untagged.
-4. Merge the pull request. `.github/workflows/release.yml` runs on `main`: it validates the repository, publishes the versions npm does not have with provenance through trusted publishing, installs them from the registry, then creates the `v<version>` tag and the GitHub release on the merged commit.
+4. Merge the pull request. `.github/workflows/release.yml` runs on `main`: it validates the repository, publishes the versions npm does not have with provenance through trusted publishing, installs them from the registry, then creates the `v<version>` tag and the GitHub release on the merged commit. Last, it starts the docs deploy, so the [changelog page](https://pawl.santi020k.com/changelog/) shows the release with its date.
 5. Check the release on npm and GitHub, then delete the release branch.
+
+Work for the next version can start before the current one is out: create its `release/v<version>` branch early and open feature pull requests into it. CI checks those pull requests like the ones into `main`, and each still needs a changeset. Run `pnpm version-packages` on the branch only when the release is ready.
 
 The workflow publishes only what is missing, so a failed run is fixed with "Re-run failed jobs" on that same run, which keeps the release commit. Do not merge anything else into `main` until the release run is green; the workflow refuses to release a later commit that carries new changesets. A published version or tag is never replaced: fix a bad release with a new version. To roll back, deprecate the version with `npm deprecate` and release a fix.
 
@@ -50,6 +52,10 @@ npm trusted publishing cannot create a package, so a new package gets a placehol
 If a Release run stops because a package is not on npm, do steps 1 and 2 for it, then choose "Re-run failed jobs" on that run.
 
 The `npm` and `docs-production` environments on GitHub allow only the `main` branch; `docs-production` holds the Cloudflare secrets described in [apps/docs/README.md](apps/docs/README.md#deploy). Protect `main` so that it takes pull requests only and requires the CI checks.
+
+### The changelog page
+
+The site's changelog is built from each package's `CHANGELOG.md`, the `v<version>` tags and the pending changesets, so it needs no step of its own: the changesets in a release are its notes. Write each changeset for the people who use pawl, since it is published as written. See [apps/docs/README.md](apps/docs/README.md#changelog).
 
 ## Secrets
 

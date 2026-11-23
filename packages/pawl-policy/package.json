@@ -1,6 +1,6 @@
 {
   "name": "@santi020k/pawl-policy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Santiago Molina's strict pawl policy: the default standard, made stricter, with the rules that matter locked.",
   "keywords": [
     "pawl",

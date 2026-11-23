@@ -1,7 +1,8 @@
 ---
 
 title: The policy
-description: Change the standard for a repo, or publish one for a whole company.
+description: "Set the lint standard for one repo in pawl.config.ts, or share one: extend @santi020k/pawl-policy or publish your own, with locked rules no repo can loosen."
+head: [{ tag: title, content: "The policy: one lint standard for one repo or many | pawl" }]
 ---
 
 A repo on the default standard needs no config file. To change something, add `pawl.config.ts`:
@@ -36,7 +37,8 @@ Then run `pawl sync`, which rewrites the engine config files from the policy. `p
 | `maxWarnings`    | Fail the check when there are more new warnings than this. A later layer can only lower it.    |
 | `style`          | `indent`, `lineWidth`, `quotes`, `semicolons`, `trailingCommas`, `arrowParens`.                |
 | `rules`          | Levels by rule name: `off`, `warn` or `error`.                                                 |
-| `options`        | Options by rule name, in ESLint's shape. ESLint and Oxlint take them; Biome uses pawl's own.   |
+| `options`        | Options by rule name, in ESLint's shape. ESLint and Oxlint take them.                          |
+| `biomeOptions`   | Options by rule name, in Biome's shape. Only Biome takes them.                                 |
 | `overrides`      | Levels and options for some files only, such as tests.                                         |
 | `packs`          | Optional packs to switch on. `unicorn/recommended` starts a pack from the plugin's own preset. |
 | `locked`         | Rules that later layers may tighten but not loosen.                                            |
@@ -46,7 +48,7 @@ Then run `pawl sync`, which rewrites the engine config files from the policy. `p
 | `runtime`        | Where the code runs: `node`, `browser`, `bun`, `deno` or `worker`. Replaces what pawl detects. |
 | `detect`         | `false` turns detection off; `{ exclude: ['tailwind'] }` leaves a technology out.              |
 
-Every option is listed in [Configuration](/reference/config/). An option pawl does not know, such as `ignores` for `ignore`, stops the run with an error, so a typo never passes in silence.
+Every option is listed in [Configuration](/reference/config/). An option pawl does not know, such as `ignores` for `ignore`, stops the run with an error, and so does a value it cannot use, such as the level `warning` or a pack name it does not have, so a typo never passes in silence.
 
 ## Rule names
 
@@ -67,7 +69,7 @@ The default style is 2 spaces, single quotes, no semicolons, no trailing commas 
 
 ## Overrides
 
-Set levels and options for some files only. Each entry names its files and takes `rules` and `options` like the top level:
+Set levels and options for some files only. Each entry names its files and takes `rules`, `options` and `biomeOptions` like the top level:
 
 ```ts
 export default definePolicy({
@@ -86,7 +88,7 @@ A locked rule cannot be loosened for some files either: the stricter level is ke
 
 Every engine skips the same files:
 
-- **The defaults**: build output (`dist`, `build`, `coverage`, `.next`, `.vercel`, `.wrangler` and the like), test reports, `*.tsbuildinfo`, lockfiles, the folders AI coding tools keep for themselves (`.claude`, `.cursor`, `.codex` and others), and generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`). Set `defaultIgnores: false` to check them.
+- **The defaults**: build output (`dist`, `build`, `coverage`, `.next`, `.vercel`, `.wrangler` and the like), test reports, `*.tsbuildinfo`, lockfiles, the folders AI coding tools keep for themselves (`.claude`, `.cursor`, `.codex` and others), generated code (`__generated__`, `*.generated.*`, `*.gen.*`, `.prisma`, the type declarations Next.js and Wrangler write), and `CHANGELOG.md`. Set `defaultIgnores: false` to check them.
 - **The root `.gitignore`**: Biome reads it through its git integration, pawl turns it into ESLint's ignore patterns, and Oxlint reads it by itself. Set `gitignore: false` to check what git ignores. Oxlint always reads it.
 - **Your `ignore` list**, on top of both.
 

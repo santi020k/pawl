@@ -2,13 +2,17 @@
 /**
  * Starlight's head, plus the per-page social card that og.config.mjs writes to public/og/.
  * @santi020k/og keeps every tag Starlight emits and adds og:image, its size and alt text, and twitter:image.
- * This adds the X title, description and URL, the page's JSON-LD, and keeps the 404 page out of search results.
+ * This adds the X title, description and URL, the page's JSON-LD, a link to the page as Markdown
+ * (src/pages/[...slug].md.ts), and keeps the 404 page out of search results.
  */
+import { type StarlightRouteData } from '@astrojs/starlight/route-data'
 import { pathnameOutput } from '@santi020k/og'
 import StarlightMetadataHead from '@santi020k/og/astro/starlight'
-import { articleSchema, serializeJsonLd } from '@santi020k/og/schema'
+import { articleSchema, breadcrumbSchema, composeJsonLd, serializeJsonLd } from '@santi020k/og/schema'
 
-import { author, indexRobots, website } from '../../metadata.ts'
+import { author, indexRobots, siteName, softwareReference, website } from '../../metadata.ts'
+
+type SidebarEntry = StarlightRouteData['sidebar'][number]
 
 const route = Astro.locals.starlightRoute
 const title = route.entry.data.title
@@ -18,24 +22,61 @@ const description = typeof described === 'string' ? described : route.siteTitle
 const notFound = route.id === '404' || Astro.url.pathname.replace(/\/$/, '').endsWith('/404')
 const url = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin)
 const image = new URL(`/og/${pathnameOutput(Astro.url.pathname)}`, url)
+const markdown = new URL(`${Astro.url.pathname.replace(/\/$/, '')}.md`, url)
+
+const firstLink = (entry: SidebarEntry): string | undefined =>
+  entry.type === 'link' ? entry.href : entry.entries.map(firstLink).find(Boolean)
+
+// The sidebar groups that hold the current page, outermost first. Undefined when the page is not in the sidebar.
+const groupsOf = (entries: SidebarEntry[]): SidebarEntry[] | undefined => {
+  for (const entry of entries) {
+    if (entry.type === 'link' && entry.isCurrent) return []
+
+    if (entry.type === 'group') {
+      const inner = groupsOf(entry.entries)
+
+      if (inner) return [entry, ...inner]
+    }
+  }
+
+  return undefined
+}
+
+// Home, then each sidebar group, linked to its first page, then the page itself. A group that starts with this page
+// is left out, so no address appears twice.
+const crumbs = [
+  { name: siteName, url: new URL('/', url) },
+  ...(groupsOf(route.sidebar) ?? []).flatMap(group => {
+    const href = firstLink(group)
+
+    return href && new URL(href, url).href !== url.href ? [{ name: group.label, url: new URL(href, url) }] : []
+  }),
+  { name: title, url }
+]
 
 const jsonLd = notFound ?
   undefined :
   serializeJsonLd(
-    articleSchema({
-      type: 'TechArticle',
-      id: `${url.href}#article`,
-      name: title,
-      headline: title,
-      description,
-      url,
-      image,
-      inLanguage: 'en',
-      dateModified: route.lastUpdated,
-      author,
-      publisher: author,
-      isPartOf: website
-    })
+    composeJsonLd(
+      articleSchema(
+        {
+          type: 'TechArticle',
+          id: `${url.href}#article`,
+          name: title,
+          headline: title,
+          description,
+          url,
+          image,
+          inLanguage: 'en',
+          dateModified: route.lastUpdated,
+          author,
+          publisher: author,
+          isPartOf: website
+        },
+        { about: softwareReference }
+      ),
+      breadcrumbSchema(crumbs, { '@id': `${url.href}#breadcrumb` })
+    )
   )
 ---
 
@@ -44,4 +85,5 @@ const jsonLd = notFound ?
 <meta name="twitter:title" content={title} />
 <meta name="twitter:description" content={description} />
 {!notFound && <meta name="twitter:url" content={url} />}
+{!notFound && <link rel="alternate" type="text/markdown" href={markdown} title={`${title} as Markdown`} />}
 {jsonLd && <script type="application/ld+json" is:inline set:html={jsonLd} />}

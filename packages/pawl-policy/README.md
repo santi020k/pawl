@@ -4,6 +4,8 @@ Santiago Molina's [pawl](https://pawl.santi020k.com) policy, used on his own pro
 
 - **`strict: true`**, the stricter level of every rule that has one, including the type-aware promise rules.
 - **More rules fail instead of warning**: `no-shadow`, `no-param-reassign`, `no-fallthrough`, `array-callback-return`, `prefer-promise-reject-errors` and other checks that catch bugs more often than style.
+- **No new warnings**: `maxWarnings: 0`, so a warning fails the check like an error does.
+- **Room for scripts**: files under `scripts/` and `bin/` may use the console. `func-style` stays off.
 - **Locked rules** that a repo can tighten but never loosen: no `any`, no non-null assertions, no `@ts-ignore`, no `eval`, no `var`, `===` only, no unused imports and no `.only` in tests.
 
 Every rule it names is in pawl's catalog, so it means the same on Biome, Oxlint and ESLint.
@@ -22,7 +24,7 @@ export default definePolicy({
 })
 ```
 
-Then run `pawl sync`. A repo can still change anything that is not locked. An attempt to loosen a locked rule is ignored, and `pawl check` and `pawl doctor` report it.
+Then run `pawl sync`. The policy shares its version with `@santi020k/pawl`, so upgrade the two together. A repo can still change anything that is not locked. An attempt to loosen a locked rule is ignored, and `pawl check` and `pawl doctor` report it.
 
 ## Your own policy
 

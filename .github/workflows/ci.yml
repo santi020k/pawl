@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # Features for the next version merge into its release branch first, so those pull requests are checked too.
   pull_request:
-    branches: [main]
+    branches: [main, "release/**"]
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
@@ -44,7 +45,9 @@ jobs:
           github.event_name == 'pull_request' &&
           !contains(github.event.pull_request.labels.*.name, 'skip-changelog') &&
           !startsWith(github.head_ref, 'release/')
-        run: pnpm changeset status --since=origin/main
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: pnpm changeset status --since="origin/${BASE_REF}"
 
       # Versions, changelogs and the branch name must agree before a release merges.
       - name: Check the release branch
@@ -61,7 +64,9 @@ jobs:
           matrix.node == 22 &&
           github.event_name == 'pull_request' &&
           !startsWith(github.head_ref, 'release/')
-        run: node scripts/release.ts guard origin/main
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/release.ts guard "origin/${BASE_REF}"
 
       # Build, typecheck, test, pawl on its own code, spelling, unused code, generated files.
       - name: Validate repository

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { checkDocker, DOCKER_RULES, isDockerFile } from '../src/docker.ts'
-import { eslintPlan } from '../src/engines/eslint.ts'
-import { oxlintConfig } from '../src/engines/oxlint.ts'
-import { activeGuards, GUARDS, importRestrictions, syntaxRestrictions } from '../src/guards.ts'
-import { applyInit, planInit } from '../src/init.ts'
-import { defaultPolicy, mergeLayers } from '../src/policy.ts'
+import { activeGuards, GUARDS, importRestrictions, syntaxRestrictions } from '../src/catalog/guards.ts'
+import { eslintPlan } from '../src/engines/eslint/plan.ts'
+import { oxlintConfig } from '../src/engines/oxlint/config.ts'
+import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
+import { checkDocker, DOCKER_RULES, isDockerFile } from '../src/scans/docker.ts'
+import { planInit } from '../src/setup/init.ts'
+import { applyPlan } from '../src/setup/plan.ts'
 import { project } from './helpers.ts'
 
 describe('guards', () => {
@@ -157,6 +158,48 @@ describe('Dockerfile and Compose checks', () => {
     expect(rules(project({ Dockerfile: GOOD_DOCKERFILE }))).toEqual([])
   })
 
+  it('skips what a heredoc holds, and nothing after it', () => {
+    const root = project({
+      Dockerfile: [
+        'FROM node:22-slim',
+        'RUN <<EOF',
+        'sudo apt-get install -y curl',
+        'MAINTAINER nobody',
+        'EOF',
+        'COPY <<-"FIRST" <<SECOND /config/',
+        'CMD not an instruction',
+        'FIRST',
+        'WORKDIR also/not/one',
+        'SECOND',
+        'MAINTAINER someone',
+        'USER node',
+        'CMD ["node", "server.js"]',
+        ''
+      ].join('\n')
+    })
+
+    expect(rules(root)).toEqual(['Dockerfile:11 docker-no-maintainer'])
+  })
+
+  it('does not take a here-string or a shift for a heredoc', () => {
+    const root = project({
+      Dockerfile: [
+        'FROM node:22-slim',
+        'SHELL ["/bin/bash", "-c"]',
+        'RUN grep -q ready <<< "ready"',
+        'RUN echo $(( 1 << 4 )) && echo "a << b"',
+        'ENV NOTE="see <<EOF in the docs"',
+        'MAINTAINER someone',
+        'USER node',
+        'CMD ["node", "server.js"]',
+        ''
+      ].join('\n')
+    })
+
+    // Every line after them is still read: the MAINTAINER is found and the USER counts.
+    expect(rules(root)).toEqual(['Dockerfile:6 docker-no-maintainer'])
+  })
+
   it('finds what is wrong in a Compose file, and leaves variable references and secret files alone', () => {
     const root = project({ 'compose.yml': COMPOSE })
 
@@ -194,7 +237,7 @@ describe('workspace tools and agents', () => {
     const root = project({ 'package.json': { name: 'mono', private: true, workspaces: ['apps/*'] }, 'nx.json': {} })
     const plan = await planInit({ root, install: false, editor: false })
 
-    applyInit(plan)
+    applyPlan(plan)
 
     const { readFileSync } = await import('node:fs')
     const manifest = JSON.parse(readFileSync(`${root}/package.json`, 'utf8')) as { nx: unknown; scripts: unknown }
@@ -215,7 +258,7 @@ describe('workspace tools and agents', () => {
     expect(await paths(plain)).not.toContain('.cursor/hooks.json')
     expect(await paths(cursor)).toContain('.cursor/hooks.json')
 
-    applyInit(await planInit({ root: cursor, install: false, editor: false, agents: true }))
+    applyPlan(await planInit({ root: cursor, install: false, editor: false, agents: true }))
 
     const { readFileSync } = await import('node:fs')
 

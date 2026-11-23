@@ -19,11 +19,25 @@
       "!**/playwright-report",
       "!**/test-results",
       "!**/*.tsbuildinfo",
+      "!**/.pnpm-store",
       "!**/pnpm-lock.yaml",
       "!**/yarn.lock",
       "!**/package-lock.json",
       "!**/bun.lock",
       "!**/bun.lockb",
+      "!**/Cargo.lock",
+      "!**/Package.resolved",
+      "!**/.build",
+      "!**/.swiftpm",
+      "!**/DerivedData",
+      "!**/xcuserdata",
+      "!**/Pods",
+      "!**/*.xcassets",
+      "!**/*.xcodeproj",
+      "!**/*.xcworkspace",
+      "!**/.gradle",
+      "!**/.kotlin",
+      "!**/.cxx",
       "!**/.changeset",
       "!**/.agent",
       "!**/.agents",
@@ -41,7 +55,11 @@
       "!**/__generated__",
       "!**/*.generated.*",
       "!**/*.gen.*",
-      "!**/.prisma"
+      "!**/.prisma",
+      "!**/next-env.d.ts",
+      "!**/worker-configuration.d.ts",
+      "!**/cloudflare-env.d.ts",
+      "!**/CHANGELOG.md"
     ]
   },
   "formatter": {
@@ -221,5 +239,22 @@
         "useSortedPackageJson": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.vue", "**/*.svelte", "**/*.astro"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "off",
+            "noUnusedVariables": "off"
+          },
+          "style": {
+            "useConst": "off",
+            "useImportType": "off"
+          }
+        }
+      }
+    }
+  ]
 }

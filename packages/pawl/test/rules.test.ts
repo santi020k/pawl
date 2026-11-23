@@ -1,10 +1,11 @@
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BIOME_VERSION } from '../src/engines/biome.ts'
-import { OXLINT_RULES } from '../src/engines/oxlint-rules.ts'
-import { canonicalName, defaultLevel, findRule, getRule, getRuleByBiome, RULES } from '../src/rules.ts'
+import { canonicalName, defaultLevel, findRule, getRule, getRuleByBiome, RULES } from '../src/catalog/rules.ts'
+import { BIOME_VERSION } from '../src/engines/biome/config.ts'
+import { OXLINT_RULES } from '../src/engines/oxlint/rules.ts'
 import { PACKAGE_ROOT } from './helpers.ts'
 
 const require = createRequire(import.meta.url)
@@ -41,6 +42,31 @@ describe('rule catalog', () => {
     const unenforced = RULES.filter(rule => !rule.biome && rule.tag !== 'pawl' && OXLINT_RULES[rule.name] === undefined)
 
     expect(unenforced.map(rule => rule.name)).toEqual([])
+  })
+
+  it('marks a rule that needs type information, as the pinned Oxlint lists it', () => {
+    // ESLint loads type information only when an active rule is marked, and stops without it.
+    const manifest = require('oxlint/package.json') as { bin: Record<string, string> | string }
+    const bin = join(
+      PACKAGE_ROOT,
+      'node_modules/oxlint',
+      typeof manifest.bin === 'string' ? manifest.bin : (manifest.bin.oxlint as string)
+    )
+    const listed = JSON.parse(
+      execFileSync(process.execPath, [bin, '--rules', '--format', 'json'], {
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024
+      })
+    ) as Array<{ scope: string; value: string; type_aware: boolean }>
+    const typeAware = new Set(listed.filter(rule => rule.type_aware).map(rule => `${rule.scope}/${rule.value}`))
+    const typescript = RULES.filter(rule => rule.name.startsWith('@typescript-eslint/'))
+    const oxlintName = (name: string): string => `typescript/${name.slice('@typescript-eslint/'.length)}`
+
+    expect(
+      typescript
+        .filter(rule => typeAware.has(oxlintName(rule.name)) !== (rule.typeAware === true))
+        .map(rule => rule.name)
+    ).toEqual([])
   })
 
   it('pins the Biome version it was tested with', () => {

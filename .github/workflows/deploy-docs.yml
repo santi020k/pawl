@@ -48,9 +48,10 @@ jobs:
           if [ "$EVENT_NAME" = "push" ]; then
             version=$(jq -r .version packages/pawl/package.json)
             if git fetch --no-tags --quiet --depth=1 origin "$BEFORE" &&
-              previous=$(git show "${BEFORE}:packages/pawl/package.json" | jq -r .version) &&
+              manifest=$(git show "${BEFORE}:packages/pawl/package.json") &&
+              previous=$(printf '%s' "$manifest" | jq -er .version) &&
               tags=$(git ls-remote origin "refs/tags/v${version}"); then
-              if [ "$previous" != "$version" ] && [ -z "$tags" ]; then
+              if [ -n "$previous" ] && [ "$previous" != "$version" ] && [ -z "$tags" ]; then
                 deploy=false
                 echo "::notice::This push brings v${version}, which has no tag yet. The Release workflow deploys the docs once it has created it."
               fi

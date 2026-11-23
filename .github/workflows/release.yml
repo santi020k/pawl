@@ -177,9 +177,10 @@ jobs:
           gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file "${RUNNER_TEMP}/release-notes.md" $PRERELEASE
 
       # The changelog page dates each version by its tag, which exists only now. deploy-docs.yml left
-      # the push that brought this version to this run, so the site is built once, here.
+      # the push that brought this version to this run, so the site is built once, here. A run that is
+      # started again deploys again: the first one may have created the release and then failed here.
       - name: Deploy the docs
-        if: steps.find.outputs.released == 'false'
+        if: steps.find.outputs.released == 'false' || github.run_attempt > 1
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run deploy-docs.yml --ref main

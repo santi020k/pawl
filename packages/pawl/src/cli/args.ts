@@ -40,7 +40,10 @@ Options for init
   --yes                 Accept the plan without asking (also for migrate)
   --dry-run             Show the plan and change nothing (also for add and migrate)
   --workflow            Add a GitHub Actions workflow
-  --agents              Add hooks for Claude Code and Cursor, and instructions in AGENTS.md
+  --agents              Set up coding agents: hooks that fix each edit and report what is left
+                        (Claude Code; Cursor, Codex and Copilot where the repo uses them),
+                        instructions in AGENTS.md that Claude Code and Gemini CLI also read,
+                        and a pawl skill
   --hooks               Add a pre-commit hook that checks changed files
   --no-editor           Skip editor settings
   --no-install          Do not run the package manager (also for add)

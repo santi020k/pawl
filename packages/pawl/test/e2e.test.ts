@@ -291,7 +291,10 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       '.vscode/extensions.json',
       '.github/workflows/pawl.yml',
       '.claude/settings.json',
-      'AGENTS.md'
+      'AGENTS.md',
+      'CLAUDE.md',
+      '.claude/skills/pawl/SKILL.md',
+      '.agents/skills/pawl/SKILL.md'
     ])
     expect(plan.notes.join(' ')).toContain('covers all 1 package.')
 
@@ -311,7 +314,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
         PostToolUse: [
           {
             matcher: 'Edit|Write|MultiEdit',
-            hooks: [{ type: 'command', command: 'npx pawl check --changed --format agent' }]
+            hooks: [{ type: 'command', command: 'npx pawl fix --hook' }]
           }
         ]
       }

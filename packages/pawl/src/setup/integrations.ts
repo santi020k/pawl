@@ -1,21 +1,26 @@
 /** What pawl adds around the engines: scripts, task runners, editors, coding agents and Git hooks. */
 
-import { chmodSync, existsSync, readFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { firstExisting, LEFTHOOK_CONFIG_FILES } from '../project/config-files.ts'
 import { type Detection } from '../project/detect.ts'
 import { type FormatterName } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
 import { isRecord, type JsonRecord, readJson, readJsonc, writeJson } from '../utils/json.ts'
+import { toList } from '../utils/list.ts'
 import { rangeFor } from './install.ts'
 import { planJsonMerge, type SetupAction } from './plan.ts'
 import {
+  AGENT_HOOK_COMMAND,
   AGENTS_BLOCK,
   AGENTS_END,
   AGENTS_START,
   EDITOR_SETTINGS,
   HOOK_COMMAND,
+  OLD_AGENT_HOOK_COMMANDS,
   PRETTIER_EDITOR_SETTINGS,
+  SKILL_FILE,
+  SKILL_MARKER,
   workflowFile
 } from './templates.ts'
 
@@ -133,68 +138,223 @@ export const planTurboTasks = (root: string, notes: string[]): SetupAction | und
   )
 }
 
-const planAgentHook = (root: string, notes: string[]): SetupAction | undefined => {
-  const file = '.claude/settings.json'
-  const path = join(root, file)
-  const command = 'npx pawl check --changed --format agent'
+/** One agent's hook file: where it goes, and how to add pawl's hook to what the file already holds. */
+interface AgentHook {
+  file: string
+  agent: string
+  summary: string
+  add: (existing: JsonRecord) => JsonRecord
+}
+
+/** The hooks a key holds, as a list, whatever the file had there. */
+const hookList = (hooks: unknown, key: string): unknown[] =>
+  isRecord(hooks) && Array.isArray(hooks[key]) ? hooks[key] : []
+
+/**
+ * Add pawl's hook to an agent's hook file, next to the hooks already there. A hook an earlier
+ * version of pawl wrote is swapped for the current one in place, so a re-run never adds a second.
+ */
+const planAgentHook = (root: string, notes: string[], hook: AgentHook): SetupAction | undefined => {
+  const path = join(root, hook.file)
   const existing = existsSync(path) ? readJsonc<JsonRecord>(path) : { value: {} as JsonRecord, hasComments: false }
 
   if (!existing.value || existing.hasComments) {
-    notes.push(`${file} could not be read, so pawl added no agent hook.`)
+    notes.push(`${hook.file} could not be read, so pawl added no ${hook.agent} hook.`)
 
     return undefined
   }
 
-  if (JSON.stringify(existing.value).includes(command)) return undefined
+  // Whole JSON strings, so a command that only starts like pawl's is not taken for it.
+  const text = JSON.stringify(existing.value)
+  const current = JSON.stringify(AGENT_HOOK_COMMAND)
 
-  const hooks = isRecord(existing.value.hooks) ? existing.value.hooks : {}
-  const postToolUse = Array.isArray(hooks.PostToolUse) ? hooks.PostToolUse : []
-  const entry = { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command }] }
+  if (text.includes(current)) return undefined
+
+  const old = OLD_AGENT_HOOK_COMMANDS.map(command => JSON.stringify(command)).find(command => text.includes(command))
+  const next = old ? (JSON.parse(text.replaceAll(old, current)) as JsonRecord) : hook.add(existing.value)
 
   return {
-    path: file,
+    path: hook.file,
     kind: existsSync(path) ? 'update' : 'create',
-    summary: 'hook that shows findings to Claude Code after each edit',
-    apply: () => writeJson(path, { ...existing.value, hooks: { ...hooks, PostToolUse: [...postToolUse, entry] } })
+    summary: hook.summary,
+    apply: () => writeJson(path, next)
+  }
+}
+
+/** A PostToolUse entry in the shape Claude Code and Codex share. */
+const postToolUse = (existing: JsonRecord, matcher: string): JsonRecord => {
+  const hooks = isRecord(existing.hooks) ? existing.hooks : {}
+  const entry = { matcher, hooks: [{ type: 'command', command: AGENT_HOOK_COMMAND }] }
+
+  return { ...existing, hooks: { ...hooks, PostToolUse: [...hookList(hooks, 'PostToolUse'), entry] } }
+}
+
+/** Claude Code: fix each edit, and give Claude what is left next to the tool result. */
+const CLAUDE_HOOK: AgentHook = {
+  file: '.claude/settings.json',
+  agent: 'Claude Code',
+  summary: 'hook that fixes each Claude Code edit and tells Claude what is left',
+  add: existing => postToolUse(existing, 'Edit|Write|MultiEdit')
+}
+
+/**
+ * Cursor: fix each edit. Cursor reads nothing back from an `afterFileEdit` hook, so the AGENTS.md
+ * instructions tell the agent to run the check.
+ */
+const CURSOR_HOOK: AgentHook = {
+  file: '.cursor/hooks.json',
+  agent: 'Cursor',
+  summary: 'hook that fixes and formats after each Cursor edit',
+  add: existing => {
+    const hooks = isRecord(existing.hooks) ? existing.hooks : {}
+
+    return {
+      version: 1,
+      ...existing,
+      hooks: { ...hooks, afterFileEdit: [...hookList(hooks, 'afterFileEdit'), { command: AGENT_HOOK_COMMAND }] }
+    }
   }
 }
 
 /**
- * A Cursor hook that applies safe fixes and formatting after each edit. Cursor does not read a
- * hook's findings back, so the hook fixes, and AGENTS.md tells the agent to run the check.
+ * Codex: every file edit is an `apply_patch`, and a PostToolUse hook's `additionalContext` reaches
+ * the model. Codex runs a project's hooks only once they are trusted, in its /hooks screen.
  */
-const planCursorHook = (root: string, notes: string[]): SetupAction | undefined => {
-  // Only for repos that already use Cursor: no empty .cursor folder for everyone else.
-  if (!existsSync(join(root, '.cursor'))) return undefined
+const CODEX_HOOK: AgentHook = {
+  file: '.codex/hooks.json',
+  agent: 'Codex',
+  summary: 'hook that fixes each Codex edit and tells Codex what is left',
+  add: existing => postToolUse(existing, 'apply_patch')
+}
 
-  const file = '.cursor/hooks.json'
-  const path = join(root, file)
-  const command = 'npx pawl fix --changed'
-  const existing = existsSync(path) ? readJsonc<JsonRecord>(path) : { value: {} as JsonRecord, hasComments: false }
+/**
+ * The Copilot CLI and cloud agent read hooks from .github/hooks. A Copilot hook runs after every
+ * tool, so `--hook` itself skips the tools that edit nothing.
+ */
+const COPILOT_HOOK: AgentHook = {
+  file: '.github/hooks/pawl.json',
+  agent: 'Copilot',
+  summary: 'hook that fixes each Copilot edit and tells Copilot what is left',
+  add: existing => {
+    const hooks = isRecord(existing.hooks) ? existing.hooks : {}
+    const entry = { type: 'command', command: AGENT_HOOK_COMMAND, timeoutSec: 60 }
 
-  if (!existing.value || existing.hasComments) {
-    notes.push(`${file} could not be read, so pawl added no Cursor hook.`)
-
-    return undefined
-  }
-
-  if (JSON.stringify(existing.value).includes(command)) return undefined
-
-  const hooks = isRecord(existing.value.hooks) ? existing.value.hooks : {}
-  const afterFileEdit = Array.isArray(hooks.afterFileEdit) ? hooks.afterFileEdit : []
-
-  return {
-    path: file,
-    kind: existsSync(path) ? 'update' : 'create',
-    summary: 'hook that fixes and formats after each Cursor edit',
-    apply: () =>
-      writeJson(path, {
-        version: 1,
-        ...existing.value,
-        hooks: { ...hooks, afterFileEdit: [...afterFileEdit, { command }] }
-      })
+    return { version: 1, ...existing, hooks: { ...hooks, postToolUse: [...hookList(hooks, 'postToolUse'), entry] } }
   }
 }
+
+/** The files that say a repo uses Copilot's agents. */
+const COPILOT_FILES = ['.github/copilot-instructions.md', '.github/instructions', '.github/hooks']
+
+/**
+ * The hooks for each agent the repo uses. Claude Code always gets one; Cursor, Codex and Copilot
+ * only where their folders or files are already there, so no one gets an empty folder for a tool
+ * they do not use.
+ */
+const planAgentHooks = (root: string, notes: string[]): (SetupAction | undefined)[] => {
+  const codex = existsSync(join(root, '.codex')) ? planAgentHook(root, notes, CODEX_HOOK) : undefined
+
+  if (codex) notes.push("Codex runs a project's hooks once they are trusted. Review pawl's hook in Codex's /hooks.")
+
+  return [
+    planAgentHook(root, notes, CLAUDE_HOOK),
+    existsSync(join(root, '.cursor')) ? planAgentHook(root, notes, CURSOR_HOOK) : undefined,
+    codex,
+    COPILOT_FILES.some(file => existsSync(join(root, file))) ? planAgentHook(root, notes, COPILOT_HOOK) : undefined
+  ]
+}
+
+/** An import of AGENTS.md in a Claude Code memory file, from wherever that file is. */
+const IMPORTS_AGENTS = /@(?:\.{1,2}\/)*AGENTS\.md\b/
+
+/**
+ * Claude Code reads CLAUDE.md, not AGENTS.md, so the instructions reach it through an import. An
+ * existing CLAUDE.md gets the import at its end; without one, pawl writes a CLAUDE.md that only
+ * imports AGENTS.md. A CLAUDE.md that is a link, as Claude Code's docs suggest for AGENTS.md, is
+ * left alone.
+ */
+const planClaudeImport = (root: string): SetupAction | undefined => {
+  const summary = 'import AGENTS.md, which Claude Code does not read on its own'
+
+  for (const [file, line] of [
+    ['CLAUDE.md', '@AGENTS.md'],
+    ['.claude/CLAUDE.md', '@../AGENTS.md']
+  ] as const) {
+    const path = join(root, file)
+
+    if (!existsSync(path)) continue
+
+    if (lstatSync(path).isSymbolicLink()) return undefined
+
+    const current = readFileSync(path, 'utf8')
+
+    if (IMPORTS_AGENTS.test(current) || current.includes(AGENTS_START)) return undefined
+
+    return { path: file, kind: 'update', summary, apply: () => writeText(path, `${current.trimEnd()}\n\n${line}\n`) }
+  }
+
+  return { path: 'CLAUDE.md', kind: 'create', summary, apply: () => writeText(join(root, 'CLAUDE.md'), '@AGENTS.md\n') }
+}
+
+/**
+ * Gemini CLI reads GEMINI.md unless its settings name other context files. In a repo that has a
+ * .gemini folder, pawl adds AGENTS.md to that list and keeps what the list already read.
+ */
+const planGeminiContext = (root: string, notes: string[]): SetupAction | undefined => {
+  if (!existsSync(join(root, '.gemini'))) return undefined
+
+  const settings = readJsonc<JsonRecord>(join(root, '.gemini/settings.json')).value
+  const context = isRecord(settings?.context) ? settings.context : {}
+  const fileName = context.fileName
+  const read =
+    typeof fileName === 'string' || Array.isArray(fileName)
+      ? toList(fileName).filter((name): name is string => typeof name === 'string')
+      : ['GEMINI.md']
+
+  if (read.includes('AGENTS.md')) return undefined
+
+  return planJsonMerge(
+    root,
+    '.gemini/settings.json',
+    { context: { fileName: [...read, 'AGENTS.md'] } },
+    'have Gemini CLI read AGENTS.md as well',
+    notes
+  )
+}
+
+/** Where agents look for a project's skills: Claude Code's folder, and the one Codex and Copilot share. */
+const SKILL_FILES = ['.claude/skills/pawl/SKILL.md', '.agents/skills/pawl/SKILL.md']
+
+/**
+ * The pawl skill: what to run after an edit, how to read the findings, and what not to do. Init
+ * keeps its own copy up to date. A copy without pawl's marker line is someone's own, left alone.
+ */
+const planSkills = (root: string, notes: string[]): SetupAction[] =>
+  SKILL_FILES.flatMap((file): SetupAction[] => {
+    const path = join(root, file)
+    const write = (kind: SetupAction['kind']): SetupAction[] => [
+      {
+        path: file,
+        kind,
+        summary: 'skill that tells coding agents how to check and fix their work with pawl',
+        apply: () => writeText(path, SKILL_FILE)
+      }
+    ]
+
+    if (!existsSync(path)) return write('create')
+
+    const current = readFileSync(path, 'utf8')
+
+    if (current === SKILL_FILE) return []
+
+    if (!current.includes(SKILL_MARKER)) {
+      notes.push(`${file} is not the one pawl writes, so pawl left it alone.`)
+
+      return []
+    }
+
+    return write('update')
+  })
 
 /** Instructions any coding agent can follow, kept in a marked block so they can be updated later. */
 const planAgentsFile = (root: string): SetupAction | undefined => {
@@ -318,8 +478,15 @@ export const planWorkflow = (root: string, detection: Detection): SetupAction | 
   }
 }
 
-/** Hooks that show coding agents their findings after each edit, and instructions any agent can follow. */
+/**
+ * Everything `--agents` sets up: hooks that fix each edit and hand back what is left, the
+ * AGENTS.md instructions and what makes Claude Code and Gemini CLI read them, and the pawl skill.
+ */
 export const planAgents = (root: string, notes: string[]): SetupAction[] =>
-  [planAgentHook(root, notes), planCursorHook(root, notes), planAgentsFile(root)].filter(
-    (action): action is SetupAction => action !== undefined
-  )
+  [
+    ...planAgentHooks(root, notes),
+    planAgentsFile(root),
+    planClaudeImport(root),
+    planGeminiContext(root, notes),
+    ...planSkills(root, notes)
+  ].filter((action): action is SetupAction => action !== undefined)

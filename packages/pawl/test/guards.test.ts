@@ -264,7 +264,7 @@ describe('workspace tools and agents', () => {
 
     expect(JSON.parse(readFileSync(`${cursor}/.cursor/hooks.json`, 'utf8'))).toEqual({
       version: 1,
-      hooks: { afterFileEdit: [{ command: 'npx pawl fix --changed' }] }
+      hooks: { afterFileEdit: [{ command: 'npx pawl fix --hook' }] }
     })
   })
 })

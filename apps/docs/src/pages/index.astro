@@ -21,6 +21,7 @@ import {
 } from '@santi020k/lumen-astro'
 
 import ratchet from '../assets/ratchet.webp'
+import AgentReplay from '../components/AgentReplay.astro'
 import { dependencyCount, dockerCheckCount, npmUrl, packCount, ruleCount } from '../components/landing/facts.ts'
 import SiteFooter from '../components/landing/SiteFooter.astro'
 import SiteHeader from '../components/landing/SiteHeader.astro'
@@ -378,15 +379,25 @@ const facts = [
 
     <section class="band" aria-labelledby="agents-title">
       <Container>
-        <div class="split">
+        <div class="band-head">
+          <p class="kicker">Built for coding agents</p>
+          <h2 id="agents-title">Every edit is checked before the agent moves on.</h2>
+          <p>
+            After each edit, pawl's hook applies the safe fixes and hands what is left back to the agent. A comment that switches a
+            check off is a finding too, so the agent fixes the code instead.
+          </p>
+        </div>
+
+        <div class="agents__replay">
+          <AgentReplay />
+        </div>
+
+        <div class="split agents__setup">
           <div class="band-head">
-            <p class="kicker">Built for coding agents</p>
-            <h2 id="agents-title">Findings an agent can act on.</h2>
             <p>
-              <code>--format agent</code> prints one compact JSON line per finding, with the fix, and nothing at all when there is
-              nothing to do. <code>pawl init --agents</code> adds hooks that fix each edit and hand what is left back to Claude Code,
-              Codex and Copilot, a Cursor hook that fixes what it can, instructions in <code>AGENTS.md</code> that every agent
-              reads, and a pawl skill.
+              <code>pawl init --agents</code> adds hooks that fix each edit and hand what is left back to Claude Code, Codex and
+              Copilot, a Cursor hook that fixes what it can, instructions in <code>AGENTS.md</code> that every agent reads, and a pawl
+              skill. An agent that runs <code>pawl check</code> itself gets one compact JSON line per finding, with the fix.
             </p>
             <ButtonLink href="/guide/agents/" variant="inline" showArrow>Set up agents</ButtonLink>
           </div>
@@ -664,6 +675,11 @@ const facts = [
     .facts__item:nth-child(n + 3) {
       border-top: 1px solid hsl(var(--line) / 0.7);
     }
+  }
+
+  /* The agents band: the replay between the heading and the setup. */
+  .agents__replay {
+    margin-block: clamp(2rem, 4vw, 3rem);
   }
 
   /* Two-column bands. */

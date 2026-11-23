@@ -4,6 +4,7 @@ description: "Lint guardrails for AI coding agents: hooks that fix each edit and
 head: [{ tag: title, content: "Coding agents: lint hooks for Claude Code, Codex, Copilot and Cursor | pawl" }]
 ---
 
+import AgentReplay from '../../../components/AgentReplay.astro'
 import Terminal from '../../../components/Terminal.astro'
 import { sessions } from '../../../data/demo.ts'
 
@@ -58,6 +59,10 @@ npx pawl fix --hook
 ```
 
 Pawl reads the files the agent just edited from the hook's input, applies the safe fixes and formatting to those files and no others, and checks them. What is left goes back to the agent in the shape its tool reads, as `--format agent` lines under a line that says what pawl did. With nothing left, the hook prints nothing.
+
+Here is a session with Claude Code, replayed from a real run. The agent's first try hides a debug log behind a `biome-ignore` comment; the hook hands that back with the rest, and the second edit leaves nothing.
+
+<AgentReplay />
 
 | Agent                                  | File                      | Written when the repo has                                                  | What the agent hears                                          |
 | -------------------------------------- | ------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- |

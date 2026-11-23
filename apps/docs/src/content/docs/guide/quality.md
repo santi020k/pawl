@@ -39,6 +39,12 @@ tasks:
 
 `quality check` now runs pawl next to everything else, and pawl's exit codes keep their meaning: 1 for new findings, 2 for a setup problem.
 
+## Pawl's findings in Quality's report
+
+Quality sets `PAWL_FORMAT=editor` for the tasks and tools it runs, so pawl prints one `file:line:col: error: message [rule]` line per finding instead of its view for people. Quality reads each line as a finding of its own, with its file, position and rule: in its report in the terminal, with the line of code, in `--format agent` for coding agents, and in its GitHub annotations and SARIF report. Run on its own, pawl prints what it always does.
+
+The two agree on the rest too. Both know a coding agent by the same variables and give it a compact format with no colors, spinners or questions, and both print the same `--format editor` lines, so one VS Code problem matcher reads either. `PAWL_AGENT` and `QUALITY_AGENT` settle it for each tool when the guess is wrong.
+
 ## Which one to reach for
 
 | You want to                                                      | Use                                               |

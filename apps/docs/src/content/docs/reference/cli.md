@@ -46,12 +46,13 @@ Pawl picks its output for whoever runs it. `--format` chooses one outright.
 
 Without `--format`, a person gets `pretty` and a coding agent gets `agent`. Pawl knows an agent by the variables agents set on the commands they run: `CLAUDECODE` for Claude Code, `CURSOR_AGENT` for Cursor, `CODEX_SANDBOX` and `CODEX_THREAD_ID` for Codex, `GEMINI_CLI` for Gemini CLI, and the ones Amp, Qwen Code, Augment, Cline, OpenCode and Antigravity set, as well as the shared `AGENT` and `AI_AGENT`. An agent also gets no colors, no spinners and no questions, in every command, and the package manager's output only when an install fails.
 
-| Variable        | Effect                                                                                             |
-| --------------- | -------------------------------------------------------------------------------------------------- |
-| `PAWL_AGENT=0`  | A person is running pawl, whatever else is set, as when you type a command in an agent's own shell |
-| `PAWL_AGENT=1`  | An agent is running pawl                                                                           |
-| `NO_COLOR`      | No colors. The layout for people stays                                                             |
-| `FORCE_COLOR=1` | Colors, and the layout for people, even in a pipe                                                  |
+| Variable        | Effect                                                                                                                             |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `PAWL_AGENT=0`  | A person is running pawl, whatever else is set, as when you type a command in an agent's own shell                                 |
+| `PAWL_AGENT=1`  | An agent is running pawl                                                                                                           |
+| `PAWL_FORMAT`   | The format when `--format` is not given, for a program that reads what pawl prints. [Quality](/guide/quality/) sets it to `editor` |
+| `NO_COLOR`      | No colors. The layout for people stays                                                                                             |
+| `FORCE_COLOR=1` | Colors, and the layout for people, even in a pipe                                                                                  |
 
 In a terminal, `pawl` shows the commands, and `pawl <command> --help` or `pawl help <command>` shows that command's options and examples. A command or an option that is almost right gets a suggestion of the one you probably meant.
 

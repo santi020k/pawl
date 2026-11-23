@@ -105,6 +105,7 @@ const SECTIONS: readonly HelpSection[] = [
       ),
       row('json', 'The whole result as one document, for CI and other tools'),
       row('PAWL_AGENT=0|1', 'Say whether a coding agent is running pawl, when the guess is wrong'),
+      row('PAWL_FORMAT', 'The format when --format is not given, for programs that read pawl'),
       row('NO_COLOR', 'No colors. FORCE_COLOR=1 keeps them in a pipe')
     ]
   }
@@ -234,6 +235,23 @@ export const outputFormat = (flags: Flags, fallback: OutputFormat = 'pretty'): O
       `Unknown format "${kind}". ${near ? `Did you mean "${near}"? ` : ''}Use ${orList(OUTPUT_FORMATS)}.`
     )
   }
+
+  return kind as OutputFormat
+}
+
+/**
+ * The format `PAWL_FORMAT` asks for, for a program that runs pawl and reads what it prints, such as
+ * Quality, which sets it to `editor`. Undefined when it is not set. `--format` still wins.
+ */
+export const formatFromEnv = (env: Readonly<Record<string, string | undefined>>): OutputFormat | undefined => {
+  const value = env.PAWL_FORMAT
+
+  if (value === undefined || value.trim() === '') return undefined
+
+  const kind = value.trim()
+
+  if (!OUTPUT_FORMATS.includes(kind as OutputFormat))
+    throw new UsageError(`PAWL_FORMAT is "${kind}". Use ${orList(OUTPUT_FORMATS)}.`)
 
   return kind as OutputFormat
 }

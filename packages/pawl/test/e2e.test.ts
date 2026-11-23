@@ -379,7 +379,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         cwd: root,
         encoding: 'utf8',
         // A person's run in a pipe, even when the tests run under a coding agent.
-        env: { ...process.env, CI: '', NO_COLOR: '1', PAWL_AGENT: '0' }
+        env: { ...process.env, CI: '', NO_COLOR: '1', PAWL_AGENT: '0', PAWL_FORMAT: '' }
       })
 
       return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
@@ -723,7 +723,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       const env = Object.fromEntries(
         Object.entries(process.env).filter(
           ([name]) =>
-            !/^(PAWL_AGENT|AGENT|AI_AGENT|CLAUDECODE|CLAUDE_CODE_ENTRYPOINT|CURSOR_AGENT|GEMINI_CLI|QWEN_CODE|CODEX_\w+|AMP_CURRENT_THREAD_ID|AUGMENT_AGENT|CLINE_ACTIVE|OPENCODE_CLIENT|ANTIGRAVITY_AGENT)$/.test(
+            !/^(PAWL_AGENT|PAWL_FORMAT|AGENT|AI_AGENT|CLAUDECODE|CLAUDE_CODE_ENTRYPOINT|CURSOR_AGENT|GEMINI_CLI|QWEN_CODE|CODEX_\w+|AMP_CURRENT_THREAD_ID|AUGMENT_AGENT|CLINE_ACTIVE|OPENCODE_CLIENT|ANTIGRAVITY_AGENT)$/.test(
               name
             )
         )
@@ -745,6 +745,10 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(as({ CURSOR_AGENT: '1' }, 'check', '--format', 'pretty').stdout).toContain('src/b.js:1:1  error  biome')
       expect(as({ CLAUDECODE: '1', PAWL_AGENT: '0' }, 'check').stdout).toContain('1 error.')
       expect(as({}, 'check').stdout).toContain('src/b.js:1:1  error  biome')
+      // A program that reads pawl, such as Quality, asks for a format; --format still wins.
+      expect(as({ CLAUDECODE: '1', PAWL_FORMAT: 'editor' }, 'check').stdout).toMatch(/^src\/b\.js:1:1: error: /)
+      expect(as({ PAWL_FORMAT: 'editor' }, 'check', '--format', 'agent').stdout).toMatch(/^\{"file":"src\/b\.js"/)
+      expect(as({ PAWL_FORMAT: 'xml' }, 'check').code).toBe(2)
       expect(as({}, 'check', '--format', 'editor')).toEqual({
         code: 1,
         stdout:

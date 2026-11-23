@@ -7,7 +7,7 @@ import { type CheckOptions, type CheckProgress, check } from '../../check/check.
 import { engineTitle, format, type RichOptions } from '../../check/output.ts'
 import { type CheckResult, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
 import { plural } from '../../utils/text.ts'
-import { assertHookFlags, type Flags, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
+import { assertHookFlags, type Flags, formatFromEnv, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
 import { type Terminal, terminal } from '../audience.ts'
 import { hookFiles, hookMessage, hookReply, hookSetupProblems, readPayload, readStdin } from '../hook.ts'
 import { out } from '../io.ts'
@@ -125,8 +125,8 @@ export const runCheck = async (root: string, files: string[], flags: Flags, fix:
   const term = terminal()
   const ci = flags.ci === true || inCi(process.env.CI)
   // Every option is read before anything runs: "fix" must not change files and then refuse a flag.
-  // A coding agent gets its own format unless it asks for another.
-  const kind = outputFormat(flags, term.agent ? 'agent' : 'pretty')
+  // --format wins, then PAWL_FORMAT from a program that reads pawl, then a coding agent's own format.
+  const kind = outputFormat(flags, formatFromEnv(process.env) ?? (term.agent ? 'agent' : 'pretty'))
   const limit = maxWarnings(flags)
   const since = sinceRef(flags, files)
   const options: CheckOptions = {

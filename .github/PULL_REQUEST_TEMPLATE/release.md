@@ -21,6 +21,8 @@ Version: `v`
 
 ## After the merge
 
+- [ ] For v1.0.0, complete the ESLint Config Basic recommendation release and publish the Medium and santi020k.com launch posts using [the launch kit](https://github.com/santi020k/pawl/blob/main/docs/launch-v1/README.md); record the verified public URLs, or mark this item not applicable for earlier releases.
+
 - [ ] The Release workflow passed on `main`.
 - [ ] `npm view @santi020k/pawl version` shows the new version and the GitHub release exists.
 - [ ] The release branch is deleted.

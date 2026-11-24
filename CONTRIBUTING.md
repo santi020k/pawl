@@ -68,6 +68,12 @@ When preparing v1:
 
 Track this work in the v1 release pull request. Do not report store publication complete until both listings and installation flows have been verified. See [the plugin README](plugins/pawl/README.md) for the package and local validation commands.
 
+### ESLint Config Basic and launch posts at v1
+
+Alongside Pawl v1.0.0, release an update to `@santi020k/eslint-config-basic` recommending migration to Pawl as Santiago's next-generation linting tool. Publish launch posts on Medium and [santi020k.com](https://santi020k.com). The [v1 launch kit](docs/launch-v1/README.md) contains the announcement copy, article drafts, publication order and verification checklist.
+
+Keep the ESLint Config Basic update focused on the recommendation and migration guidance; it does not imply automatic migration, package deprecation or removal of existing functionality. Prepare its version and release through that repository's normal process once Pawl v1 and its migration documentation are verified. Link both releases in the v1 release pull request.
+
 ### First release and setup
 
 npm trusted publishing cannot create a package, so a new package gets a placeholder first: version `0.0.0`, published by hand, with only a `package.json` (its name and `repository`) and a README that says to install a real version. Do this right before the release pull request merges, because npm drops a trusted publisher that has not published within 2 days of being added:

@@ -14,6 +14,21 @@ pnpm ok              # the full gate CI runs
 
 The hooks come from [`quality.yml`](quality.yml) and need the [Quality CLI](https://github.com/santi020k/quality).
 
+## Santiago-owned tools
+
+| Tool         | Use in this repository                                                                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lumen UI     | Landing-page components and semantic tokens in `apps/docs`.                                                                                                                                     |
+| OG           | Social-card generation, metadata and JSON-LD; `pnpm docs:build` generates the cards, and `pnpm --filter @santi020k/pawl-docs run audit` checks the built site. CI and deployment run the audit. |
+| Astro Doctor | `pnpm --filter @santi020k/pawl-docs run doctor`, also run in CI.                                                                                                                                |
+| Quality      | Git hooks and the repository-check task in `quality.yml`, plus the shared pnpm setup action in CI. `pnpm ok` remains the canonical gate.                                                        |
+| Commitprompt | `pnpm commit` and commit-message validation through the Quality hook.                                                                                                                           |
+| Dep Beacon   | Recommended in `.vscode/extensions.json` for dependency versions, pnpm catalogs and OSV findings in the editor.                                                                                 |
+
+In VS Code, install the recommended [Dep Beacon extension](https://marketplace.visualstudio.com/items?itemName=santi020k.vscode-dep-beacon), then open `package.json` or `pnpm-workspace.yaml`. In Zed, install Dep Beacon from the extension registry; it needs no project configuration. This is editor assistance, not a CI gate. Review updates before applying them and regenerate the lockfile with the repository's pnpm version. Keep Biome and Oxlint upgrades coordinated with the generated-file checks described in [AGENTS.md](AGENTS.md).
+
+Pawl itself supplies this repository's lint policy, replacing ESLint Config Basic. The docs intentionally use their own Signal brand rather than the Santiago Theme. Auth is not needed for this public static site and CLI.
+
 ## Commits
 
 Commits follow Conventional Commits. `pnpm commit` opens [Commitprompt](https://github.com/santi020k/commitprompt), and the `commit-msg` hook validates every message.

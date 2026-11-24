@@ -1,4 +1,5 @@
 import { RUNTIMES } from '../catalog/runtimes.ts'
+import { TEST_RUNNERS } from '../catalog/test-runners.ts'
 import { DETECTABLE } from '../project/detect.ts'
 import { LANGUAGES } from '../project/languages.ts'
 import { type PolicyInput } from '../types.ts'
@@ -16,6 +17,8 @@ export interface JsonSchema {
   additionalProperties?: boolean | JsonSchema
   items?: JsonSchema
   uniqueItems?: boolean
+  minItems?: number
+  minLength?: number
   minimum?: number
   maximum?: number
   anyOf?: readonly JsonSchema[]
@@ -122,6 +125,15 @@ const PROPERTIES: Record<keyof PolicyInput, JsonSchema> = {
         biomeOptions
       }
     }
+  },
+  testRunners: {
+    type: 'object',
+    description:
+      'Explicit positive file globs per test runner. Unnamed runners keep existing enforcement; focused and skipped checks remain global.',
+    additionalProperties: false,
+    properties: Object.fromEntries(
+      TEST_RUNNERS.map(runner => [runner, { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } }])
+    )
   },
   locked: strings('Rules that later layers may tighten but never loosen.'),
   ignore: strings('Extra glob patterns to skip. A pattern without a slash matches at any depth.'),
@@ -271,7 +283,13 @@ export const schemaProblems = (schema: JsonSchema, value: unknown, path: string)
       : wrong
   }
 
+  if (typeof value === 'string' && schema.minLength !== undefined && value.length < schema.minLength)
+    return [`"${path}" must contain at least ${schema.minLength} character(s).`]
+
   if (Array.isArray(value)) {
+    if (schema.minItems !== undefined && value.length < schema.minItems)
+      return [`"${path}" must contain at least ${schema.minItems} item(s).`]
+
     return value.flatMap((item, index) => (schema.items ? schemaProblems(schema.items, item, `${path}[${index}]`) : []))
   }
 

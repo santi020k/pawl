@@ -42,7 +42,7 @@ Pawl works with one exact Biome version, because it reads a report format Biome 
 ## Which version a repo runs
 
 ```sh
-npx pawl --version
+npx --no pawl --version
 ```
 
 `pawl doctor` prints the version on its first line too, and `pawl doctor --format json` puts it in the report CI keeps.
@@ -66,3 +66,9 @@ Pawl's own docs migration preserves the former file as `apps/docs/biome.before-r
 Pawl cannot distinguish custom entries from older generated entries in an existing root `overrides` array. When the expected array changes, `sync` preserves the file and reports the conflict; `check` and `fix` stop with exit code 2 before running Biome. This also protects templates when a new package adds technology scopes.
 
 Keep a backup outside Biome's active config filenames before reconciling. Move rule exceptions into root-relative `pawl.config` overrides, retaining their order and rule options. Keep custom parser or formatter overrides in a separate JSON configuration extended after the Pawl preset, and verify their precedence against the generated package scopes. Do not discard any entry until its replacement is accounted for. Only then remove the reconciled inline array, run `pawl sync`, and review the generated diff. Run `pawl doctor`, `pawl check`, and framework validation before committing the configuration and backup. Restore the backup and prior Pawl version together if qualification fails.
+
+## Agent hooks before 0.5
+
+Before 0.5, `init --agents` wrote `npx pawl check --changed --format agent` for Claude Code and `npx pawl fix --changed` for Cursor. Claude Code does not show the model a hook's plain output, so Claude never saw those findings, and a plain `npx pawl` can download the unscoped `pawl` package, which is someone else's, in a clone that has not installed pawl yet. Run `pawl init --agents` again: it swaps those commands for `npx --no pawl fix --hook` in place, adds the stop hook and the pawl skill, and leaves your other hooks alone. `pawl init --hooks` and `pawl init` do the same for a pre-commit line and the editor tasks pawl wrote. See [Coding agents](/guide/agents/).
+
+A baseline recorded before 0.5 has no test counts, so `pawl/no-weaker-tests` has nothing to compare against yet; `pawl check` says so. Once `pawl check` passes, run `pawl baseline` to start counting, and commit `.pawl/baseline.json`.

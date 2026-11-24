@@ -3,6 +3,7 @@ import { GATED_TAGS, getRule, isGated, type RuleTag, scopedRule, type Technology
 import { extraGlobals } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { defaultPolicy } from '../../policy/merge.ts'
+import { testRunnerFiles } from '../../policy/test-runners.ts'
 import { configIgnores, DEFAULT_IGNORES, literalBrackets, toBiomeIgnore, toEngineGlob } from '../../project/ignores.ts'
 import { type Level, type Policy, type Runtime } from '../../types.ts'
 import { isRecord, type Json, type JsonObject, sameJson, sortKeys } from '../../utils/json.ts'
@@ -154,6 +155,39 @@ const biomeOverrides = (
     ]
   })
 
+/** Final exclusions keep runner-specific assertions out of explicitly assigned other runners. */
+const testRunnerOverrides = (policy: Policy): JsonObject[] => {
+  const names = new Set([
+    ...effectiveRules(policy).keys(),
+    ...policy.overrides.flatMap(override => [...Object.keys(override.rules), ...Object.keys(override.options)])
+  ])
+  const overrides: JsonObject[] = []
+
+  for (const name of names) {
+    const files = testRunnerFiles(policy, name, true)
+    const entry = biomeEntry(
+      name,
+      'off',
+      () => true,
+      () => undefined
+    )
+
+    if (files && entry)
+      overrides.push({
+        includes: ['**', ...files.map(file => `!${toEngineGlob(file)}`)],
+        linter: { rules: toGroups([entry]) }
+      })
+  }
+
+  if (policy.testRunners.playwright)
+    overrides.push({
+      includes: ['**', ...policy.testRunners.playwright.map(file => `!${toEngineGlob(file)}`)],
+      linter: { domains: { playwright: 'none' } }
+    })
+
+  return overrides
+}
+
 /** Package domains and rules stay in the root config so policy globs keep their original base. */
 const packageOverrides = (policy: Policy, packages: NonNullable<BiomeContext['packages']>, lint = true): JsonObject[] =>
   Object.entries(packages).flatMap(([dir, technologies]) =>
@@ -232,7 +266,7 @@ export const biomeConfig = (
   const overrides = [
     ...(lint ? standardOverrides(include) : []),
     ...packageOverrides(policy, packages, lint),
-    ...(lint ? biomeOverrides(policy, include, packages) : [])
+    ...(lint ? [...biomeOverrides(policy, include, packages), ...testRunnerOverrides(policy)] : [])
   ]
   const globals = extraGlobals(runtimes)
   const restricted = lint ? importRestrictions(policy, dependencies) : undefined
@@ -357,7 +391,9 @@ export const biomeProjectConfig = (
   // Biome adds a project's overrides after the preset's, so the standard's own are not repeated here.
   const overrides = [
     ...packageOverrides(policy, context.packages ?? {}, context.lint !== false),
-    ...(context.lint === false ? [] : biomeOverrides(policy, include, context.packages))
+    ...(context.lint === false
+      ? []
+      : [...biomeOverrides(policy, include, context.packages), ...testRunnerOverrides(policy)])
   ]
   // A later pattern wins in Biome, so the preset's ignores are undone by naming the folders again.
   // The build folders detection found, such as a Rust project's target, are the project's own.

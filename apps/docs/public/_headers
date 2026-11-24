@@ -1,0 +1,3 @@
+# Markdown copies share their canonical URL with the equivalent HTML page.
+/*.md
+  Link: <https://pawl.santi020k.com/:splat/>; rel="canonical"

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from '../project/files.ts'
-import { ignoreMatcher, makeIgnore } from '../project/ignores.ts'
+import { chosenIgnoreMatcher, ignoreMatcher, makeIgnore } from '../project/ignores.ts'
 import { type Finding, type Level, type Override, type Policy } from '../types.ts'
 
 /**
@@ -54,7 +54,34 @@ export interface Scan {
   reads: string
   rules: readonly OwnRule[]
   matches: (file: string) => boolean
+  /**
+   * The files it reads even in the folders pawl's default ignores skip, such as the rules files AI
+   * tools keep in their own folders. The policy's own ignores and the .gitignore still apply.
+   */
+  readsIgnored?: (file: string) => boolean
+  /** Files to read beyond what git lists, such as those the directory walk skips outside a repository. */
+  alsoLists?: (root: string) => string[]
   scan: (file: string, text: string, report: Report) => void
+}
+
+/**
+ * What a scan skips: what every check skips, except the files the scan reads in the folders the
+ * defaults skip, as long as the person did not ignore them themselves.
+ */
+export const scanIgnores = (
+  root: string,
+  policy: Policy,
+  ignores: readonly string[] | undefined,
+  readsIgnored: ((file: string) => boolean) | undefined
+): ((file: string) => boolean) => {
+  const ignored = ignoreMatcher(root, policy, ignores)
+
+  if (!readsIgnored) return ignored
+
+  const chosen = chosenIgnoreMatcher(root, policy)
+
+  // The chosen ignores still skip node_modules, .git and .pawl.
+  return file => ignored(file) && !(readsIgnored(file) && !chosen(file))
 }
 
 export interface ScanOptions {
@@ -68,11 +95,13 @@ export interface ScanOptions {
 
 /** Run a scan over the project's files, or the ones given, and turn what it reports into findings. */
 export const runScan = (scan: Scan, { root, policy, files, ignores }: ScanOptions): Finding[] => {
-  const ignored = ignoreMatcher(root, policy, ignores)
+  const ignored = scanIgnores(root, policy, ignores, scan.readsIgnored)
   const rules = new Map(scan.rules.map(rule => [rule.name, rule]))
   const findings: Finding[] = []
 
-  for (const file of (files ?? listFiles(root)).filter(name => scan.matches(name) && !ignored(name))) {
+  const listed = files ?? [...new Set([...listFiles(root), ...(scan.alsoLists?.(root) ?? [])])]
+
+  for (const file of listed.filter(name => scan.matches(name) && !ignored(name))) {
     const path = join(root, file)
 
     if (!existsSync(path)) continue

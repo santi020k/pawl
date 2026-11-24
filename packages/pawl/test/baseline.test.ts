@@ -4,12 +4,14 @@ import { describe, expect, it } from 'vitest'
 import {
   applyBaseline,
   BASELINE_FILE,
+  type Baseline,
   baselineUnreadable,
   blankJsonStrings,
   createBaseline,
   newSuppressions,
   readBaseline,
-  scanSuppressions
+  scanSuppressions,
+  writeBaseline
 } from '../src/check/baseline.ts'
 import { check } from '../src/check/check.ts'
 import { exitCode } from '../src/check/result.ts'
@@ -38,6 +40,51 @@ describe('baseline', () => {
       version: 1,
       findings: { 'a.ts': { 'no-var': 2 }, 'b.ts': { eqeqeq: 1 } },
       suppressions: {}
+    })
+  })
+
+  it('records prototype-shaped filenames and rules as ordinary own keys', () => {
+    const keys = ['__proto__', 'constructor', 'toString', 'reviewProbe']
+    const findings = keys.flatMap(file => keys.map(rule => finding(file, rule)))
+    const prototype = Object.getOwnPropertyDescriptors(Object.prototype)
+    const recorded = createBaseline([...findings, ...findings], [])
+
+    expect(Object.getOwnPropertyDescriptors(Object.prototype)).toEqual(prototype)
+    expect(Object.keys(recorded.findings)).toHaveLength(keys.length)
+    for (const file of keys) {
+      expect(Object.hasOwn(recorded.findings, file)).toBe(true)
+      for (const rule of keys) {
+        expect(Object.hasOwn(recorded.findings[file] ?? {}, rule)).toBe(true)
+        expect(recorded.findings[file]?.[rule]).toBe(2)
+      }
+    }
+    const root = project()
+
+    writeBaseline(root, recorded)
+    expect(readBaseline(root)).toEqual(recorded)
+    expect(applyBaseline([...findings, ...findings], readBaseline(root))).toEqual({
+      fresh: [],
+      baselined: findings.length * 2,
+      canShrink: false
+    })
+    expect(applyBaseline(findings, createBaseline([], []))).toEqual({
+      fresh: findings,
+      baselined: 0,
+      canShrink: false
+    })
+  })
+
+  it('does not use inherited filename or rule counts', () => {
+    const findings = [finding('inherited.ts', 'reviewProbe'), finding('own.ts', 'reviewProbe')]
+    const rules: Record<string, number> = {}
+    const byFile: Baseline['findings'] = { 'own.ts': rules }
+
+    Object.setPrototypeOf(rules, { reviewProbe: 1 })
+    Object.setPrototypeOf(byFile, { 'inherited.ts': { reviewProbe: 1 } })
+    expect(applyBaseline(findings, { version: 1, findings: byFile, suppressions: {} })).toEqual({
+      fresh: findings,
+      baselined: 0,
+      canShrink: false
     })
   })
 
@@ -73,6 +120,24 @@ describe('baseline', () => {
 })
 
 describe('disable-comment ratchet', () => {
+  it('counts prototype-shaped filenames without inherited suppression allowances', () => {
+    const keys = ['__proto__', 'constructor', 'toString']
+    const suppressions = keys.map(file => ({ file, line: 1, text: 'eslint-disable' }))
+    const recorded = createBaseline([], suppressions)
+
+    for (const file of keys) {
+      expect(Object.hasOwn(recorded.suppressions, file)).toBe(true)
+      expect(recorded.suppressions[file]).toBe(1)
+    }
+    expect(newSuppressions(suppressions, recorded)).toEqual([])
+    expect(newSuppressions(suppressions, createBaseline([], [])).map(item => item.file)).toEqual(keys)
+    expect(newSuppressions([...suppressions, ...suppressions], recorded)).toHaveLength(keys.length * 2)
+    const inherited = createBaseline([], [])
+
+    Object.setPrototypeOf(inherited.suppressions, Object.fromEntries(keys.map(file => [file, 10])))
+    expect(newSuppressions(suppressions, inherited).map(item => item.file)).toEqual(keys)
+  })
+
   const root = project({
     'src/a.ts': [
       '// eslint-disable-next-line no-console',

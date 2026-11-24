@@ -123,7 +123,9 @@ describe('overrides in the policy', () => {
     const policy = policyWith({ overrides: [{ files: ['*.test.ts'], rules: { 'no-unused-vars': 'off' } }] })
     const plan = await eslintPlan({ root, policy, biomeActive: false, typescript: true })
 
-    expect(plan.config.slice(-2)).toEqual([
+    expect(
+      plan.config.filter(block => block.name === 'pawl/override/0' || block.name === 'pawl/override/0/typescript')
+    ).toEqual([
       { name: 'pawl/override/0', files: ['**/*.test.ts'], rules: { 'no-unused-vars': 'off' } },
       {
         name: 'pawl/override/0/typescript',
@@ -147,7 +149,7 @@ describe('overrides in the policy', () => {
     expect(plan.config.find(entry => entry.name === 'pawl/override/0')).toMatchObject({
       rules: { 'no-console': ['warn', { allow: ['log'] }] }
     })
-    expect(plan.notEnforced).toContainEqual({ rule: 'unicorn/no-null', needs: 'eslint-plugin-unicorn' })
+    expect(plan.notEnforced).toContainEqual({ rule: 'unicorn/no-null', needs: 'eslint-plugin-unicorn', required: true })
   })
 })
 

@@ -14,6 +14,21 @@ pnpm ok              # the full gate CI runs
 
 The hooks come from [`quality.yml`](quality.yml) and need the [Quality CLI](https://github.com/santi020k/quality).
 
+## Santiago-owned tools
+
+| Tool         | Use in this repository                                                                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lumen UI     | Landing-page components and semantic tokens in `apps/docs`.                                                                                                                                     |
+| OG           | Social-card generation, metadata and JSON-LD; `pnpm docs:build` generates the cards, and `pnpm --filter @santi020k/pawl-docs run audit` checks the built site. CI and deployment run the audit. |
+| Astro Doctor | `pnpm --filter @santi020k/pawl-docs run doctor`, also run in CI.                                                                                                                                |
+| Quality      | Git hooks and the repository-check task in `quality.yml`, plus the shared pnpm setup action in CI. `pnpm ok` remains the canonical gate.                                                        |
+| Commitprompt | `pnpm commit` and commit-message validation through the Quality hook.                                                                                                                           |
+| Dep Beacon   | Recommended in `.vscode/extensions.json` for dependency versions, pnpm catalogs and OSV findings in the editor.                                                                                 |
+
+In VS Code, install the recommended [Dep Beacon extension](https://marketplace.visualstudio.com/items?itemName=santi020k.vscode-dep-beacon), then open `package.json` or `pnpm-workspace.yaml`. In Zed, install Dep Beacon from the extension registry; it needs no project configuration. This is editor assistance, not a CI gate. Review updates before applying them and regenerate the lockfile with the repository's pnpm version. Keep Biome and Oxlint upgrades coordinated with the generated-file checks described in [AGENTS.md](AGENTS.md).
+
+Pawl itself supplies this repository's lint policy, replacing ESLint Config Basic. The docs intentionally use their own Signal brand rather than the Santiago Theme. Auth is not needed for this public static site and CLI.
+
 ## Commits
 
 Commits follow Conventional Commits. `pnpm commit` opens [Commitprompt](https://github.com/santi020k/commitprompt), and the `commit-msg` hook validates every message.
@@ -39,6 +54,25 @@ Use a Conventional Commit title, keep changes focused and add tests for behavior
 Work for the next version can start before the current one is out: create its `release/v<version>` branch early and open feature pull requests into it. CI checks those pull requests like the ones into `main`, and each still needs a changeset. Run `pnpm version-packages` on the branch only when the release is ready.
 
 The workflow publishes only what is missing, so a failed run is fixed with "Re-run failed jobs" on that same run, which keeps the release commit. Do not merge anything else into `main` until the release run is green; the workflow refuses to release a later commit that carries new changesets. A published version or tag is never replaced: fix a bad release with a new version. To roll back, deprecate the version with `npm deprecate` and release a fix.
+
+### Plugin stores at v1
+
+Publish the Pawl agent plugin to the Claude and Codex stores as part of the Pawl v1.0.0 launch. The v0.5.0 release includes the shared skill, platform manifests and local marketplace installation; store submission and publication are deferred to v1.
+
+When preparing v1:
+
+- Validate both plugin manifests and test installation and the shared skill in both clients against the v1 CLI.
+- Prepare the store listings, icon, installation instructions and required submission metadata from the reviewed release artifacts. Keep both plugin manifests on the same plugin version; the plugin version is independent of the CLI version.
+- Recheck each store's current submission requirements and complete its submission and approval process as part of the launch. Record the submission status and any approval still pending in the release pull request.
+- Verify that both public listings are available and that users can install and use them. Add the verified listing links to the plugin README and coding agents guide. A submitted or approved listing is not proof that it is publicly available.
+
+Track this work in the v1 release pull request. Do not report store publication complete until both listings and installation flows have been verified. See [the plugin README](plugins/pawl/README.md) for the package and local validation commands.
+
+### ESLint Config Basic and launch posts at v1
+
+Alongside Pawl v1.0.0, release an update to `@santi020k/eslint-config-basic` recommending migration to Pawl as Santiago's next-generation linting tool. Publish launch posts on Medium and [santi020k.com](https://santi020k.com). The [v1 launch kit](docs/launch-v1/README.md) contains the announcement copy, article drafts, publication order and verification checklist.
+
+Keep the ESLint Config Basic update focused on the recommendation and migration guidance; it does not imply automatic migration, package deprecation or removal of existing functionality. Prepare its version and release through that repository's normal process once Pawl v1 and its migration documentation are verified. Link both releases in the v1 release pull request.
 
 ### First release and setup
 

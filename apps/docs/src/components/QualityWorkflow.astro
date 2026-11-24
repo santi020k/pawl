@@ -1,0 +1,150 @@
+---
+import { ButtonLink, CodeTabs, Container, Icon } from '@santi020k/lumen-astro'
+
+const workflows = [
+  {
+    value: 'standalone',
+    label: 'Pawl alone',
+    language: 'bash',
+    code: '# Check lint, formatting and the baseline\npnpm exec pawl check\n\n# Apply safe fixes and format\npnpm exec pawl fix'
+  },
+  {
+    value: 'together',
+    label: 'With Quality',
+    language: 'yaml',
+    code: `# quality.yml · compatible with Quality 2.1
+version: 1
+tasks:
+  pawl:
+    command: pnpm
+    args: [exec, pawl, check]
+    required: true
+  verification:
+    command: pnpm
+    args: [run, verify]
+    required: true`
+  },
+  {
+    value: 'run',
+    label: 'Run the gate',
+    language: 'bash',
+    code: '# Check the configured tools and commands\nquality doctor\n\n# Run Pawl and your verification script\nquality check'
+  }
+]
+---
+
+<section class="band companion" id="with-quality" data-theme="dark" aria-labelledby="quality-title">
+  <Container>
+    <div class="companion__heading">
+      <div class="band-head">
+        <p class="kicker">Pawl + Quality · when you need more</p>
+        <h2 id="quality-title">A wider gate.<br /><span class="companion__accent">The same ratchet.</span></h2>
+      </div>
+      <p class="companion__lede">
+        Keep lint, formatting and the baseline in Pawl. Add Quality to coordinate your type checks, tests, builds and other
+        repository checks. Start with Pawl alone; bring Quality in when your workflow needs it.
+      </p>
+    </div>
+
+    <div class="companion__workspace">
+      <div class="companion__map">
+        <div class="companion__command"><Icon name="terminal" decorative /><code>quality check</code><span class="companion__command-label">Repository gate</span></div>
+        <div class="companion__roles">
+          <div class="companion__role companion__role--pawl">
+            <Icon name="shield-check" decorative />
+            <h3>Pawl</h3>
+            <p>Lint + formatting</p>
+            <ul><li>Your policy</li><li>Your chosen tools</li><li>Your baseline</li></ul>
+            <code>pawl check</code>
+          </div>
+          <div class="companion__role">
+            <Icon name="list-checks" decorative />
+            <h3>Your verification</h3>
+            <p>The rest of the gate</p>
+            <ul><li>Type checks</li><li>Tests</li><li>Builds</li></ul>
+            <code>pnpm run verify</code>
+          </div>
+        </div>
+        <p class="companion__ownership"><Icon name="git-branch" decorative /> One owner for each check. One entry point when you want it.</p>
+      </div>
+
+      <div class="companion__examples">
+        <p class="companion__label">Choose your workflow</p>
+        <CodeTabs ariaLabel="Pawl and Quality workflows" items={workflows} initialValue="together" codeLabel="Workflow example" wrap={false} copy />
+        <p class="companion__caption">Use the tools on their own, or connect them with an explicit configuration.</p>
+      </div>
+    </div>
+
+    <div class="companion__setup">
+      <div>
+        <h3>Before you run</h3>
+        <p>
+          Install Pawl and its chosen tools; install Quality for the combined workflow. The example expects an existing <code>verify</code> script that runs type checks, tests and builds in the order your repository needs, excluding
+          lint and Pawl. It must not call Quality itself. If your gate already includes Pawl, configure that gate once instead.
+        </p>
+        <p>Disable duplicate Quality checks when Pawl owns the tool, including native-language adapters.</p>
+      </div>
+      <div class="companion__links">
+        <ButtonLink href="/guide/quality/" variant="primary">Connect the workflows</ButtonLink>
+        <ButtonLink href="https://quality.santi020k.com" variant="secondary" newTab>Explore Quality</ButtonLink>
+      </div>
+    </div>
+  </Container>
+</section>
+
+<style>
+  .companion {
+    background: hsl(var(--canvas));
+    color: hsl(var(--ink));
+    background-image: radial-gradient(ellipse at 0% 50%, hsl(var(--brand) / .055), transparent 60%);
+  }
+  .companion code { font-family: var(--pawl-font-mono); }
+  .companion__heading { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 2rem 4rem; margin-bottom: 3rem; }
+  .companion__heading .band-head { margin: 0; }
+  .companion__heading h2 { font-size: clamp(2rem, 4vw, 3.25rem); }
+  .companion__accent { color: hsl(var(--brand)); }
+  .companion__lede { margin: 0; color: hsl(var(--ink-soft)); font-size: 1.125rem; line-height: 1.75; }
+  .companion__workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 3rem; }
+  .companion__map { padding-top: 2.75rem; min-width: 0; }
+  .companion__command { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: 1rem 1.25rem; border: 1px solid hsl(var(--line)); border-radius: .5rem; background: hsl(var(--surface)); }
+  .companion__command > :global(.ui-icon) { color: hsl(var(--brand)); width: 1.25rem; height: 1.25rem; }
+  .companion__command code { color: hsl(var(--ink)); font-size: 1rem; }
+  .companion__command-label { margin-left: auto; font-size: .875rem; color: hsl(var(--ink-muted)); }
+  .companion__roles { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; padding-top: 2rem; }
+  .companion__roles::before { position: absolute; top: 0; left: 25%; right: 25%; height: 2rem; border-inline: 1px solid hsl(var(--brand) / .5); content: ''; }
+  .companion__role { position: relative; padding: 1.25rem; border: 1px solid hsl(var(--line)); border-radius: .5rem; background: hsl(var(--surface)); }
+  .companion__role--pawl { border-color: hsl(var(--brand) / .45); background: hsl(var(--brand-soft) / .4); }
+  .companion__role > :global(.ui-icon) { color: hsl(var(--brand)); width: 1.5rem; height: 1.5rem; }
+  .companion__role h3 { margin: .75rem 0 .25rem; font-size: 1.125rem; line-height: 1.3; }
+  .companion__role p { margin: 0; color: hsl(var(--ink-soft)); font-size: .875rem; }
+  .companion__role ul { margin: 1rem 0; padding: 0; list-style: none; color: hsl(var(--ink-soft)); font-size: .875rem; line-height: 1.9; }
+  .companion__role code { display: block; padding-top: .875rem; border-top: 1px solid hsl(var(--line)); color: hsl(var(--brand)); font-size: .8125rem; overflow-wrap: anywhere; }
+  .companion__ownership { display: flex; align-items: start; gap: .65rem; margin: 1.25rem 0 0; color: hsl(var(--ink-soft)); font-size: .875rem; }
+  .companion__ownership :global(.ui-icon) { flex: none; width: 1.125rem; height: 1.125rem; margin-top: .125rem; color: hsl(var(--brand)); }
+  .companion__examples { min-width: 0; }
+  .companion__label { margin: 0 0 1rem; font: 500 .875rem/1.6 var(--pawl-font-mono); color: hsl(var(--ink-soft)); }
+  .companion__examples :global(.ui-code-tabs) { min-width: 0; width: 100%; }
+  .companion__examples :global(.ui-code-tabs__list) { overflow-x: auto; overscroll-behavior-x: contain; }
+  .companion__examples :global(.ui-code-tabs__tab) { flex: none; white-space: nowrap; min-height: 2.75rem; font-size: .875rem; }
+  .companion__examples :global(pre) { min-height: 20.5rem; font-size: .875rem; line-height: 1.7; }
+  .companion__examples :global([data-ui-code-copy]) { min-width: 2.75rem; min-height: 2.75rem; }
+  .companion__caption { margin: 1rem 0 0; font-size: .875rem; color: hsl(var(--ink-muted)); }
+  .companion__setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2rem 4rem; align-items: center; margin-top: 3rem; border-top: 1px solid hsl(var(--line)); padding-top: 2rem; }
+  .companion__setup h3 { margin: 0 0 .5rem; font-size: 1rem; }
+  .companion__setup p { max-width: 54rem; margin: .5rem 0 0; font-size: .9375rem; color: hsl(var(--ink-soft)); }
+  .companion__setup code { color: hsl(var(--brand)); font-size: .9em; }
+  .companion__links { display: grid; gap: .75rem; }
+  @media (max-width: 56rem) {
+    .companion__heading, .companion__workspace, .companion__setup { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+    .companion__map { padding-top: 0; }
+    .companion__links { display: flex; flex-wrap: wrap; }
+  }
+  @media (max-width: 30rem) {
+    .companion__examples :global(.ui-code-tabs__tab) { flex: 1; min-width: 0; white-space: normal; padding: .5rem .6rem; }
+    .companion__roles { gap: .75rem; }
+    .companion__role { padding: .875rem; }
+    .companion__role h3 { overflow-wrap: anywhere; }
+    .companion__command-label { margin-left: 0; width: 100%; }
+    .companion__links { display: grid; }
+  }
+</style>

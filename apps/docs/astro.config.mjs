@@ -89,11 +89,29 @@ export default defineConfig({
           label: 'Workflows',
           items: [
             { label: 'Coding agents', slug: 'guide/agents' },
+            { label: 'Editors', slug: 'guide/editors' },
             { label: 'CI and hooks', slug: 'guide/ci' },
             { label: 'With Quality', slug: 'guide/quality' },
             { label: 'Monorepos', slug: 'guide/monorepos' },
             { label: 'Rust, Swift and Kotlin', slug: 'guide/languages' },
             { label: 'Troubleshooting', slug: 'guide/troubleshooting' }
+          ]
+        },
+        {
+          label: 'Adoption and integration',
+          collapsed: true,
+          items: [
+            { label: 'Strict adoption', slug: 'guide/strict-adoption' },
+            { label: 'Shared ESLint configs', slug: 'guide/shared-eslint' },
+            { label: 'Astro coverage', slug: 'guide/framework-coverage' },
+            { label: 'Generated scopes', slug: 'guide/generated-scopes' },
+            { label: 'Import-sort ownership', slug: 'guide/formatter-ownership' },
+            { label: 'Test runners', slug: 'guide/test-runners' },
+            { label: 'ESLint caching', slug: 'guide/eslint-cache' },
+            { label: 'Lint task ownership', slug: 'guide/lint-ownership' },
+            { label: 'Task reachability', slug: 'guide/task-reachability' },
+            { label: 'Reviewed exceptions', slug: 'guide/reviewed-exceptions' },
+            { label: 'JSON report contract', slug: 'guide/report-contract' }
           ]
         },
         {

@@ -2,35 +2,49 @@ version: "0.2"
 # The docs and code use both British and American spellings.
 language: en,en-GB
 words:
+  - gbeng
+  - gbsct
+  - gbwls
   - activedescendant
   - agentchat
   - alnum
   - astrojs
   - baselined
+  - bidi
   - biomejs
   - bunfig
   - bunx
+  - CHOSEONG
   - classlist
+  - CLAUDECODE
   - clinerules
   - clippy
+  - Cmder
   - cntrl
   - codegen
+  - COLORTERM
   - commitprompt
   - Containerfile
+  - cursorrules
   - darraghor
   - detekt
   - distroless
   - Dockerfiles
+  - errorformat
   - esbuild
   - extglob
   - extglobs
   - fflate
   - fontsource
   - genai
+  - ghostty
+  - HALFWIDTH
   - heredocs
   - Hono
   - Instantiator
   - isnan
+  - JUNGSEONG
+  - keycaps
   - kiro
   - knip
   - ktlint
@@ -58,11 +72,15 @@ words:
   - pbxproj
   - proptypes
   - punct
+  - Qwen
   - Qwik
+  - replit
   - rustc
   - rustup
+  - rxvt
   - santi
   - santi020k
+  - SARIF
   - serviceworker
   - setext
   - Slidev
@@ -77,6 +95,7 @@ words:
   - Titlebar
   - topsecret
   - treegrid
+  - truecolor
   - tsgolint
   - Turborepo
   - undici
@@ -86,13 +105,18 @@ words:
   - Vitest
   - WCAG
   - wildmatch
+  - windsurfrules
   - workerd
   - xcassets
   - xcframework
   - xcodeproj
   - xcuserdata
   - xcworkspace
+  - xdescribe
   - xdigit
+  - xtest
+  - ZWNJ
+  - ZWSP
 ignorePaths:
   - node_modules
   - dist

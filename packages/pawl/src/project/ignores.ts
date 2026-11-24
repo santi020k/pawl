@@ -350,6 +350,16 @@ const globToRegExp = (pattern: string): RegExp => {
   return new RegExp(`^${source}(?:/.*)?$`)
 }
 
+/**
+ * The ignores a person chose, without pawl's defaults: the root .gitignore when the policy
+ * respects it, and the policy's own patterns. For the files a check reads even in the folders
+ * the defaults skip.
+ */
+export const chosenIgnoreMatcher = (
+  root: string,
+  policy: Pick<Policy, 'gitignore' | 'ignore'>
+): ((file: string) => boolean) => makeIgnore([...(policy.gitignore ? gitignorePatterns(root) : []), ...policy.ignore])
+
 /** A matcher for pawl's own checks, which follows every ignore the engines follow. */
 export const ignoreMatcher = (
   root: string,
@@ -379,4 +389,21 @@ export const makeIgnore = (patterns: readonly string[]): ((file: string) => bool
 
     return ignored
   }
+}
+
+/** Ordered policy scopes as positive engine blocks with later exclusions; later positives re-include. */
+export const orderedEngineScopes = (patterns: readonly string[]): Array<{ files: string[]; excluded: string[] }> => {
+  const groups = new Map<string, { files: string[]; excluded: string[] }>()
+  for (const [index, pattern] of patterns.entries()) {
+    if (pattern.startsWith('!')) continue
+    const excluded = patterns
+      .slice(index + 1)
+      .filter(next => next.startsWith('!'))
+      .map(next => toEngineGlob(next.slice(1)))
+    const key = JSON.stringify(excluded)
+    const group = groups.get(key) ?? { files: [], excluded }
+    group.files.push(toEngineGlob(pattern))
+    groups.set(key, group)
+  }
+  return [...groups.values()]
 }

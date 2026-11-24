@@ -1,12 +1,14 @@
 import { join } from 'node:path'
 import { type Engine, EngineError, type RunOptions } from '../engines/engine.ts'
+import { formatterOwnership } from '../engines/eslint/format-ownership.ts'
 import { checkLanguages } from '../engines/languages/check.ts'
 import { activeEngines } from '../engines/registry.ts'
 import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../policy/project.ts'
 import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
 import { configIgnores, ignoreMatcher } from '../project/ignores.ts'
-import { runScans } from '../scans/registry.ts'
+import { runScans, scansReadIgnored } from '../scans/registry.ts'
+import { scanIgnores } from '../scans/scan.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
 import { mapAsync } from '../utils/list.ts'
@@ -20,9 +22,12 @@ import {
   writeBaseline
 } from './baseline.ts'
 import { type CheckResult, isBlocked } from './result.ts'
+import { scanTests, testCounts, weakerTests } from './tests.ts'
 
 export interface CheckOptions {
   root: string
+  /** Opt in to the declared deterministic ESLint cache. Fix runs are always uncached. */
+  eslintCache?: boolean
   /** Only look at files changed against HEAD, plus untracked ones. Outside a git repository, every file. */
   changed?: boolean
   /** Only look at files changed since the branch left this git ref, such as `origin/main`. */
@@ -40,6 +45,14 @@ export interface CheckOptions {
   policy?: Policy
   /** Fail when there are more new warnings than this. The policy's `maxWarnings`, when lower, wins. */
   maxWarnings?: number
+  /** Told when each engine starts and ends, for a person watching. */
+  progress?: (event: CheckProgress) => void
+}
+
+/** An engine of a check that started, or ended. */
+export interface CheckProgress {
+  engine: string
+  done: boolean
 }
 
 /** The lower of two warning limits, so a command line cannot loosen what the policy sets. */
@@ -130,24 +143,37 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const commands: string[] = []
   const engines: CheckResult['engines'] = []
   const ignored = ignoreMatcher(root, policy, detection.ignores)
+  // Pawl's own scans also read agent rules files in the folders the default ignores skip.
+  const ownIgnored = scanIgnores(root, policy, detection.ignores, scansReadIgnored)
   const asked = options.files ? namedScope(root, options.files) : gitScope(root, options, setup)
   const scoped = asked && {
     targets: asked.targets.filter(file => !ignored(file)),
-    files: asked.files.filter(file => !ignored(file))
+    files: asked.files.filter(file => !ownIgnored(file))
   }
-  const empty = scoped !== undefined && scoped.targets.length === 0
+  // Nothing for the engines: they do not run, though pawl's own scans may still have files.
+  const noTargets = scoped !== undefined && scoped.targets.length === 0
+  const empty = noTargets && scoped.files.length === 0
   // Without its baseline a check would report every old finding as new, so it does not run at all.
   const unreadable = options.updateBaseline === true ? undefined : unreadableBaseline(root)
-  const idle = empty || unreadable !== undefined
+  let idle = empty || unreadable !== undefined
 
   if (unreadable) setup.push(unreadable)
 
   setup.push(...lockIssues(policy))
+  if (!idle) {
+    const ownership = await formatterOwnership(
+      project,
+      (scoped?.files ?? listFiles(root)).filter(file => !ignored(file))
+    )
+    setup.push(...ownership)
+    if (ownership.length > 0) idle = true
+  }
 
   const findings: Finding[] = []
   const own = scoped ? { files: scoped.files } : {}
   const run: RunOptions = {
     root,
+    eslintCache: options.eslintCache === true,
     ...(scoped ? { files: scoped.targets } : {}),
     write: options.fix === true,
     // For Prettier, which has no config file of pawl's to read them from.
@@ -169,9 +195,13 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
       if (!engine.installed(root)) return { findings: [], setup: [...state.issues, engine.missing], commands: [] }
 
-      if (idle || !state.runnable) return { findings: [], setup: state.issues, commands: [] }
+      if (idle || noTargets || !state.runnable) return { findings: [], setup: state.issues, commands: [] }
+
+      options.progress?.({ engine: engine.name, done: false })
 
       const outcome = await runEngine(engine, run)
+
+      options.progress?.({ engine: engine.name, done: true })
 
       return { ...outcome, setup: [...state.issues, ...outcome.setup] }
     },
@@ -189,7 +219,16 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     findings.push(...runScans({ root, policy, ignores: detection.ignores, ...own }))
 
     // The other languages the policy names, each with its own tools.
-    const languages = await checkLanguages({ root, policy, detection, ignored, write: options.fix === true, ...own })
+    // The tools of other languages get only the files past every ignore.
+    const languageFiles = scoped ? { files: scoped.files.filter(file => !ignored(file)) } : {}
+    const languages = await checkLanguages({
+      root,
+      policy,
+      detection,
+      ignored,
+      write: options.fix === true,
+      ...languageFiles
+    })
 
     engines.push(...languages.engines)
     commands.push(...languages.commands)
@@ -200,16 +239,18 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const maxWarnings = lowerLimit(options.maxWarnings, policy.maxWarnings)
   const limit = maxWarnings === undefined ? {} : { maxWarnings }
 
-  // The policy's ignore list applies at once, even before the engine config is synced.
-  const kept = findings.filter(finding => !ignored(finding.file))
+  // The policy's ignore list applies at once, even before the engine config is synced. Pawl's own
+  // findings follow the ignores of its scans, which read agent rules files the engines skip.
+  const kept = findings.filter(finding => !(finding.engine === 'pawl' ? ownIgnored : ignored)(finding.file))
   const suppressions = idle ? [] : scanSuppressions(root, ignored, scoped?.files)
+  const tests = idle ? [] : scanTests(root, ignored, scoped?.files)
 
   if (options.updateBaseline) {
     // A check that did not complete knows only some of the findings. Recorded as the baseline,
     // they would make every finding it missed fail later as new, so the file is left as it is.
     const complete = !isBlocked(setup)
 
-    if (complete) writeBaseline(root, createBaseline(kept, suppressions))
+    if (complete) writeBaseline(root, createBaseline(kept, suppressions, testCounts(tests)))
 
     return {
       findings: [],
@@ -226,16 +267,26 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
   const baseline = readBaseline(root)
   const { fresh, baselined, canShrink } = applyBaseline(kept, baseline)
+  const whole = scoped === undefined && !isBlocked(setup)
+  const ratchet = weakerTests(tests, baseline?.tests, { policy, whole, ignored })
+  const uncounted = baseline !== undefined && baseline.tests === undefined && testCounts(tests)
+
+  // A new skipped test the ratchet fails is the one the engine's own skipped-test rule warns about.
+  const skips = new Set(ratchet.findings.map(finding => `${finding.file}:${finding.line}`))
+  const engineFresh = fresh.filter(
+    finding => !(finding.rule === 'vitest/no-disabled-tests' && skips.has(`${finding.file}:${finding.line}`))
+  )
 
   return {
-    findings: [...fresh, ...newSuppressions(suppressions, baseline)].sort(byPosition),
+    findings: [...engineFresh, ...newSuppressions(suppressions, baseline), ...ratchet.findings].sort(byPosition),
     baselined,
     setup,
     engines,
     commands,
     hasBaseline: baseline !== undefined,
     // A partial run cannot tell whether findings elsewhere are gone, nor can a run where an engine failed.
-    canShrinkBaseline: scoped === undefined && !isBlocked(setup) && canShrink,
+    canShrinkBaseline: whole && (canShrink || ratchet.canTighten),
+    ...(uncounted && Object.keys(uncounted).length > 0 ? { testsUncounted: true } : {}),
     nothingToCheck: empty,
     ...limit
   }

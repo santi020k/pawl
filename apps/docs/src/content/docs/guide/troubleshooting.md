@@ -32,6 +32,8 @@ It prints the setup, one line per part:
 | `Guards`   | The guards that are on                                                                |
 | `Baseline` | How many findings the baseline allows, or that there is none                          |
 
+In a terminal the doctor puts these lines under Project, Tools, and Ratchet and guards, with a mark for each: a tick when it is fine, a warning when it is worth a look, and a cross when it is broken. In a pipe or under a coding agent it prints them as plain lines, as above.
+
 Then it lists each problem, or `No problems found.` A problem is:
 
 - a tool that is in use but not installed, pawl itself included;

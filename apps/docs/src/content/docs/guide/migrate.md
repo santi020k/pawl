@@ -58,11 +58,11 @@ npx @santi020k/pawl migrate --extends @acme/pawl-policy
 
 With `--extends`, the new `pawl.config.ts` builds on that policy, and `migrate` compares your config with the standard plus the policy. Only what differs from the policy is written down: rule levels, style and ignores.
 
-Moving onto a policy means taking its levels. Where your old config had a rule looser than the policy, `migrate` leaves it out and lists it in the report as kept at the policy's level; a rule your config had stricter is still carried over. You can loosen a rule again under `rules`, unless the policy locks it.
+Explicit source rules take precedence over unlocked parent levels. Locked rules retain their policy floor; the report lists source settings raised to satisfy that floor. Parent rules and exceptions remain where the source says nothing.
 
 Install the policy package first: `migrate` has to read it to compare. A relative path to a policy file works too.
 
-Migrating file scopes onto a parent policy that already has `overrides` requires manual reconciliation. Pawl stops before writing rather than guessing how the old scopes should combine with the parent's scopes.
+Parent file overrides are supported with the precedence described below. Unsupported option inheritance or scope composition stops before any files are written.
 
 ## Options
 
@@ -76,3 +76,21 @@ Migrating file scopes onto a parent policy that already has `overrides` requires
 `pawl init` does not read an ESLint config: with an `.eslintrc` it says so and points here, because migrating is the only way that file's rules reach the policy. Run `pawl migrate` first, in place of `init`.
 
 Convert a legacy `.eslintrc` to flat config with `npx @eslint/migrate-config <config-file>` first, then review the converted config and run `pawl migrate`. Migration no longer flattens legacy configurations from sampled files, because that could lose inherited file-specific rules.
+
+## Extending a policy with file overrides
+
+Migration replays explicit source rules in their original order after the shared
+policy's overrides. Parent exceptions still apply where the source does not name
+the rule. Source rules can replace unlocked parent levels; `locked` rules always
+retain their policy floor, including in tests and scripts.
+
+For example, a shared script exception for `no-console` remains when the source
+only adds test-specific `no-debugger` settings. If the source explicitly enables
+`no-console` in scripts, that explicit setting takes precedence. Migration reports
+source levels that were raised to satisfy a locked floor.
+
+Rule options retain ESLint's source inheritance. A severity-only rule that would
+accidentally inherit different options from the parent or a preset is rejected
+before writing the policy, backup or migration report. Set explicit source options
+or compose that configuration manually. ESLint options are never translated into
+Biome options: review the report's engine coverage and option differences.

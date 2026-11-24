@@ -51,9 +51,15 @@ The landing page's version badge and its `softwareVersion` in the JSON-LD come f
 
 The landing page uses the hand-made `public/og.jpg`. Every doc page gets its own card: `pnpm run og` (also the first step of `build`) reads each page's title and description and writes `public/og/<page>.webp`. The `Head` override points `og:image` and `twitter:image` at it.
 
+`cardCopy` in `og.config.mjs` provides dedicated titles and descriptions for cards that need shorter wording. These overrides affect the image only; page titles and search descriptions keep their own wording. Other cards use the page title and a shortened description. Keep card copy specific to supported capabilities while allowing for the project's different languages and tools.
+
 `@santi020k/og` also writes the metadata on both halves of the site. The landing layout renders its `MetadataHead` with the hand-made card, and the Starlight `Head` override adds the card tags to Starlight's own. Both add JSON-LD from the library's schema helpers: `WebSite`, `SoftwareApplication` and `SoftwareSourceCode` on the landing page, `TechArticle` and `BreadcrumbList` on each doc page.
 
 `pnpm --filter @santi020k/pawl-docs run audit` checks the built `dist/`: titles, descriptions, canonicals, robots, Open Graph and X tags, JSON-LD, that every social image exists at 1200×630, the sitemap, `robots.txt`, and `llms.txt` with the Markdown copy of every page. CI and the deploy workflow run it after the build.
+
+`public/_headers` gives each Markdown copy an HTTP `Link` header pointing to the equivalent HTML page as canonical. Cloudflare Pages applies these headers to static files; Astro's development and preview servers do not. After deployment, check a nested page such as `/guide/ratchet.md` and a top-level page such as `/changelog.md` with `curl -I`.
+
+The production alias `pawl-docs.pages.dev` also serves the site, with canonical tags pointing to the custom domain. Redirecting that hostname requires a Cloudflare Bulk Redirect; Pages `_redirects` does not support hostname matching. Configure only the production alias, preserve paths and query strings, and leave preview deployment hostnames available. Verify the homepage and a nested documentation path after enabling the redirect.
 
 ## Deploy
 

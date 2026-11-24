@@ -1,0 +1,67 @@
+---
+
+name: pawl
+description: Set up or migrate to Pawl, check and fix Pawl findings, explain its rules, and diagnose its lint and formatting tools. Use when the user requests Pawl or the repository already uses @santi020k/pawl; do not introduce Pawl for an unrelated linting task.
+---
+
+# Pawl
+
+Use the project's Pawl CLI and policy. Installing this plugin does not install Pawl, engines, hooks, or an MCP server; its setup workflow can install project tools when authorized.
+
+## Select the local CLI
+
+Read the repository instructions, package scripts, package manager and lockfile, and Pawl configuration. Inspect Git status and the relevant diff before choosing a file scope.
+
+Prefer the repository's documented commands. In the examples below, `pawl` means the installed project binary, invoked through its package manager: `pnpm exec pawl`, `yarn exec pawl`, or `npm exec --no -- pawl`. Confirm `@santi020k/pawl` is installed in the project first; do not use a bare `npx pawl` or a download command to compensate for a missing binary.
+
+Run from the directory whose Pawl policy applies, normally the repository root. Check `pawl --version` and `pawl --help` before relying on options: the plugin and CLI can be updated independently. If Pawl is missing, follow the repository's installation instructions when setup is authorized; otherwise report the missing tool. Preserve its package manager and existing engine choices.
+
+## Check and fix
+
+Choose the scope that matches the task:
+
+- For known task files, use explicit paths: `pawl check src/example.ts --format agent`.
+- Use `pawl check --changed --format agent` when all uncommitted changes belong to the task. This includes changes against `HEAD` and untracked files, including other people's work. Outside Git it checks the whole project.
+- For a branch review, use `pawl check --since <base-ref> --format agent`. Do not combine `--since` with `--changed` or file arguments.
+- Use a whole-project check or the repository's canonical validation command when the request or repository instructions require it.
+
+`--format agent` emits JSON lines with findings and available fix guidance. `--format json` gives the complete report. Read stderr and the process exit status as well as stdout:
+
+| Exit | Meaning                                   | Response                                                                                |
+| ---- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| 0    | No new blocking findings under the policy | Report the actual scope checked; baseline findings or allowed warnings can still exist. |
+| 1    | New errors or too many new warnings       | Inspect and fix the relevant findings.                                                  |
+| 2    | Setup or execution problem                | Diagnose the failed tool or configuration; the check is incomplete.                     |
+
+Empty output alone does not prove success. Do not discard a failed status with `|| true` or treat an engine that did not run as a clean check.
+
+For a fix request, inspect the affected files, run `pawl fix` with the same explicit file scope, review its diff, and rerun `pawl check` on that scope. `fix --changed` is appropriate only when the changed files are all in scope. Fix remaining findings in the code, preserving unrelated edits. A read-only review does not authorize `fix`.
+
+Use `pawl explain <rule>` to see a rule's meaning and effective level. For missing tools, unsupported versions, or policy drift, run `pawl doctor --format json`. Fix the reported cause within the authorized scope, then repeat the failed check. If it remains blocked, report the command, diagnostic, and incomplete coverage instead of retrying without a new hypothesis.
+
+## Setup and migration
+
+For a request to adopt Pawl, inspect the existing linter and formatter before selecting `init` or `migrate`. Use `migrate` to carry an existing ESLint configuration into a Pawl policy, and review anything it cannot carry over.
+
+Preview the intended command with `--dry-run` before applying it. Preserve existing tools with `--mode keep` unless the user requested a different choice. On versions that support it, use `--no-baseline` unless accepting existing findings is part of the authorized setup. For example:
+
+```sh
+pawl init --mode keep --no-baseline --dry-run
+pawl migrate --mode keep --no-baseline --dry-run
+```
+
+These are alternatives, not two consecutive setup steps. A migration preview describes the migration; do not assume it shows every subsequent installation and initialization action. Account for the follow-on setup and dependencies before applying it. Migration may move the old ESLint configuration aside; `--keep-config` preserves it when that behavior is desired.
+
+Explain material changes revealed by the preview. Apply the selected command without `--dry-run`, using `--yes` only within the user's existing authorization. Do not ask again for an unchanged, already authorized plan. Ask before materially changing the agreed tools, policy, or scope. Noninteractive execution can accept the plan automatically, so omitting `--yes` is not a safety boundary.
+
+If the installed version lacks `--no-baseline`, do not silently fall back to a setup command that accepts existing findings. Explain that behavior and resolve the baseline choice first. Use `--no-install` only when installation is intentionally deferred, and clearly report the remaining setup work.
+
+After setup, inspect the generated diff, run `pawl doctor --format json`, then check the intended scope. A successful preview or partially written configuration is not completed setup.
+
+## Preserve the ratchet and integrations
+
+Do not add disable comments, weaken rule levels, broaden ignores, delete the baseline, or run `pawl baseline` merely to make a failing check pass. A baseline update accepts findings across the project; it is not limited by the files from a preceding check. Only change it when the user explicitly requested accepting those findings, and review the resulting diff.
+
+The plugin installs no automatic hooks. For an explicit request for agent hooks or persistent agent instructions, inspect the existing `AGENTS.md`, Claude Code settings, and Cursor hooks, then preview `pawl init --agents` with the chosen setup options. Preserve existing configuration and avoid adding a second equivalent hook. Reuse existing Pawl integrations instead of enabling hooks just because this skill was loaded.
+
+Report the files changed, exact verification scope and commands, remaining findings or setup problems, and any intentionally deferred installation. Do not claim a scoped check validates the whole repository.

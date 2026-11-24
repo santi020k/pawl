@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { createRequire, findPackageJSON } from 'node:module'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { GUARDS, getGuard } from '../catalog/guards.ts'
@@ -34,57 +34,213 @@ export const findProjectRoot = (start: string): string => {
   )
 }
 
-/** Resolve a package or path the way the file that names it would, including packages that only offer ESM. */
+/** Read a package manifest without allowing a test runner's resolver to substitute ambient packages. */
+const manifestAt = (path: string): Record<string, unknown> | undefined => {
+  if (!existsSync(path)) return undefined
+  const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
+  if (!isRecord(value)) throw new Error(`Invalid package manifest: ${path}`)
+  return value
+}
+
+const packageManifest = (
+  name: string,
+  fromFile: string
+): { path: string; value: Record<string, unknown> } | undefined => {
+  const dirs = ancestors(dirname(fromFile))
+  // Node self references resolve only within the nearest package scope, and require exports.
+  const scope = dirs.map(dir => join(dir, 'package.json')).find(path => existsSync(path))
+  const self = scope ? manifestAt(scope) : undefined
+  if (scope && self?.name === name && 'exports' in self) return { path: scope, value: self }
+  for (const dir of dirs) {
+    const path = join(dir, 'node_modules', name, 'package.json')
+    const value = manifestAt(path)
+    if (value) return { path, value }
+  }
+  return undefined
+}
+
+/** NODE_OPTIONS uses double-quoted strings; single quotes are literal characters. */
+const environmentOptions = (value: string): string[] => {
+  const tokens: string[] = []
+  let token = ''
+  let quoted = false
+  let started = false
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index]
+    if (character === undefined) break
+    if (character === '\\' && quoted) {
+      const next = value[++index]
+      if (next === undefined)
+        throw new Error('Cannot determine public export conditions: incomplete NODE_OPTIONS escape.')
+      token += next
+      started = true
+    } else if (character === '"') {
+      quoted = !quoted
+      started = true
+    } else if (character === ' ' && !quoted) {
+      if (started) tokens.push(token)
+      token = ''
+      started = false
+    } else {
+      if (!quoted && /\s/.test(character))
+        throw new Error('Cannot determine public export conditions: unsupported NODE_OPTIONS whitespace.')
+      token += character
+      started = true
+    }
+  }
+  if (quoted) throw new Error('Cannot determine public export conditions: unterminated NODE_OPTIONS string.')
+  if (started) tokens.push(token)
+  return tokens
+}
+
+// These options consume the next token even when that token resembles a condition flag.
+const VALUE_OPTIONS = new Set([
+  '-e',
+  '--eval',
+  '-p',
+  '--print',
+  '-r',
+  '--require',
+  '--import',
+  '--loader',
+  '--experimental-loader',
+  '--input-type',
+  '--title',
+  '--icu-data-dir',
+  '--openssl-config',
+  '--redirect-warnings',
+  '--diagnostic-dir',
+  '--trace-event-categories',
+  '--trace-event-file-pattern',
+  '--watch-path',
+  '--env-file',
+  '--env-file-if-exists',
+  '--test-name-pattern',
+  '--test-skip-pattern',
+  '--test-reporter',
+  '--test-reporter-destination',
+  '--heap-prof-dir',
+  '--heap-prof-name',
+  '--cpu-prof-dir',
+  '--cpu-prof-name',
+  '--snapshot-blob',
+  '--build-snapshot-config',
+  '--tls-cipher-list',
+  '--experimental-policy',
+  '--policy-integrity'
+])
+
+// Capture startup inputs before callers can mutate process.env or process.execArgv.
+const RUNTIME_OPTIONS = process.env.NODE_OPTIONS ?? ''
+const RUNTIME_ARGUMENTS = [...process.execArgv]
+const REQUIRE_MODULE = process.features.require_module
+const BOOLEAN_OPTIONS = new Set([
+  '--experimental-require-module',
+  '--no-experimental-require-module',
+  '--experimental-strip-types',
+  '--no-experimental-strip-types',
+  '--experimental-import-meta-resolve',
+  '--no-experimental-import-meta-resolve',
+  '--no-warnings',
+  '--warnings',
+  '--no-deprecation',
+  '--trace-warnings',
+  '--trace-deprecation',
+  '--enable-source-maps',
+  '--no-enable-source-maps'
+])
+const conditionOption = (value: string | undefined): boolean =>
+  value !== undefined && /^(?:--(?:conditions|(?:no[-_])?addons)(?:=|$)|-C)/.test(value)
+
+const importConditions = (): ReadonlySet<string> => {
+  const conditions = new Set(['node', 'import', 'default'])
+  if (REQUIRE_MODULE) conditions.add('module-sync')
+  let addons = true
+  const custom: string[] = []
+  const args = [...environmentOptions(RUNTIME_OPTIONS), ...RUNTIME_ARGUMENTS]
+  for (let index = 0; index < args.length; index++) {
+    const argument = args[index]
+    if (argument === undefined) break
+    const equal = argument.indexOf('=')
+    const flag = (equal < 0 ? argument : argument.slice(0, equal)).replaceAll('_', '-')
+    if (flag === '--experimental-config-file' || flag === '--experimental-default-config-file')
+      throw new Error(
+        'Cannot determine public export conditions from experimental Node configuration files. Pass conditions explicitly on the command line or in NODE_OPTIONS.'
+      )
+    if (flag === '-C' && equal >= 0)
+      throw new Error('Cannot determine public export conditions: unsupported short condition option syntax.')
+    if (flag === '--conditions' || flag === '-C') {
+      const value = equal < 0 ? args[++index] : argument.slice(equal + 1)
+      if (!value) throw new Error('Cannot determine public export conditions: a condition value is missing.')
+      custom.push(value)
+    } else if (flag === '--no-addons') addons = false
+    else if (flag === '--addons') addons = true
+    else if (equal < 0 && VALUE_OPTIONS.has(flag)) index++
+    else if (flag.startsWith('-C') || flag.startsWith('--conditions'))
+      throw new Error('Cannot determine public export conditions: unsupported condition option syntax.')
+    else if (equal < 0 && flag.startsWith('-') && !BOOLEAN_OPTIONS.has(flag) && conditionOption(args[index + 1]))
+      throw new Error(
+        'Cannot determine public export conditions: an unknown option may consume the following condition flag. Use an explicit option=value form.'
+      )
+  }
+  if (addons) conditions.add('node-addons')
+  for (const condition of custom) conditions.add(condition)
+  return conditions
+}
+
+/** Node selects recognized export conditions in declaration order, not a fixed preference order. */
+const importTarget = (value: unknown, conditions: ReadonlySet<string>): string | null | undefined => {
+  if (typeof value === 'string' || value === null) return value
+  if (Array.isArray(value)) {
+    for (const candidate of value) {
+      const target = importTarget(candidate, conditions)
+      if (target !== undefined && target !== null) return target
+    }
+    return null
+  }
+  if (!isRecord(value)) return undefined
+  for (const [condition, target] of Object.entries(value)) {
+    if (!conditions.has(condition)) continue
+    const resolved = importTarget(target, conditions)
+    if (resolved !== undefined) return resolved
+  }
+  return undefined
+}
+
+/** Resolve public, concrete package exports for dynamic import; never fall through a denied export to main. */
 export const resolveSpecifier = (specifier: string, fromFile: string): string => {
   if (specifier.startsWith('.') || isAbsolute(specifier)) return resolve(dirname(fromFile), specifier)
-
-  try {
-    return createRequire(fromFile).resolve(specifier)
-  } catch (cause) {
-    // Packages that only declare an "import" condition cannot be resolved with require.
-    const manifestPath = findManifest(specifier, fromFile)
-
-    if (!manifestPath) {
-      throw new Error(`Cannot find "${specifier}" (needed by ${fromFile}). Is it installed?`, { cause })
-    }
-
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { exports?: unknown; main?: string }
-    const entry = pickEntry(manifest.exports) ?? manifest.main ?? 'index.js'
-
-    return resolve(dirname(manifestPath), entry)
+  if (specifier.startsWith('#')) return createRequire(fromFile).resolve(specifier)
+  const parts = specifier.split('/')
+  const length = specifier.startsWith('@') ? 2 : 1
+  const name = parts.slice(0, length).join('/')
+  const subpath = parts.length === length ? '.' : `./${parts.slice(length).join('/')}`
+  const manifest = packageManifest(name, fromFile)
+  if (!manifest) throw new Error(`Cannot find "${specifier}" (needed by ${fromFile}). Is it installed?`)
+  if (!('exports' in manifest.value)) return createRequire(fromFile).resolve(specifier)
+  const exportsField = manifest.value.exports
+  let selection: unknown = subpath === '.' ? exportsField : undefined
+  if (isRecord(exportsField) && Object.keys(exportsField).some(key => key.startsWith('.'))) {
+    if (Object.keys(exportsField).some(key => !key.startsWith('.')))
+      throw new Error(`Invalid mixed exports in ${name}.`)
+    selection = exportsField[subpath]
+    if (selection === undefined && Object.keys(exportsField).some(key => key.includes('*')))
+      throw new Error(`Pattern exports for "${specifier}" require an explicit public entry; no private path was used.`)
   }
-}
-
-const findManifest = (specifier: string, fromFile: string): string | undefined => {
-  try {
-    return findPackageJSON(specifier, pathToFileURL(fromFile))
-  } catch {
-    return undefined
-  }
-}
-
-const pickEntry = (exportsField: unknown): string | undefined => {
-  if (typeof exportsField === 'string') return exportsField
-
-  if (!exportsField || typeof exportsField !== 'object') return undefined
-
-  const record = exportsField as Record<string, unknown>
-  const root = '.' in record ? record['.'] : record
-
-  if (typeof root === 'string') return root
-
-  if (!root || typeof root !== 'object') return undefined
-
-  const conditions = root as Record<string, unknown>
-
-  for (const key of ['import', 'default', 'node']) {
-    const value = conditions[key]
-    const nested = typeof value === 'string' ? value : pickEntry(value)
-
-    if (nested) return nested
-  }
-
-  return undefined
+  const target = importTarget(selection, importConditions())
+  if (typeof target !== 'string') throw new Error(`Package "${name}" does not export "${subpath}" for import.`)
+  if (
+    !target.startsWith('./') ||
+    /[%\\]/.test(target) ||
+    target
+      .slice(2)
+      .split('/')
+      .some(part => part === '..' || part === '.' || part === 'node_modules') ||
+    target.includes('*')
+  )
+    throw new Error(`Unsupported or unsafe export target for "${specifier}".`)
+  // Package dependencies resolve beside the installed target, not a workspace's symlink to it.
+  return realpathSync(resolve(dirname(manifest.path), target))
 }
 
 /**

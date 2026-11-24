@@ -9,6 +9,30 @@ import { definePresetConfig } from '@santi020k/og/presets'
 
 const badges = { changelog: 'Changelog', guide: 'Guide', reference: 'Reference' }
 
+// Short, intentional card copy can differ from a page's search description and navigation title.
+const cardCopy = new Map([
+  [
+    'guide/tools',
+    {
+      title: 'Choose your linters and formatters',
+      description: 'Use the tools your languages need, with one policy and baseline.'
+    }
+  ],
+  [
+    'guide/agents',
+    {
+      title: 'Lint guardrails for coding agents',
+      description: 'Actionable findings across your project’s languages.'
+    }
+  ],
+  [
+    'guide/ratchet',
+    {
+      description: 'Keep existing findings. Block new ones.'
+    }
+  ]
+])
+
 // A card has room for about two lines of description. A page's description is written for search results and runs
 // longer, so a long one gives the card its first sentence or clause instead of being cut off mid-phrase.
 const cardDescription = description => {
@@ -28,10 +52,12 @@ const docs = () =>
 
       if (typeof title !== 'string') return null
 
+      const copy = cardCopy.get(entry.slug)
+
       return {
         badge: badges[entry.slug.split('/')[0]] ?? 'Docs',
-        description: typeof description === 'string' ? cardDescription(description) : undefined,
-        title
+        description: copy?.description ?? (typeof description === 'string' ? cardDescription(description) : undefined),
+        title: copy?.title ?? title
       }
     }
   })

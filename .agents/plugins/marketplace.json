@@ -1,0 +1,20 @@
+{
+  "name": "pawl",
+  "interface": {
+    "displayName": "Pawl"
+  },
+  "plugins": [
+    {
+      "name": "pawl",
+      "source": {
+        "source": "local",
+        "path": "./plugins/pawl"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

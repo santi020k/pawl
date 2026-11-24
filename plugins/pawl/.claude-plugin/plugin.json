@@ -1,0 +1,12 @@
+{
+  "name": "pawl",
+  "version": "0.1.0",
+  "description": "Check, fix, explain, and configure Pawl guardrails in your project.",
+  "author": {
+    "name": "Santiago Molina",
+    "url": "https://santi020k.com"
+  },
+  "homepage": "https://pawl.santi020k.com",
+  "repository": "https://github.com/santi020k/pawl",
+  "license": "MIT"
+}

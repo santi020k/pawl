@@ -1,5 +1,7 @@
+// cspell:ignore chek chnged
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
 import { BASELINE_FILE } from '../src/check/baseline.ts'
@@ -60,7 +62,8 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       '.pawl/biome-overrides.json',
       'package.json',
       '.vscode/settings.json',
-      '.vscode/extensions.json'
+      '.vscode/extensions.json',
+      '.vscode/tasks.json'
     ])
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET] })
     expect(json(root, 'package.json')).toMatchObject({
@@ -305,9 +308,13 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       'package.json',
       '.vscode/settings.json',
       '.vscode/extensions.json',
+      '.vscode/tasks.json',
       '.github/workflows/pawl.yml',
       '.claude/settings.json',
-      'AGENTS.md'
+      'AGENTS.md',
+      'CLAUDE.md',
+      '.claude/skills/pawl/SKILL.md',
+      '.agents/skills/pawl/SKILL.md'
     ])
     expect(plan.notes.join(' ')).toContain('covers all 1 package.')
 
@@ -318,7 +325,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(workflow).toContain('pnpm install --frozen-lockfile')
     // Every action is pinned to a commit, and the doctor report is kept even when the check fails.
     expect(workflow.match(/uses: \S+/g)?.every(line => /@[0-9a-f]{40}$/.test(line))).toBe(true)
-    expect(workflow).toContain('run: npx pawl doctor --format json > pawl-doctor.json')
+    expect(workflow).toContain('run: npx --no pawl doctor --format json > pawl-doctor.json')
     expect(workflow).toContain('path: pawl-doctor.json')
     expect(workflow.match(/if: always\(\)/g)).toHaveLength(2)
     expect(workflow).toContain('permissions:\n  contents: read')
@@ -327,7 +334,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
         PostToolUse: [
           {
             matcher: 'Edit|Write|MultiEdit',
-            hooks: [{ type: 'command', command: 'npx pawl check --changed --format agent' }]
+            hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }]
           }
         ]
       }
@@ -388,7 +395,8 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), ...args], {
         cwd: root,
         encoding: 'utf8',
-        env: { ...process.env, CI: '', NO_COLOR: '1' }
+        // A person's run in a pipe, even when the tests run under a coding agent.
+        env: { ...process.env, CI: '', NO_COLOR: '1', PAWL_AGENT: '0', PAWL_FORMAT: '' }
       })
 
       return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
@@ -442,6 +450,182 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         rule: 'biome:suspicious/noDebugger',
         message: 'This is an unexpected use of the debugger statement.'
       })
+    })
+
+    test("fixes only the files an agent's hook names, and answers in the shape that agent reads", () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': 'export const a = 1\n'
+      })
+      const hook = (input: object): { code: number; stdout: string; stderr: string } => {
+        const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'fix', '--hook'], {
+          cwd: root,
+          encoding: 'utf8',
+          input: JSON.stringify(input),
+          env: { ...process.env, CI: '', NO_COLOR: '1' }
+        })
+
+        return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
+      }
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      write(root, { 'src/edited.js': 'export const   b = 1\ndebugger\n', 'src/other.js': 'export const   c = 1\n' })
+
+      const claude = hook({
+        hook_event_name: 'PostToolUse',
+        cwd: root,
+        tool_name: 'Write',
+        tool_input: { file_path: join(root, 'src/edited.js') }
+      })
+      const context = (JSON.parse(claude.stdout) as { hookSpecificOutput: Record<string, string> }).hookSpecificOutput
+
+      expect(claude).toMatchObject({ code: 0, stderr: '' })
+      expect(context.hookEventName).toBe('PostToolUse')
+      expect(context.additionalContext).toContain('1 problem left:')
+      expect(context.additionalContext).toContain(
+        '"file":"src/edited.js","line":2,"rule":"biome:suspicious/noDebugger"'
+      )
+      // The edited file is formatted. The one the agent did not touch is not.
+      expect(readFileSync(join(root, 'src/edited.js'), 'utf8')).toBe('export const b = 1\ndebugger\n')
+      expect(readFileSync(join(root, 'src/other.js'), 'utf8')).toBe('export const   c = 1\n')
+
+      // Codex names its files in the patch, relative to its folder.
+      const codex = hook({
+        hook_event_name: 'PostToolUse',
+        cwd: root,
+        tool_name: 'apply_patch',
+        tool_input: { command: '*** Begin Patch\n*** Update File: src/edited.js\n@@\n*** End Patch' }
+      })
+
+      expect(codex.stdout).toContain('noDebugger')
+      // Copilot reads a top-level additionalContext, and its hook also runs after tools that edit nothing.
+      expect(
+        JSON.parse(hook({ toolName: 'edit', toolArgs: JSON.stringify({ path: 'src/edited.js' }), cwd: root }).stdout)
+      ).toHaveProperty('additionalContext')
+      expect(hook({ toolName: 'view', toolArgs: { path: 'src/other.js' }, cwd: root })).toEqual({
+        code: 0,
+        stdout: '',
+        stderr: ''
+      })
+      // Cursor reads nothing back, so pawl fixes the file and prints nothing.
+      expect(hook({ hook_event_name: 'afterFileEdit', file_path: join(root, 'src/other.js') })).toEqual({
+        code: 0,
+        stdout: '',
+        stderr: ''
+      })
+      expect(readFileSync(join(root, 'src/other.js'), 'utf8')).toBe('export const c = 1\n')
+      // A file outside the project is not pawl's to fix.
+      expect(
+        hook({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/tmp/x.js' } })
+      ).toEqual({ code: 0, stdout: '', stderr: '' })
+    })
+
+    test('sends the agent back when it stops with errors left in its own edits, and no further than that', () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': 'export const a = 1\n'
+      })
+      // The hooks remember a session's edits in the temporary folder: this test gets its own.
+      const state = mkdtempSync(join(tmpdir(), 'pawl-stop-'))
+      const hook = (command: 'fix' | 'check', input: object): { code: number; stdout: string; stderr: string } => {
+        const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), command, '--hook'], {
+          cwd: root,
+          encoding: 'utf8',
+          input: JSON.stringify(input),
+          env: { ...process.env, CI: '', NO_COLOR: '1', TMPDIR: state }
+        })
+
+        return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
+      }
+      const edit = (session: string, file: string) =>
+        hook('fix', {
+          hook_event_name: 'PostToolUse',
+          session_id: session,
+          cwd: root,
+          tool_name: 'Write',
+          tool_input: { file_path: join(root, file) }
+        })
+      const stop = (session: string, active: boolean) =>
+        hook('check', { hook_event_name: 'Stop', session_id: session, cwd: root, stop_hook_active: active })
+      const silent = { code: 0, stdout: '', stderr: '' }
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      // The agent edits one file. The person has a problem of their own in another, which is not the agent's.
+      write(root, { 'src/edited.js': 'debugger\n', 'src/mine.js': 'debugger\n' })
+      edit('s1', 'src/edited.js')
+
+      const first = stop('s1', false)
+      const back = JSON.parse(first.stdout) as { decision: string; reason: string }
+
+      expect(first.code).toBe(0)
+      expect(back.decision).toBe('block')
+      expect(back.reason).toContain('You are not done yet: pawl found 1 problem')
+      expect(back.reason).toContain('"file":"src/edited.js"')
+      expect(back.reason).not.toContain('src/mine.js')
+      // The agent changed nothing: pawl hands the rest to the person instead of going round in circles.
+      expect(JSON.parse(stop('s1', true).stdout)).toEqual({
+        systemMessage:
+          'pawl: 1 problem left in the files the agent edited. Run "npx --no pawl check --changed" to see them.'
+      })
+      // The session's edits are forgotten, so the next turn starts clean.
+      expect(stop('s1', false)).toEqual(silent)
+
+      // Another session that fixes what the stop hook gave back finishes on the next stop.
+      edit('s2', 'src/edited.js')
+      expect(JSON.parse(stop('s2', false).stdout)).toHaveProperty('decision', 'block')
+      write(root, { 'src/edited.js': 'export const edited = 1\n' })
+      expect(stop('s2', true)).toEqual(silent)
+
+      // A turn that edited nothing has nothing to check.
+      expect(stop('s3', false)).toEqual(silent)
+
+      // Cursor: the edit hook says nothing back, so what is left reaches the agent as it stops.
+      write(root, { 'src/cursor.js': 'debugger\n' })
+      expect(
+        hook('fix', { hook_event_name: 'afterFileEdit', conversation_id: 'c1', file_path: join(root, 'src/cursor.js') })
+      ).toEqual(silent)
+      expect(
+        hook('check', { hook_event_name: 'stop', conversation_id: 'c1', status: 'aborted', loop_count: 0 })
+      ).toEqual(silent)
+
+      const cursor = hook('check', {
+        hook_event_name: 'stop',
+        conversation_id: 'c1',
+        status: 'completed',
+        loop_count: 0
+      })
+
+      expect((JSON.parse(cursor.stdout) as { followup_message: string }).followup_message).toContain('src/cursor.js')
+    })
+
+    test('tells the person, not the agent, when the hook could not check the edit', () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': 'export const a = 1\n'
+      })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      rmSync(join(root, 'node_modules/@santi020k/pawl'))
+
+      const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'fix', '--hook'], {
+        cwd: root,
+        encoding: 'utf8',
+        input: JSON.stringify({
+          hook_event_name: 'PostToolUse',
+          tool_name: 'Edit',
+          tool_input: { file_path: join(root, 'src/a.js') }
+        })
+      })
+
+      // 2 would hand the message to the agent. Any other failing code goes to the person.
+      expect(result.status).toBe(1)
+      expect(result.stdout).toBe('')
+      expect(result.stderr).toMatch(
+        /^pawl: biome\.json extends @santi020k\/pawl\/biome, but @santi020k\/pawl is not installed/
+      )
     })
 
     test("explains pawl's own rules and guards, by the names its findings carry", () => {
@@ -531,7 +715,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'fix', '--format', 'nope')).toEqual({
         code: 2,
         stdout: '',
-        stderr: 'pawl: Unknown format "nope". Use pretty, agent or json.\n'
+        stderr: 'pawl: Unknown format "nope". Use pretty, agent, editor or json.\n'
       })
       expect(run(root, 'fix', '--max-warnings', 'none').code).toBe(2)
       expect(readFileSync(join(root, 'src/a.js'), 'utf8')).toBe(unformatted)
@@ -622,6 +806,69 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         code: 2,
         stderr: 'pawl: Use --since or a list of files, not both.\n'
       })
+    })
+
+    test('gives a coding agent its own output, editors theirs, and a person the plain view in a pipe', () => {
+      const root = project({ 'package.json': { name: 'fixture', private: true, type: 'module' } })
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      write(root, { 'src/b.js': 'debugger\n' })
+
+      // Whatever agent runs these tests, only the variable each case sets says who is running pawl.
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(
+          ([name]) =>
+            !/^(PAWL_AGENT|PAWL_FORMAT|AGENT|AI_AGENT|CLAUDECODE|CLAUDE_CODE_ENTRYPOINT|CURSOR_AGENT|GEMINI_CLI|QWEN_CODE|CODEX_\w+|AMP_CURRENT_THREAD_ID|AUGMENT_AGENT|CLINE_ACTIVE|OPENCODE_CLIENT|ANTIGRAVITY_AGENT)$/.test(
+              name
+            )
+        )
+      )
+      const as = (extra: Record<string, string>, ...args: string[]): { code: number; stdout: string } => {
+        const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), ...args], {
+          cwd: root,
+          encoding: 'utf8',
+          env: { ...env, CI: '', NO_COLOR: '1', ...extra }
+        })
+
+        return { code: result.status ?? -1, stdout: result.stdout }
+      }
+
+      const agent = as({ CLAUDECODE: '1' }, 'check')
+
+      expect(agent.code).toBe(1)
+      expect(JSON.parse(agent.stdout)).toMatchObject({ file: 'src/b.js', line: 1, rule: 'biome:suspicious/noDebugger' })
+      expect(as({ CURSOR_AGENT: '1' }, 'check', '--format', 'pretty').stdout).toContain('src/b.js:1:1  error  biome')
+      expect(as({ CLAUDECODE: '1', PAWL_AGENT: '0' }, 'check').stdout).toContain('1 error.')
+      expect(as({}, 'check').stdout).toContain('src/b.js:1:1  error  biome')
+      // A program that reads pawl, such as Quality, asks for a format; --format still wins.
+      expect(as({ CLAUDECODE: '1', PAWL_FORMAT: 'editor' }, 'check').stdout).toMatch(/^src\/b\.js:1:1: error: /)
+      expect(as({ PAWL_FORMAT: 'editor' }, 'check', '--format', 'agent').stdout).toMatch(/^\{"file":"src\/b\.js"/)
+      expect(as({ PAWL_FORMAT: 'xml' }, 'check').code).toBe(2)
+      expect(as({}, 'check', '--format', 'editor')).toEqual({
+        code: 1,
+        stdout:
+          'src/b.js:1:1: error: This is an unexpected use of the debugger statement. [biome:suspicious/noDebugger]\n'
+      })
+    })
+
+    test('shows the help of one command, and suggests the command or option that was meant', () => {
+      const root = project()
+      const help = run(root, 'help', 'check').stdout
+
+      expect(help).toContain('pawl check [files]  Lint, check formatting and apply the ratchet')
+      expect(help).toContain('$ pawl check --since origin/main --ci')
+      expect(help).not.toContain('Options for init')
+      expect(run(root, 'check', '--help').stdout).toBe(help)
+      expect(run(root, 'chek')).toMatchObject({
+        code: 2,
+        stderr: 'pawl: Unknown command "chek". Did you mean "pawl check"? Run "pawl --help".\n'
+      })
+      expect(run(root, 'check', '--chnged')).toMatchObject({
+        code: 2,
+        stderr: 'pawl: Unknown option "--chnged". Did you mean "--changed"? Run "pawl --help" for the options.\n'
+      })
+      expect(run(root, 'check', '--format')).toMatchObject({ code: 2, stderr: 'pawl: --format takes a value.\n' })
     })
 
     test('reports usage errors on stderr with exit code 2', () => {
@@ -741,8 +988,28 @@ describe('hooks and agent instructions', () => {
     const plan = await planInit({ root, install: false, editor: false, hooks: true })
 
     applyPlan(plan)
-    expect(readFileSync(join(root, '.husky/pre-commit'), 'utf8')).toBe('pnpm test\nnpx pawl check --changed\n')
+    expect(readFileSync(join(root, '.husky/pre-commit'), 'utf8')).toBe('pnpm test\nnpx --no pawl check --changed\n')
     expect((await planInit({ root, install: false, editor: false, hooks: true })).actions).toEqual([])
+  })
+
+  it('swaps the pre-commit line an earlier version wrote, so a fresh clone never installs the unscoped package', async () => {
+    const root = project({
+      'package.json': { name: 'fixture' },
+      '.husky/pre-commit': 'pnpm test\nnpx pawl check --changed\n'
+    })
+
+    applyPlan(await planInit({ root, install: false, editor: false, hooks: true }))
+    expect(readFileSync(join(root, '.husky/pre-commit'), 'utf8')).toBe('pnpm test\nnpx --no pawl check --changed\n')
+    expect((await planInit({ root, install: false, editor: false, hooks: true })).actions).toEqual([])
+
+    const clone = project({ 'package.json': { name: 'fixture' } })
+
+    spawnSync('git', ['init', '-q'], { cwd: clone })
+    write(clone, { '.git/hooks/pre-commit': '#!/bin/sh\nnpx pawl check --changed\n' })
+    applyPlan(await planInit({ root: clone, install: false, editor: false, hooks: true }))
+    expect(readFileSync(join(clone, '.git/hooks/pre-commit'), 'utf8')).toBe(
+      '#!/bin/sh\nnpx --no pawl check --changed\n'
+    )
   })
 
   it('points to lefthook instead of editing its YAML', async () => {
@@ -754,7 +1021,9 @@ describe('hooks and agent instructions', () => {
       '.pawl/biome-overrides.json',
       'package.json'
     ])
-    expect(plan.notes.join(' ')).toContain('Add "npx pawl check --changed" to the pre-commit commands in lefthook.yml')
+    expect(plan.notes.join(' ')).toContain(
+      'Add "npx --no pawl check --changed" to the pre-commit commands in lefthook.yml'
+    )
   })
 
   it('writes agent instructions into a marked block and keeps the rest of AGENTS.md', async () => {
@@ -765,7 +1034,7 @@ describe('hooks and agent instructions', () => {
     const written = readFileSync(join(root, 'AGENTS.md'), 'utf8')
 
     expect(written).toContain('# Our repo\n\nBe kind.\n\n<!-- pawl:start -->')
-    expect(written).toContain('npx pawl check --changed --format agent')
+    expect(written).toContain('npx --no pawl check --changed --format agent')
     expect((await planInit({ root, install: false, editor: false, agents: true })).actions).toEqual([])
 
     // An older block is replaced in place.

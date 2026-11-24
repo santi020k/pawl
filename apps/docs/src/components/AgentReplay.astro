@@ -1,0 +1,683 @@
+---
+/**
+ * An agent session, replayed: the agent writes a file, pawl's hook fixes what it can and hands back
+ * the rest, the agent fixes the code, and the Problems panel ticks each one off.
+ *
+ * The page renders the finished session, so it reads in full without JavaScript and for screen
+ * readers. The script plays it once when it scrolls into view, and again on Replay. With reduced
+ * motion it only plays on Replay.
+ */
+import { replay } from '../data/replay.ts'
+
+interface Props {
+  class?: string
+}
+
+const { class: className } = Astro.props
+const count = replay.problems.length
+const KINDS = { '+': 'add', '-': 'del', ' ': 'keep', '…': 'gap' } as const
+const fileName = replay.file.split('/').at(-1)
+---
+
+<figure class:list={['replay', 'not-content', className]} data-replay data-phase="done" data-theme="dark">
+  <figcaption class="replay__bar">
+    <span class="replay__session">
+      <span class="replay__dot" aria-hidden="true"></span>
+      <span class="replay__label">Agent session in</span>
+      <span class="replay__path">{replay.path}</span>
+    </span>
+    <button class="replay__again" type="button" data-replay-again>
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path
+          d="M13.5 8a5.5 5.5 0 1 1-1.61-3.89M13.5 2.5v3h-3"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
+      </svg>
+      Replay
+    </button>
+  </figcaption>
+
+  <div class="replay__body">
+    <ol class="replay__log" aria-label="What the agent did">
+      <li class="replay__prompt" data-step>
+        <span class="replay__caret" aria-hidden="true">&gt;</span>
+        {replay.prompt}
+      </li>
+
+      <li class="replay__tool" data-step>
+        <span class="replay__call"><b>Write</b>({replay.file})</span>
+        <span class="replay__out">Wrote {replay.wrote} lines</span>
+      </li>
+
+      <li class="replay__tool replay__hook" data-step data-hook="first">
+        <span class="replay__call"><b>PostToolUse hook</b> <code>{replay.hook}</code></span>
+        <span class="replay__out replay__running">Running pawl…</span>
+        <span class="replay__out replay__result replay__result--fail">
+          <span aria-hidden="true">✖</span>
+          {count} problems left in {fileName}. Formatting fixed, in {replay.firstMs} ms.
+        </span>
+      </li>
+
+      <li class="replay__say" data-step>{replay.plan}</li>
+
+      <li class="replay__tool" data-step>
+        <span class="replay__call"><b>Update</b>({replay.file})</span>
+        <pre class="replay__diff"><code>{replay.diff.map(line => <span class={`replay__line replay__line--${KINDS[line.kind]}`} data-line><span class="replay__sign" aria-hidden="true">{line.kind === '…' ? ' ' : line.kind}</span>{line.kind === '…' ? '…' : line.text}</span>)}</code></pre>
+      </li>
+
+      <li class="replay__tool replay__hook" data-step data-hook="second">
+        <span class="replay__call"><b>PostToolUse hook</b> <code>{replay.hook}</code></span>
+        <span class="replay__out replay__running">Running pawl…</span>
+        <span class="replay__out replay__result replay__result--pass">
+          <span aria-hidden="true">✔</span>
+          Nothing left, in {replay.secondMs} ms.
+        </span>
+      </li>
+
+      <li class="replay__say" data-step>{replay.done}</li>
+    </ol>
+
+    <section class="replay__panel" aria-label="Problems in the edited file">
+      <header class="replay__panel-head">
+        <span class="replay__panel-title">Problems</span>
+        <span class="replay__count" data-count>0</span>
+        <span class="replay__file">{fileName}</span>
+      </header>
+      <ul class="replay__problems">
+        {
+          replay.problems.map(problem => (
+            <li class={`replay__problem replay__problem--${problem.severity}`} data-problem data-state="fixed">
+              <svg class="replay__mark" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path class="replay__cross" d="M4 4l8 8M12 4l-8 8" />
+                <path class="replay__tick" d="M3 8.5l3.2 3L13 4.5" />
+              </svg>
+              <span class="replay__at">
+                {problem.line}:{problem.column}
+              </span>
+              <span class="replay__rule">{problem.rule}</span>
+              <span class="replay__message">{problem.message}</span>
+              <span class="replay__status">{problem.severity === 'error' ? 'Error, fixed' : 'Warning, fixed'}</span>
+            </li>
+          ))
+        }
+      </ul>
+      <footer class="replay__panel-foot">
+        <span>{replay.engine}</span>
+        <span>{replay.baseline}</span>
+      </footer>
+    </section>
+  </div>
+</figure>
+
+<script>
+  const STEP = 750
+
+  const play = (root: HTMLElement): (() => void) => {
+    const steps = [...root.querySelectorAll<HTMLElement>('[data-step]')]
+    const problems = [...root.querySelectorAll<HTMLElement>('[data-problem]')]
+    const lines = [...root.querySelectorAll<HTMLElement>('[data-line]')]
+    const count = root.querySelector<HTMLElement>('[data-count]')
+    const log = root.querySelector<HTMLElement>('.replay__log')
+    const timers: number[] = []
+    const at = (delay: number, action: () => void): void => {
+      timers.push(window.setTimeout(action, delay))
+    }
+    const setCount = (value: number): void => {
+      if (count) count.textContent = String(value)
+
+      root.dataset.open = String(value)
+    }
+
+    // Keep the window the size of the finished session, so the page does not move while it plays.
+    if (log) log.style.minHeight = `${log.offsetHeight}px`
+
+    root.dataset.phase = 'playing'
+    setCount(0)
+
+    for (const step of steps) step.dataset.shown = 'false'
+
+    for (const problem of problems) problem.dataset.state = 'hidden'
+
+    for (const line of lines) line.dataset.shown = 'false'
+
+    let time = 200
+
+    const show = (step: HTMLElement | undefined, wait = STEP): void => {
+      at(time, () => {
+        if (!step) return
+
+        step.dataset.shown = 'true'
+
+        if (step.dataset.hook) step.dataset.state = 'running'
+      })
+      time += wait
+    }
+
+    const [prompt, write, firstHook, plan, update, secondHook, done] = steps
+
+    show(prompt)
+    show(write)
+    show(firstHook, 650)
+
+    // The hook answers: the problems fill the panel.
+    at(time, () => {
+      if (firstHook) firstHook.dataset.state = 'done'
+
+      problems.forEach((problem, index) => {
+        at(index * 110, () => {
+          problem.dataset.state = 'open'
+          setCount(index + 1)
+        })
+      })
+    })
+    time += STEP + problems.length * 110
+
+    show(plan, 900)
+    show(update, 250)
+
+    lines.forEach((line, index) => {
+      at(time + index * 70, () => {
+        line.dataset.shown = 'true'
+      })
+    })
+    time += lines.length * 70 + 600
+
+    show(secondHook, 650)
+
+    // Nothing left: each problem is ticked off.
+    at(time, () => {
+      if (secondHook) secondHook.dataset.state = 'done'
+
+      problems.forEach((problem, index) => {
+        at(index * 160, () => {
+          problem.dataset.state = 'fixed'
+          setCount(problems.length - index - 1)
+        })
+      })
+    })
+    time += problems.length * 160 + 500
+
+    show(done, 0)
+    at(time, () => {
+      root.dataset.phase = 'done'
+    })
+
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer)
+    }
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-replay]')) {
+    let stop: (() => void) | undefined
+    const start = (): void => {
+      stop?.()
+      stop = play(root)
+    }
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    root.querySelector('[data-replay-again]')?.addEventListener('click', start)
+
+    if (calm || !('IntersectionObserver' in window)) continue
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          observer.disconnect()
+          start()
+        }
+      },
+      { threshold: 0.35 }
+    )
+
+    observer.observe(root)
+  }
+</script>
+
+<style>
+  .replay {
+    --replay-pass: var(--brand);
+    container: replay / inline-size;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid hsl(var(--line));
+    border-radius: var(--ui-radius-lg, 0.75rem);
+    background: hsl(var(--canvas));
+    color: hsl(var(--ink));
+    box-shadow: var(--ui-shadow-lg, none);
+    transition:
+      border-color 400ms ease,
+      box-shadow 400ms ease;
+  }
+
+  /* The one moment the window lights up: the hook has nothing left to say. */
+  .replay[data-phase='done'] {
+    border-color: hsl(var(--brand) / 0.55);
+    box-shadow: var(--pawl-glow, none);
+  }
+
+  .replay__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.625rem 0.875rem 0.625rem 1rem;
+    border-bottom: 1px solid hsl(var(--line));
+    background: hsl(var(--surface-muted));
+    font: 500 0.8125rem/1.2 var(--pawl-font-mono);
+    color: hsl(var(--ink-muted));
+  }
+
+  .replay__session {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .replay__path {
+    color: hsl(var(--ink-soft));
+  }
+
+  .replay__dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: hsl(var(--warning));
+    flex: none;
+  }
+
+  .replay[data-phase='done'] .replay__dot {
+    background: hsl(var(--replay-pass));
+  }
+
+  .replay__again {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3rem 0.55rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: hsl(var(--ink-soft));
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .replay__again:hover {
+    border-color: hsl(var(--line));
+    color: hsl(var(--ink));
+  }
+
+  .replay__again svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .replay__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.42fr);
+  }
+
+  /* The session. */
+  .replay__log {
+    display: flex;
+    flex-direction: column;
+    gap: 1.125rem;
+    margin: 0;
+    padding: 1.5rem 1.5rem 1.75rem;
+    list-style: none;
+    font: 0.8125rem/1.6 var(--pawl-font-mono);
+    color: hsl(var(--ink-soft));
+  }
+
+  [data-shown='false'] {
+    display: none;
+  }
+
+  .replay__log > li {
+    position: relative;
+    padding-left: 1.25rem;
+    animation: replay-in 260ms ease-out;
+  }
+
+  .replay__log > li::before {
+    content: '';
+    position: absolute;
+    top: 0.55em;
+    left: 0.1rem;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: hsl(var(--ink-muted));
+  }
+
+  .replay__prompt {
+    font: 500 1rem/1.5 var(--pawl-font);
+    color: hsl(var(--ink));
+  }
+
+  .replay__log > .replay__prompt::before {
+    display: none;
+  }
+
+  .replay__caret {
+    position: absolute;
+    left: 0;
+    color: hsl(var(--ink-muted));
+    font-family: var(--pawl-font-mono);
+  }
+
+  .replay__say {
+    font: 0.975rem/1.6 var(--pawl-font);
+    color: hsl(var(--ink));
+    max-width: 62ch;
+  }
+
+  .replay__call {
+    display: block;
+    color: hsl(var(--ink-muted));
+  }
+
+  .replay__call b {
+    color: hsl(var(--ink));
+    font-weight: 600;
+  }
+
+  .replay__call code {
+    margin-left: 0.4rem;
+    color: hsl(var(--ink-soft));
+    font: inherit;
+  }
+
+  .replay__out {
+    display: block;
+    margin-top: 0.15rem;
+    padding-left: 1.1rem;
+    border-left: 1px solid hsl(var(--line));
+    color: hsl(var(--ink-muted));
+  }
+
+  /* A hook is running, then answers. */
+  .replay__hook .replay__running,
+  .replay__hook[data-state='running'] .replay__result {
+    display: none;
+  }
+
+  .replay__hook[data-state='running'] .replay__running {
+    display: block;
+    animation: replay-pulse 900ms ease-in-out infinite alternate;
+  }
+
+  /* A hook's dot: amber while it runs, then red for problems and lime for none. */
+  .replay__log > .replay__hook::before {
+    background: hsl(var(--warning));
+  }
+
+  .replay__log > .replay__hook[data-hook='first']:not([data-state='running'])::before {
+    background: hsl(var(--danger));
+  }
+
+  .replay__log > .replay__hook[data-hook='second']:not([data-state='running'])::before {
+    background: hsl(var(--replay-pass));
+  }
+
+  .replay__result > span {
+    margin-right: 0.5ch;
+  }
+
+  .replay__result--fail {
+    color: hsl(var(--danger));
+  }
+
+  .replay__result--pass {
+    color: hsl(var(--replay-pass));
+  }
+
+  .replay__diff {
+    margin: 0.6rem 0 0;
+    padding: 0.5rem 0;
+    overflow-x: auto;
+    border: 1px solid hsl(var(--line));
+    border-radius: 0.5rem;
+    background: hsl(var(--surface));
+    font: inherit;
+  }
+
+  .replay__diff,
+  .replay__diff code {
+    white-space: normal;
+  }
+
+  .replay__diff code {
+    display: block;
+    min-width: max-content;
+    font: inherit;
+  }
+
+  .replay__line {
+    display: block;
+    padding: 0 0.875rem;
+    white-space: pre;
+    color: hsl(var(--ink-soft));
+  }
+
+  .replay__sign {
+    display: inline-block;
+    width: 1.25rem;
+    color: hsl(var(--ink-muted));
+  }
+
+  .replay__line--add {
+    background: hsl(var(--brand) / 0.09);
+    color: hsl(var(--ink));
+  }
+
+  .replay__line--add .replay__sign {
+    color: hsl(var(--brand));
+  }
+
+  .replay__line--del {
+    background: hsl(var(--danger) / 0.1);
+  }
+
+  .replay__line--del .replay__sign {
+    color: hsl(var(--danger));
+  }
+
+  .replay__line--gap {
+    color: hsl(var(--ink-muted));
+  }
+
+  /* The Problems panel. */
+  .replay__panel {
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid hsl(var(--line));
+    background: hsl(var(--surface));
+    font: 0.8125rem/1.5 var(--pawl-font-mono);
+  }
+
+  .replay__panel-head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 1rem 1.125rem;
+    border-bottom: 1px solid hsl(var(--line));
+  }
+
+  .replay__panel-title {
+    color: hsl(var(--ink));
+    font-weight: 600;
+  }
+
+  .replay__count {
+    min-width: 1.5rem;
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    background: hsl(var(--replay-pass));
+    color: hsl(var(--pawl-ink-on-lime));
+    font-weight: 700;
+    text-align: center;
+    transition: background-color 200ms ease;
+  }
+
+  .replay:not([data-open='0'], [data-phase='done']) .replay__count {
+    background: hsl(var(--danger));
+    color: hsl(var(--on-danger));
+  }
+
+  .replay__file {
+    margin-left: auto;
+    color: hsl(var(--ink-muted));
+  }
+
+  .replay__problems {
+    flex: 1;
+    margin: 0;
+    padding: 0.75rem 0;
+    list-style: none;
+  }
+
+  .replay__problem {
+    display: grid;
+    grid-template-columns: 1rem 3.25rem minmax(0, 1fr);
+    align-items: baseline;
+    gap: 0.15rem 0.5rem;
+    padding: 0.55rem 1.125rem;
+    color: hsl(var(--ink-soft));
+    transition:
+      color 250ms ease,
+      opacity 250ms ease;
+  }
+
+  .replay__problem[data-state='hidden'] {
+    visibility: hidden;
+  }
+
+  .replay__at {
+    color: hsl(var(--ink-muted));
+  }
+
+  .replay__rule {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .replay__status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* An open problem is a cross in its severity's color; a fixed one is a lime tick, dimmed. */
+  .replay__mark {
+    align-self: start;
+    width: 0.875rem;
+    height: 0.875rem;
+    margin-top: 0.2rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .replay__problem:not([data-state='open']) .replay__cross,
+  .replay__problem[data-state='open'] .replay__tick {
+    display: none;
+  }
+
+  .replay__problem[data-state='open'] {
+    color: hsl(var(--ink));
+    animation: replay-in 220ms ease-out;
+  }
+
+  .replay__problem--error[data-state='open'] .replay__mark {
+    color: hsl(var(--danger));
+  }
+
+  .replay__problem--warn[data-state='open'] .replay__mark {
+    color: hsl(var(--warning));
+  }
+
+  .replay__problem[data-state='fixed'] {
+    color: hsl(var(--ink-muted));
+  }
+
+  .replay__problem[data-state='fixed'] .replay__mark {
+    color: hsl(var(--replay-pass));
+  }
+
+  .replay__message {
+    grid-column: 3;
+    color: hsl(var(--ink-muted));
+    font: 0.75rem/1.45 var(--pawl-font);
+  }
+
+  .replay__panel-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.875rem 1.125rem;
+    border-top: 1px solid hsl(var(--line));
+    color: hsl(var(--ink-muted));
+    font-size: 0.75rem;
+  }
+
+  @keyframes replay-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+
+  @keyframes replay-pulse {
+    from {
+      opacity: 0.45;
+    }
+  }
+
+  @container replay (max-width: 30rem) {
+    .replay__label {
+      display: none;
+    }
+  }
+
+  @container replay (max-width: 50rem) {
+    .replay__body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .replay__panel {
+      border-left: 0;
+      border-top: 1px solid hsl(var(--line));
+    }
+
+    .replay__log {
+      padding: 1.25rem 1rem 1.5rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .replay,
+    .replay__log > li,
+    .replay__problem,
+    .replay__count {
+      animation: none;
+      transition: none;
+    }
+
+    .replay__problem[data-state],
+    .replay__hook[data-state='running'] .replay__running {
+      animation: none;
+    }
+  }
+</style>

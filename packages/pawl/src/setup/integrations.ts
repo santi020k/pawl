@@ -1,22 +1,32 @@
 /** What pawl adds around the engines: scripts, task runners, editors, coding agents and Git hooks. */
 
-import { chmodSync, existsSync, readFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { firstExisting, LEFTHOOK_CONFIG_FILES } from '../project/config-files.ts'
 import { type Detection } from '../project/detect.ts'
 import { type FormatterName } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
 import { isRecord, type JsonRecord, readJson, readJsonc, writeJson } from '../utils/json.ts'
+import { toList } from '../utils/list.ts'
+import { PACKAGE_NAME } from '../version.ts'
 import { rangeFor } from './install.ts'
 import { planJsonMerge, type SetupAction } from './plan.ts'
 import {
+  AGENT_HOOK_COMMAND,
   AGENTS_BLOCK,
   AGENTS_END,
   AGENTS_START,
   EDITOR_SETTINGS,
   HOOK_COMMAND,
+  legacyCommand,
+  OLD_AGENT_HOOK_COMMANDS,
   PRETTIER_EDITOR_SETTINGS,
-  workflowFile
+  SKILL_FILE,
+  SKILL_MARKER,
+  STOP_HOOK_COMMAND,
+  VSCODE_TASKS,
+  workflowFile,
+  ZED_TASKS
 } from './templates.ts'
 
 /** Add the check and fix scripts, and, when pawl is not running the install, the packages to install. */
@@ -25,7 +35,7 @@ export const planScripts = (root: string, notes: string[], packages: readonly st
   const manifest = readJson<JsonRecord>(path)
 
   if (!manifest) {
-    notes.push('No package.json here, so pawl added no scripts. Run "npx pawl check" directly.')
+    notes.push(`No package.json here, so pawl added no scripts. Run "npx ${PACKAGE_NAME} check" directly.`)
 
     return undefined
   }
@@ -133,68 +143,244 @@ export const planTurboTasks = (root: string, notes: string[]): SetupAction | und
   )
 }
 
-const planAgentHook = (root: string, notes: string[]): SetupAction | undefined => {
-  const file = '.claude/settings.json'
-  const path = join(root, file)
-  const command = 'npx pawl check --changed --format agent'
+/** One agent's hook file: where it goes, and how to add pawl's hook to what the file already holds. */
+interface AgentHook {
+  file: string
+  agent: string
+  summary: string
+  add: (existing: JsonRecord) => JsonRecord
+  /** Add the hook that runs when the agent stops, which sends it back while errors are left. */
+  addStop: (existing: JsonRecord) => JsonRecord
+}
+
+/** The hooks a key holds, as a list, whatever the file had there. */
+const hookList = (hooks: unknown, key: string): unknown[] =>
+  isRecord(hooks) && Array.isArray(hooks[key]) ? hooks[key] : []
+
+/**
+ * Add pawl's hooks to an agent's hook file, next to the hooks already there: the one after each
+ * edit and the one when the agent stops. A hook an earlier version of pawl wrote is swapped for
+ * the current one in place, so a re-run never adds a second.
+ */
+const planAgentHook = (root: string, notes: string[], hook: AgentHook): SetupAction | undefined => {
+  const path = join(root, hook.file)
   const existing = existsSync(path) ? readJsonc<JsonRecord>(path) : { value: {} as JsonRecord, hasComments: false }
 
   if (!existing.value || existing.hasComments) {
-    notes.push(`${file} could not be read, so pawl added no agent hook.`)
+    notes.push(`${hook.file} could not be read, so pawl added no ${hook.agent} hook.`)
 
     return undefined
   }
 
-  if (JSON.stringify(existing.value).includes(command)) return undefined
+  // Whole JSON strings, so a command that only starts like pawl's is not taken for it.
+  const text = JSON.stringify(existing.value)
+  const current = JSON.stringify(AGENT_HOOK_COMMAND)
+  const old = OLD_AGENT_HOOK_COMMANDS.map(command => JSON.stringify(command)).find(command => text.includes(command))
+  let edits = existing.value
 
-  const hooks = isRecord(existing.value.hooks) ? existing.value.hooks : {}
-  const postToolUse = Array.isArray(hooks.PostToolUse) ? hooks.PostToolUse : []
-  const entry = { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command }] }
+  if (!text.includes(current)) edits = old ? (JSON.parse(text.replaceAll(old, current)) as JsonRecord) : hook.add(edits)
+
+  const next = text.includes(JSON.stringify(STOP_HOOK_COMMAND)) ? edits : hook.addStop(edits)
+
+  if (next === existing.value) return undefined
 
   return {
-    path: file,
+    path: hook.file,
     kind: existsSync(path) ? 'update' : 'create',
-    summary: 'hook that shows findings to Claude Code after each edit',
-    apply: () => writeJson(path, { ...existing.value, hooks: { ...hooks, PostToolUse: [...postToolUse, entry] } })
+    summary: hook.summary,
+    apply: () => writeJson(path, next)
   }
+}
+
+/** A Stop entry in the shape Claude Code and Codex share. Neither applies a matcher to Stop. */
+const stopEntry = (existing: JsonRecord): JsonRecord => {
+  const hooks = isRecord(existing.hooks) ? existing.hooks : {}
+  const entry = { hooks: [{ type: 'command', command: STOP_HOOK_COMMAND }] }
+
+  return { ...existing, hooks: { ...hooks, Stop: [...hookList(hooks, 'Stop'), entry] } }
+}
+
+/** A PostToolUse entry in the shape Claude Code and Codex share. */
+const postToolUse = (existing: JsonRecord, matcher: string): JsonRecord => {
+  const hooks = isRecord(existing.hooks) ? existing.hooks : {}
+  const entry = { matcher, hooks: [{ type: 'command', command: AGENT_HOOK_COMMAND }] }
+
+  return { ...existing, hooks: { ...hooks, PostToolUse: [...hookList(hooks, 'PostToolUse'), entry] } }
+}
+
+/** Claude Code: fix each edit, give Claude what is left next to the tool result, and check again as it stops. */
+const CLAUDE_HOOK: AgentHook = {
+  file: '.claude/settings.json',
+  agent: 'Claude Code',
+  summary:
+    'hooks that fix each Claude Code edit, tell Claude what is left, and send it back when it stops with errors left',
+  add: existing => postToolUse(existing, 'Edit|Write|MultiEdit'),
+  addStop: stopEntry
+}
+
+/** An entry under one of Cursor's events, which take a list of commands and no matcher. */
+const cursorEntry = (existing: JsonRecord, event: string, command: string): JsonRecord => {
+  const hooks = isRecord(existing.hooks) ? existing.hooks : {}
+
+  return { version: 1, ...existing, hooks: { ...hooks, [event]: [...hookList(hooks, event), { command }] } }
 }
 
 /**
- * A Cursor hook that applies safe fixes and formatting after each edit. Cursor does not read a
- * hook's findings back, so the hook fixes, and AGENTS.md tells the agent to run the check.
+ * Cursor: fix each edit. Cursor reads nothing back from an `afterFileEdit` hook, so what is left
+ * reaches the agent from its `stop` hook, whose `followup_message` Cursor sends as the next prompt.
  */
-const planCursorHook = (root: string, notes: string[]): SetupAction | undefined => {
-  // Only for repos that already use Cursor: no empty .cursor folder for everyone else.
-  if (!existsSync(join(root, '.cursor'))) return undefined
-
-  const file = '.cursor/hooks.json'
-  const path = join(root, file)
-  const command = 'npx pawl fix --changed'
-  const existing = existsSync(path) ? readJsonc<JsonRecord>(path) : { value: {} as JsonRecord, hasComments: false }
-
-  if (!existing.value || existing.hasComments) {
-    notes.push(`${file} could not be read, so pawl added no Cursor hook.`)
-
-    return undefined
-  }
-
-  if (JSON.stringify(existing.value).includes(command)) return undefined
-
-  const hooks = isRecord(existing.value.hooks) ? existing.value.hooks : {}
-  const afterFileEdit = Array.isArray(hooks.afterFileEdit) ? hooks.afterFileEdit : []
-
-  return {
-    path: file,
-    kind: existsSync(path) ? 'update' : 'create',
-    summary: 'hook that fixes and formats after each Cursor edit',
-    apply: () =>
-      writeJson(path, {
-        version: 1,
-        ...existing.value,
-        hooks: { ...hooks, afterFileEdit: [...afterFileEdit, { command }] }
-      })
-  }
+const CURSOR_HOOK: AgentHook = {
+  file: '.cursor/hooks.json',
+  agent: 'Cursor',
+  summary: 'hooks that fix each Cursor edit, and send the agent back when it stops with errors left',
+  add: existing => cursorEntry(existing, 'afterFileEdit', AGENT_HOOK_COMMAND),
+  addStop: existing => cursorEntry(existing, 'stop', STOP_HOOK_COMMAND)
 }
+
+/**
+ * Codex: every file edit is an `apply_patch`, and a PostToolUse hook's `additionalContext` reaches
+ * the model. Codex runs a project's hooks only once they are trusted, in its /hooks screen.
+ */
+const CODEX_HOOK: AgentHook = {
+  file: '.codex/hooks.json',
+  agent: 'Codex',
+  summary: 'hooks that fix each Codex edit, tell Codex what is left, and send it back when it stops with errors left',
+  add: existing => postToolUse(existing, 'apply_patch'),
+  addStop: stopEntry
+}
+
+/**
+ * The Copilot CLI and cloud agent read hooks from .github/hooks. A Copilot hook runs after every
+ * tool, so `--hook` itself skips the tools that edit nothing.
+ */
+const copilotEntry = (existing: JsonRecord, event: string, command: string): JsonRecord => {
+  const hooks = isRecord(existing.hooks) ? existing.hooks : {}
+  const entry = { type: 'command', command, timeoutSec: 60 }
+
+  return { version: 1, ...existing, hooks: { ...hooks, [event]: [...hookList(hooks, event), entry] } }
+}
+
+const COPILOT_HOOK: AgentHook = {
+  file: '.github/hooks/pawl.json',
+  agent: 'Copilot',
+  summary:
+    'hooks that fix each Copilot edit, tell Copilot what is left, and send it back when it stops with errors left',
+  add: existing => copilotEntry(existing, 'postToolUse', AGENT_HOOK_COMMAND),
+  addStop: existing => copilotEntry(existing, 'agentStop', STOP_HOOK_COMMAND)
+}
+
+/** The files that say a repo uses Copilot's agents. */
+const COPILOT_FILES = ['.github/copilot-instructions.md', '.github/instructions', '.github/hooks']
+
+/**
+ * The hooks for each agent the repo uses. Claude Code always gets one; Cursor, Codex and Copilot
+ * only where their folders or files are already there, so no one gets an empty folder for a tool
+ * they do not use.
+ */
+const planAgentHooks = (root: string, notes: string[]): (SetupAction | undefined)[] => {
+  const codex = existsSync(join(root, '.codex')) ? planAgentHook(root, notes, CODEX_HOOK) : undefined
+
+  if (codex) notes.push("Codex runs a project's hooks once they are trusted. Review pawl's hooks in Codex's /hooks.")
+
+  return [
+    planAgentHook(root, notes, CLAUDE_HOOK),
+    existsSync(join(root, '.cursor')) ? planAgentHook(root, notes, CURSOR_HOOK) : undefined,
+    codex,
+    COPILOT_FILES.some(file => existsSync(join(root, file))) ? planAgentHook(root, notes, COPILOT_HOOK) : undefined
+  ]
+}
+
+/** An import of AGENTS.md in a Claude Code memory file, from wherever that file is. */
+const IMPORTS_AGENTS = /@(?:\.{1,2}\/)*AGENTS\.md\b/
+
+/**
+ * Claude Code reads CLAUDE.md, not AGENTS.md, so the instructions reach it through an import. An
+ * existing CLAUDE.md gets the import at its end; without one, pawl writes a CLAUDE.md that only
+ * imports AGENTS.md. A CLAUDE.md that is a link, as Claude Code's docs suggest for AGENTS.md, is
+ * left alone.
+ */
+const planClaudeImport = (root: string): SetupAction | undefined => {
+  const summary = 'import AGENTS.md, which Claude Code does not read on its own'
+
+  for (const [file, line] of [
+    ['CLAUDE.md', '@AGENTS.md'],
+    ['.claude/CLAUDE.md', '@../AGENTS.md']
+  ] as const) {
+    const path = join(root, file)
+
+    if (!existsSync(path)) continue
+
+    if (lstatSync(path).isSymbolicLink()) return undefined
+
+    const current = readFileSync(path, 'utf8')
+
+    if (IMPORTS_AGENTS.test(current) || current.includes(AGENTS_START)) return undefined
+
+    return { path: file, kind: 'update', summary, apply: () => writeText(path, `${current.trimEnd()}\n\n${line}\n`) }
+  }
+
+  return { path: 'CLAUDE.md', kind: 'create', summary, apply: () => writeText(join(root, 'CLAUDE.md'), '@AGENTS.md\n') }
+}
+
+/**
+ * Gemini CLI reads GEMINI.md unless its settings name other context files. In a repo that has a
+ * .gemini folder, pawl adds AGENTS.md to that list and keeps what the list already read.
+ */
+const planGeminiContext = (root: string, notes: string[]): SetupAction | undefined => {
+  if (!existsSync(join(root, '.gemini'))) return undefined
+
+  const settings = readJsonc<JsonRecord>(join(root, '.gemini/settings.json')).value
+  const context = isRecord(settings?.context) ? settings.context : {}
+  const fileName = context.fileName
+  const read =
+    typeof fileName === 'string' || Array.isArray(fileName)
+      ? toList(fileName).filter((name): name is string => typeof name === 'string')
+      : ['GEMINI.md']
+
+  if (read.includes('AGENTS.md')) return undefined
+
+  return planJsonMerge(
+    root,
+    '.gemini/settings.json',
+    { context: { fileName: [...read, 'AGENTS.md'] } },
+    'have Gemini CLI read AGENTS.md as well',
+    notes
+  )
+}
+
+/** Where agents look for a project's skills: Claude Code's folder, and the one Codex and Copilot share. */
+const SKILL_FILES = ['.claude/skills/pawl/SKILL.md', '.agents/skills/pawl/SKILL.md']
+
+/**
+ * The pawl skill: what to run after an edit, how to read the findings, and what not to do. Init
+ * keeps its own copy up to date. A copy without pawl's marker line is someone's own, left alone.
+ */
+const planSkills = (root: string, notes: string[]): SetupAction[] =>
+  SKILL_FILES.flatMap((file): SetupAction[] => {
+    const path = join(root, file)
+    const write = (kind: SetupAction['kind']): SetupAction[] => [
+      {
+        path: file,
+        kind,
+        summary: 'skill that tells coding agents how to check and fix their work with pawl',
+        apply: () => writeText(path, SKILL_FILE)
+      }
+    ]
+
+    if (!existsSync(path)) return write('create')
+
+    const current = readFileSync(path, 'utf8')
+
+    if (current === SKILL_FILE) return []
+
+    if (!current.includes(SKILL_MARKER)) {
+      notes.push(`${file} is not the one pawl writes, so pawl left it alone.`)
+
+      return []
+    }
+
+    return write('update')
+  })
 
 /** Instructions any coding agent can follow, kept in a marked block so they can be updated later. */
 const planAgentsFile = (root: string): SetupAction | undefined => {
@@ -227,6 +413,16 @@ const planAgentsFile = (root: string): SetupAction | undefined => {
   }
 }
 
+/** A hook file with the line an earlier version of pawl wrote swapped for the current command. */
+const swapLegacyLine = (text: string, command: string): string => {
+  const legacy = legacyCommand(command)
+
+  return text
+    .split('\n')
+    .map(line => (line.trim() === legacy ? line.replace(legacy, command) : line))
+    .join('\n')
+}
+
 /** A pre-commit hook, through the hook manager the repo already uses. */
 export const planHook = (root: string, detection: Detection, notes: string[]): SetupAction | undefined => {
   const husky = join(root, '.husky')
@@ -234,6 +430,16 @@ export const planHook = (root: string, detection: Detection, notes: string[]): S
   if (existsSync(husky)) {
     const path = join(husky, 'pre-commit')
     const current = existsSync(path) ? readFileSync(path, 'utf8') : ''
+    const swapped = swapLegacyLine(current, HOOK_COMMAND)
+
+    if (swapped !== current) {
+      return {
+        path: '.husky/pre-commit',
+        kind: 'update',
+        summary: 'run the pre-commit check with the installed pawl only',
+        apply: () => writeText(path, swapped)
+      }
+    }
 
     if (current.includes('pawl check')) return undefined
 
@@ -260,6 +466,16 @@ export const planHook = (root: string, detection: Detection, notes: string[]): S
   }
 
   const path = join(root, '.git/hooks/pre-commit')
+  const hookFile = `#!/bin/sh\n${HOOK_COMMAND}\n`
+
+  if (existsSync(path) && readFileSync(path, 'utf8') === `#!/bin/sh\n${legacyCommand(HOOK_COMMAND)}\n`) {
+    return {
+      path: '.git/hooks/pre-commit',
+      kind: 'update',
+      summary: 'run the pre-commit check with the installed pawl only',
+      apply: () => writeText(path, hookFile)
+    }
+  }
 
   if (existsSync(path)) {
     notes.push(`A pre-commit hook already exists. Add "${HOOK_COMMAND}" to .git/hooks/pre-commit.`)
@@ -276,10 +492,74 @@ export const planHook = (root: string, detection: Detection, notes: string[]): S
     kind: 'create',
     summary: 'check changed files before each commit',
     apply: () => {
-      writeText(path, `#!/bin/sh\n${HOOK_COMMAND}\n`)
+      writeText(path, hookFile)
       chmodSync(path, 0o755)
     }
   }
+}
+
+/** The list of tasks in a tasks file. VS Code keeps it under "tasks", which may not be there yet; Zed's file is the list. */
+const tasksIn = (value: unknown, shape: 'vscode' | 'zed'): unknown => {
+  if (shape === 'zed') return value
+
+  return isRecord(value) ? (value.tasks ?? []) : undefined
+}
+
+/** The label of a task in a tasks file, whatever else the entry holds. */
+const labelOf = (task: unknown): unknown => (isRecord(task) ? task.label : undefined)
+
+/**
+ * Add pawl's tasks to an editor's tasks file: a new file, or the tasks it does not have yet, by
+ * label. A task of the same name that the user wrote is theirs, and a file with comments is left
+ * alone, with a note, since writing it back would drop them.
+ */
+const planTasks = (
+  root: string,
+  file: string,
+  tasks: readonly JsonRecord[],
+  shape: 'vscode' | 'zed',
+  summary: string,
+  notes: string[]
+): SetupAction | undefined => {
+  const path = join(root, file)
+  const wrap = (list: readonly unknown[]): unknown => (shape === 'vscode' ? { version: '2.0.0', tasks: list } : list)
+
+  if (!existsSync(path)) return { path: file, kind: 'create', summary, apply: () => writeJson(path, wrap(tasks)) }
+
+  const { value, hasComments } = readJsonc<unknown>(path)
+  const list = tasksIn(value, shape)
+
+  if (!Array.isArray(list) || hasComments) {
+    notes.push(
+      `${file} has comments or could not be read, so pawl did not add its tasks. Add a "pawl: check" task by hand.`
+    )
+
+    return undefined
+  }
+
+  // A task of pawl's that still runs the command an earlier version wrote gets the current one.
+  const ours = new Map<unknown, JsonRecord>(tasks.map(task => [task.label, task]))
+  let swapped = 0
+  const current = list.map(task => {
+    const mine = ours.get(labelOf(task))
+
+    if (!isRecord(task) || typeof mine?.command !== 'string' || task.command === mine.command) return task
+
+    if (task.command !== legacyCommand(mine.command)) return task
+
+    swapped += 1
+
+    return { ...task, command: mine.command }
+  })
+  const labels = new Set(list.map(labelOf))
+  const missing = tasks.filter(task => !labels.has(task.label))
+
+  if (missing.length === 0 && swapped === 0) return undefined
+
+  const next =
+    shape === 'vscode' ? { ...(value as JsonRecord), tasks: [...current, ...missing] } : [...current, ...missing]
+
+  return { path: file, kind: 'update', summary, apply: () => writeJson(path, next) }
 }
 
 /** VS Code settings that format on save with the project's formatter, and a recommendation for its extension. */
@@ -303,6 +583,22 @@ export const planEditor = (root: string, formatter: FormatterName, notes: string
     )
   }
 
+  actions.push(
+    planTasks(
+      root,
+      '.vscode/tasks.json',
+      VSCODE_TASKS,
+      'vscode',
+      'tasks that put findings in the Problems panel',
+      notes
+    )
+  )
+
+  // Zed's tasks only where the repo already has Zed's folder, as for the agents' folders.
+  if (existsSync(join(root, '.zed'))) {
+    actions.push(planTasks(root, '.zed/tasks.json', ZED_TASKS, 'zed', 'tasks that check and fix from Zed', notes))
+  }
+
   return actions.filter((action): action is SetupAction => action !== undefined)
 }
 
@@ -318,8 +614,15 @@ export const planWorkflow = (root: string, detection: Detection): SetupAction | 
   }
 }
 
-/** Hooks that show coding agents their findings after each edit, and instructions any agent can follow. */
+/**
+ * Everything `--agents` sets up: hooks that fix each edit and hand back what is left, the
+ * AGENTS.md instructions and what makes Claude Code and Gemini CLI read them, and the pawl skill.
+ */
 export const planAgents = (root: string, notes: string[]): SetupAction[] =>
-  [planAgentHook(root, notes), planCursorHook(root, notes), planAgentsFile(root)].filter(
-    (action): action is SetupAction => action !== undefined
-  )
+  [
+    ...planAgentHooks(root, notes),
+    planAgentsFile(root),
+    planClaudeImport(root),
+    planGeminiContext(root, notes),
+    ...planSkills(root, notes)
+  ].filter((action): action is SetupAction => action !== undefined)

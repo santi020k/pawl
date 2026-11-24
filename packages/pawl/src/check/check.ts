@@ -43,6 +43,14 @@ export interface CheckOptions {
   policy?: Policy
   /** Fail when there are more new warnings than this. The policy's `maxWarnings`, when lower, wins. */
   maxWarnings?: number
+  /** Told when each engine starts and ends, for a person watching. */
+  progress?: (event: CheckProgress) => void
+}
+
+/** An engine of a check that started, or ended. */
+export interface CheckProgress {
+  engine: string
+  done: boolean
 }
 
 /** The lower of two warning limits, so a command line cannot loosen what the policy sets. */
@@ -183,7 +191,11 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
       if (idle || !state.runnable) return { findings: [], setup: state.issues, commands: [] }
 
+      options.progress?.({ engine: engine.name, done: false })
+
       const outcome = await runEngine(engine, run)
+
+      options.progress?.({ engine: engine.name, done: true })
 
       return { ...outcome, setup: [...state.issues, ...outcome.setup] }
     },

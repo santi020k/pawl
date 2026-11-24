@@ -19,7 +19,7 @@ A pawl is the part of a ratchet that stops it slipping backward. This tool does 
 - **Docker checks.** 17 checks of pawl's own for Dockerfiles and Compose files: unpinned images, secrets, running as root, privileged services and more.
 - **Optional packs.** 50 packs cover what only an ESLint plugin can check. Pawl holds the rules; the project installs the plugin.
 - **A ratchet.** Existing findings go into a baseline. New findings fail the check, and so do new comments that switch a check off.
-- **Output for coding agents.** `pawl check --changed --format agent` prints one compact JSON line per finding, with the fix.
+- **Output for people, agents and editors.** A person at a terminal sees each finding with its code and its fix. A coding agent gets one compact JSON line per finding, with the fix, without asking for it. Editors get `--format editor` lines, and VS Code tasks that put them in the Problems panel.
 - **A shared standard.** A team publishes one policy package, like [`@santi020k/pawl-policy`](packages/pawl-policy). Repos extend it, and the company can lock rules so repos cannot loosen them.
 - **Engines stay visible.** `biome check` and `eslint .` keep working on their own, and every finding shows the engine's own rule name.
 - **Monorepos that mix stacks.** React rules run in the React app and not in the Vue app next to it, under Biome, Oxlint and ESLint alike.
@@ -246,8 +246,8 @@ An optional pack runs through ESLint next to Biome, or with ESLint as the only l
 | `snapshot` and `diff`            | Yes                      | Not planned                                                                                  |
 | `config-types`                   | Yes                      | Not needed                                                                                   |
 | `migrate`                        | From its own v2          | From ESLint flat configs; stops when a scope cannot be preserved                             |
-| Agent files                      | `generate-skill`         | `AGENTS.md` block and a Claude Code hook                                                     |
-| Output for agents                | No                       | Yes, `--format agent`                                                                        |
+| Agent files                      | `generate-skill`         | `AGENTS.md` block, a skill, and hooks for each edit and for when the agent stops             |
+| Output for agents                | No                       | Yes, `--format agent`, the default when an agent runs pawl                                   |
 | ESLint MCP scaffold              | Yes                      | Not planned                                                                                  |
 | GitHub Action                    | Yes                      | `init --workflow` writes a workflow                                                          |
 | Company policy with locked rules | No                       | Yes                                                                                          |

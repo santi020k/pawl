@@ -20,18 +20,18 @@ Quality (`quality.yml`) runs `pnpm ok` as the repository check and owns the Git 
 
 `packages/pawl/src` is grouped by layer, lowest first. A module imports from its own layer or a lower one, never from a higher one, and there are no import cycles; `test/architecture.test.ts` checks both.
 
-| Folder     | What it holds                                                                                                                                                                      |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `utils/`   | JSON, file, list, text and semver helpers. No pawl concepts.                                                                                                                       |
-| `catalog/` | The product as data: rules, packs, guards, runtimes. No disk access.                                                                                                               |
-| `project/` | Detection, config file names, the files git sees, ignores and the toolset.                                                                                                         |
-| `scans/`   | Pawl's own line scans and their rules, behind `scan.ts` and a registry. The policy reads their levels.                                                                             |
-| `policy/`  | Merging the layers (`merge.ts`), loading the files (`load.ts`), the level of each rule (`levels.ts`), and `loadProject` (`project.ts`): the policy with the project it applies to. |
-| `engines/` | One folder per engine: `config.ts` (what its config should be), `run.ts` (run it and read its report) and `engine.ts` (its `Engine` adapter). `registry.ts` lists them.            |
-| `check/`   | The check, its result and exit codes, the baseline and the output formats.                                                                                                         |
-| `report/`  | The doctor and `explain`.                                                                                                                                                          |
-| `setup/`   | One planner per command (`init`, `add`, `sync`, `migrate/`) and the steps they share. Plans only read the disk; `applyPlan` writes.                                                |
-| `cli/`     | Options, printing and one module per command. `src/cli.ts` is the entry point and the table of commands.                                                                           |
+| Folder     | What it holds                                                                                                                                                                                                                           |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `utils/`   | JSON, file, list, text, semver and terminal helpers (colors, symbols, widths). No pawl concepts.                                                                                                                                        |
+| `catalog/` | The product as data: rules, packs, guards, runtimes. No disk access.                                                                                                                                                                    |
+| `project/` | Detection, config file names, the files git sees, ignores and the toolset.                                                                                                                                                              |
+| `scans/`   | Pawl's own line scans and their rules, behind `scan.ts` and a registry. The policy reads their levels.                                                                                                                                  |
+| `policy/`  | Merging the layers (`merge.ts`), loading the files (`load.ts`), the level of each rule (`levels.ts`), and `loadProject` (`project.ts`): the policy with the project it applies to.                                                      |
+| `engines/` | One folder per engine: `config.ts` (what its config should be), `run.ts` (run it and read its report) and `engine.ts` (its `Engine` adapter). `registry.ts` lists them.                                                                 |
+| `check/`   | The check, its result and exit codes, the baseline and the output formats.                                                                                                                                                              |
+| `report/`  | The doctor and `explain`.                                                                                                                                                                                                               |
+| `setup/`   | One planner per command (`init`, `add`, `sync`, `migrate/`) and the steps they share. Plans only read the disk; `applyPlan` writes.                                                                                                     |
+| `cli/`     | Options, printing and one module per command. `audience.ts` tells a person from a coding agent; `ui.ts` and `prompt.ts` draw the rail, spinners and questions a person sees. `src/cli.ts` is the entry point and the table of commands. |
 
 `src/types.ts` and `src/version.ts` are shared by every layer and import none of them.
 
@@ -53,6 +53,7 @@ A new engine is an `Engine` in `engines/<name>/engine.ts`, added to `engines/reg
 - The Docker checks in `src/scans/docker.ts` and the Markdown checks in `src/scans/markdown.ts` are the only rules pawl implements itself as line scans, because no engine reads those files. Keep each one a plain line scan that skips what is not prose or instructions, with a test for a file that is wrong and one that is fine. They honour the same ignores as the engines (`src/project/ignores.ts`).
 - A new pack needs its plugin as an optional peer in `packages/pawl/package.json`, and a run against the real plugin before it ships.
 - Every engine failure must reach the user as a setup problem with exit code 2. Never report success when part of the check did not run.
+- Output has three readers. A person at a terminal gets the rich view (`terminal().rich`): symbols, code frames, the rail, colors where allowed. Coding agents, pipes and logs get plain text that stays the same from run to run; an agent's `check` and `fix` default to `--format agent`. Editors read `--format editor`. Spin only when `terminal().animate` says so and ask only when `terminal().interactive` does, so nothing waits for an answer nobody can give.
 - Pawl has no standard of its own for Rust, Swift or Kotlin. A language runs only when the policy names it in `languages`, with the project's own config; pawl applies the policy's levels to what the tool reports, by the tool's rule name (`clippy:needless_return`). A tool that is not installed is `language-tool-missing`, a blocking setup problem.
 - Do not name a file `biome.json` anywhere but a project root: Biome treats each one as a nested configuration.
 

@@ -11,22 +11,27 @@ words:
   - bunfig
   - bunx
   - classlist
+  - CLAUDECODE
   - clinerules
   - clippy
+  - Cmder
   - cntrl
   - codegen
+  - COLORTERM
   - commitprompt
   - Containerfile
   - darraghor
   - detekt
   - distroless
   - Dockerfiles
+  - errorformat
   - esbuild
   - extglob
   - extglobs
   - fflate
   - fontsource
   - genai
+  - ghostty
   - heredocs
   - Hono
   - Instantiator
@@ -58,11 +63,14 @@ words:
   - pbxproj
   - proptypes
   - punct
+  - Qwen
   - Qwik
   - rustc
   - rustup
+  - rxvt
   - santi
   - santi020k
+  - SARIF
   - serviceworker
   - setext
   - Slidev
@@ -77,6 +85,7 @@ words:
   - Titlebar
   - topsecret
   - treegrid
+  - truecolor
   - tsgolint
   - Turborepo
   - undici

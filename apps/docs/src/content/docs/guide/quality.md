@@ -39,6 +39,8 @@ tasks:
 
 There is deliberately no file-extension filter here: Pawl may own native-language checks, Markdown and Docker checks as well as JavaScript. A JavaScript-only filter could skip that work during a changed-file run.
 
+A tool that runs Pawl and reads what it prints can set `PAWL_FORMAT` instead of passing `--format`. With `PAWL_FORMAT=editor`, Pawl prints one `file:line:col: error: message [rule]` line per finding, the same lines VS Code problem matchers read; `--format` still wins when both are given. Pawl and Quality recognise a coding agent by the same environment variables, and `PAWL_AGENT=0` or `1` settles it for Pawl when the guess is wrong.
+
 :::note
 The integration is in beta. Structured Pawl diagnostics use the `pawl-json` task parser introduced in Quality 2.2; the example above stays compatible with Quality 2.1. Use the integration documentation for your installed Quality version. A dedicated Pawl adapter remains planned.
 :::

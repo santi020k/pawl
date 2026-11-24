@@ -89,6 +89,7 @@ export default defineConfig({
           label: 'Workflows',
           items: [
             { label: 'Coding agents', slug: 'guide/agents' },
+            { label: 'Editors', slug: 'guide/editors' },
             { label: 'CI and hooks', slug: 'guide/ci' },
             { label: 'With Quality', slug: 'guide/quality' },
             { label: 'Monorepos', slug: 'guide/monorepos' },

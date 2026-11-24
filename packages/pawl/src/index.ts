@@ -14,7 +14,7 @@ export { applyBaseline, BASELINE_FILE, createBaseline, readBaseline, scanSuppres
 export type { CheckOptions } from './check/check.ts'
 export { check } from './check/check.ts'
 export type { OutputFormat } from './check/output.ts'
-export { format, formatAgent, formatJson, formatPretty } from './check/output.ts'
+export { format, formatAgent, formatEditor, formatJson, formatPretty } from './check/output.ts'
 export type { CheckReport, CheckReportRead, ReadCheckReportOptions } from './check/report-contract.ts'
 export { CHECK_REPORT_VERSION, readCheckReport } from './check/report-contract.ts'
 export type { CheckResult } from './check/result.ts'

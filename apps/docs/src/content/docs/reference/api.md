@@ -41,7 +41,7 @@ export default eslint({ root: import.meta.dirname })
 | Packs     | `PACKS`, `getPack`, `suggestedPacks`                                                                                                                 |
 | Ignores   | `ALWAYS_IGNORED`, `DEFAULT_IGNORES`                                                                                                                  |
 | Baseline  | `createBaseline`, `readBaseline`, `applyBaseline`, `scanSuppressions`, `BASELINE_FILE`                                                               |
-| Output    | `format`, `formatPretty`, `formatAgent`, `formatJson`, `CHECK_REPORT_VERSION`, `readCheckReport`                                                     |
+| Output    | `format`, `formatPretty`, `formatAgent`, `formatEditor`, `formatJson`, `CHECK_REPORT_VERSION`, `readCheckReport`                                     |
 | Biome     | `biomeConfig`, `biomeProjectConfig`, `biomePackageConfig`, `biomeTechConfig`, `biomeTechPreset`, `checkBiomeConfig`, `BIOME_PRESET`, `BIOME_VERSION` |
 | ESLint    | `eslint`, `eslintPlan`, `eslintPlanFor`                                                                                                              |
 | Oxlint    | `oxlintConfig`, `oxlintCovers`, `checkOxlintConfig`, `OXLINT_RULES`, `OXLINT_VERSION`                                                                |

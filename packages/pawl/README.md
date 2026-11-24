@@ -12,7 +12,7 @@ Fast guardrails for AI-written code. One standard, for the linter and formatter 
 npx @santi020k/pawl init
 ```
 
-`init` looks at the repo, shows what it will change, and asks before writing. In a terminal it offers a menu; in CI or under a coding agent it uses `auto`.
+`init` looks at the repo, shows what it will change, and asks before writing. In a terminal it asks how to set up the tools, then what else to add: the editor, coding agents, a pre-commit hook or a GitHub workflow. In CI or under a coding agent it asks nothing and uses `auto`.
 
 | Mode             | What it does                                                        |
 | ---------------- | ------------------------------------------------------------------- |
@@ -20,13 +20,13 @@ npx @santi020k/pawl init
 | `keep`           | Stay on the engine the repo uses today and add the ratchet on top.  |
 | `biome`          | Biome only. Pawl stops running ESLint.                              |
 
-Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (a Claude Code hook, a Cursor hook where `.cursor` exists, and instructions in `AGENTS.md`), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`.
+Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (hooks that fix each edit for Claude Code, and for Cursor, Codex and Copilot where the repo uses them; instructions in `AGENTS.md` that Claude Code and Gemini CLI read too; a pawl skill), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`.
 
 `init` writes:
 
 - `biome.json`, a few lines that extend the standard and turn on Biome's `.gitignore` support;
 - `check` and `fix` scripts in `package.json`;
-- `.vscode/settings.json`, so the editor formats and fixes on save, and `.vscode/extensions.json`, which recommends the editor extension;
+- `.vscode/settings.json`, so the editor formats and fixes on save, `.vscode/extensions.json`, which recommends the editor extension, and `.vscode/tasks.json`, with tasks that put the findings in the Problems panel;
 - `.pawl/baseline.json`, the findings the repo already has.
 
 Pawl never deletes or overwrites a tool config you already have. It tells you what you can remove.
@@ -94,7 +94,15 @@ One JSON object per line, errors first, and nothing at all when there is nothing
 }
 ```
 
-`--format json` prints the whole result with `reportVersion: 1`. The public `readCheckReport` helper validates captured output against the actual process status; malformed output and setup failures never count as clean checks.
+A coding agent gets this format without asking: pawl knows Claude Code, Cursor, Codex, Gemini CLI and other agents by the variables they set, and shows them no colors, spinners or questions in any command. `PAWL_AGENT=0` says a person is running pawl.
+
+### Output for people and editors
+
+In a terminal, `pawl check` shows each finding with the line of code it points at, a mark under the part it means and how to fix it, then a summary. `pawl init` asks its questions and shows its plan step by step, and `pawl doctor` marks each part of the setup. In a pipe or a log, the same facts print as plain lines.
+
+`--format editor` prints `src/a.ts:3:7: error: message [rule]` lines, which VS Code's problem matchers, Vim's quickfix list and Emacs's compilation mode read. The tasks `init` writes for VS Code use it. `--format json` prints the whole result as one document, with `reportVersion: 1`. The public `readCheckReport` helper validates captured output against the actual process status; malformed output and setup failures never count as clean checks.
+
+In a coding agent's post-edit hook, `pawl fix --hook` reads the files the agent edited from the hook's input, fixes and checks only those, and hands what is left back to the agent in the shape its tool reads: Claude Code, Codex and Copilot put it in front of the model, Cursor reads nothing back. In the agent's stop hook, `pawl check --hook` checks every file the agent edited in the session and sends it back while new errors are left, Cursor included. `pawl init --agents` writes these hooks, with `npx --no pawl` so a repo that has not installed pawl yet never downloads the unscoped `pawl` package, which is someone else's. See [Coding agents](https://pawl.santi020k.com/guide/agents/).
 
 ## The policy
 

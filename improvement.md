@@ -263,8 +263,9 @@ No rule floors, baselines or ignores were weakened to make validation pass.
 
 ### Validation and qualification boundary
 
-The implementation is prepared against the v0.4.0 release base for local
-integration into `release/v0.5.0`. The source of truth for the tested versions is
+The implementation commit `5898a0f` is integrated into `release/v0.5.0` through
+merge `fd538bd`, alongside the tooling commit `f29ff1c`. Changesets generated
+version 0.5.0 for both public packages. The source of truth for the tested versions is
 the manifests and lockfile: pnpm 11.6.0, Node 22.23.4 for the full repository gate,
 Biome 2.6.8, ESLint 10.15.0 and Oxlint 1.94.0. Real ESLint integration fixtures use
 TypeScript 6 separately from the library's TypeScript 7 compiler because the
@@ -272,13 +273,16 @@ installed typescript-eslint peer contract does not support TypeScript 7.
 Astro plugin 1.7.0 is the latest major compatible with Pawl's declared minimum
 Node runtime; newer plugin majors require a higher minimum.
 
-The full `pnpm ok` gate passed on the staged implementation with Node 22.23.4:
-611 library tests, nine shared-policy tests, eight docs tests and 26 release-script
+The full `pnpm ok` gate passed on the integrated 0.5.0 implementation with Node 22.23.4:
+634 library tests, nine shared-policy tests, eight docs tests and 26 release-script
 tests, plus build, type checking, Pawl, CSpell, Knip and generated-file checks.
 Earlier formatting issues and test-name warnings were corrected. The docs audit
-checked 33 pages with zero findings; Astro Doctor scored 100/100. Local release
-integration and publication are separate steps; nothing has been published by
-this work.
+checked 33 pages with zero findings; Astro Doctor scored 100/100. Local release integration and publication are separate steps; nothing has been
+pushed or published by this work. Final independent review resolved both runtime
+export-condition selection and physical-file processor-scope bypasses, with 33
+focused regressions passing. `pnpm release:check` passed, and
+`pnpm check:packed-install` installed the 0.5.0 tarball and verified its CLI and
+public library entry in an empty consumer project.
 
 Remaining boundaries are intentional and documented: arbitrary executable config
 requires a truthful deterministic-input declaration for cache reuse; hashing can

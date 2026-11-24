@@ -1,5 +1,43 @@
 # @santi020k/pawl
 
+## 0.5.0
+
+### Minor Changes
+
+- Report known Astro virtual-import and scoped parser limitations in `pawl doctor`, including the separate Astro validators to retain. JSON doctor reports expose advisory `limitations` separately from setup problems. No rules are suppressed and existing configuration is preserved.
+
+- Detect competing Biome and ESLint import-sort owners before applying fixes. The check resolves ESLint rules for the selected files, reports unknown custom ownership explicitly, and preserves semantic import checks.
+
+- Migrate scoped ESLint rules onto policies that already contain file overrides. Explicit source scopes replay after parent scopes, while locked rule floors remain enforced. Parent exceptions remain where the source does not override them; unsafe inherited option combinations still stop before any writes.
+
+- Add opt-in `pawl check --eslint-cache` and `check({ eslintCache: true })` with an explicit deterministic-input declaration. Whole-project, dependency, runtime and environment fingerprints guard native ESLint content caching; corrupt cache state reruns cold and failed or interrupted checks cannot publish reusable state. Fixes remain uncached. Also report signal-terminated engine processes as setup failures even if they printed a partial report.
+
+- Add explicit `testRunners` file scopes for mixed Vitest, Jest, Playwright and Node test projects. Runner-specific assertion conventions stay in their declared scopes while shared focused/skipped-test checks retain their floors. Reject empty, unknown or exclusion-based scopes and attempts to narrow locked runner rules. Document the pinned engines' conditional Playwright and Node skip coverage boundaries.
+
+- Compose existing framework ESLint configs through the public helpers, preserve host parsers, enforce locked rule floors after local exceptions, and route processor fragments without TypeScript project services. Add explicit pack file ownership and consume policy test-runner scopes. Correct literal-bracket workspace ownership and ordered exclusion/re-inclusion patterns at the ESLint boundary.
+
+  Reject broad custom processor-output scopes and physical directory collisions so `untypedFiles` cannot silently disable locked type-aware rules on physical source. Verify each configuration snapshot with a bounded directory scan that fails closed on ambiguous links, cycles and exhausted limits.
+
+- Add advisory root/workspace lint traversal diagnostics to doctor, with explicit unknown scopes and a documented recipe for removing duplicate work without losing engine coverage.
+
+- Expose shared plugin resolution roots and explicit plugin namespace bindings through all ESLint helpers. Validate requested plugin rule implementations and reject missing requested rules or packs as setup failures instead of silently omitting them. Keep ordinary default coverage limitations in the planner report.
+
+  Resolve import-only public package roots and concrete subpath exports in declaration order, including package self references. Denied exports no longer fall back to package main or private entries; unsupported pattern exports produce an actionable error.
+
+- Add `pawl init --no-baseline` and the `planInit({ baseline: false })` option for adoption without accepting existing findings. Dry runs describe baseline handling, shared policy locks remain enforced, and existing baseline files are preserved.
+
+- Add conservative task reachability diagnostics for literal package scripts and Turbo cache settings. Report cached, uncached, shared and unknown consumers without automatically exempting files from lint checks.
+
+- Track generated Biome override ownership with versioned content fingerprints. Sync updates unchanged generated scopes, including removing obsolete scopes, while preserving unknown or edited arrays. Plans list recoverable backups and ownership writes; stale plans, symbolic links, unknown metadata files and conflicting backups are refused before configuration writes. Older configurations require explicit reviewed reconciliation rather than inferred ownership.
+
+- Version JSON check reports with an additive `reportVersion: 1` field and export `readCheckReport` for consumers that validate captured output against the actual process exit code. The reader rejects malformed reports, unsupported versions, contradictory baseline metadata and false success after setup failures. Existing result fields stay at the top level.
+
+### Patch Changes
+
+- Explain when ordered asynchronous work and necessary CSS overrides should remain intact, with guidance for narrow policy exceptions and behavioral verification.
+
+- Preserve ordered policy exclusions and later re-inclusion in ESLint and Oxlint. Escape literal bracket workspace paths and exclude nested workspace ownership so framework rules do not leak into plain sibling or child packages.
+
 ## 0.4.0
 
 ### Minor Changes

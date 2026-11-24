@@ -50,6 +50,8 @@ It needs the history that joins the branch to `<ref>`. In GitHub Actions, check 
     BASE_REF: ${{ github.base_ref }}
 ```
 
+A check with `--since` also fails when the branch's [baseline allows more](/guide/ratchet/#a-baseline-that-allows-more) than the one on `<ref>`, unless a commit on the branch has a `Pawl-Baseline: accept` trailer.
+
 When git does not know the ref, or the clone is too shallow to join it to the branch, the check stops with exit code 2. It never falls back to checking nothing.
 
 The scope is whole files, not changed lines. A file the pull request touches is checked in full, and the [baseline](/guide/ratchet/) still allows the findings it already had. A partial run cannot see findings in files the branch did not touch, so keep a full `pawl check --ci` on the main branch.

@@ -122,12 +122,36 @@ The hooks go in next to any hooks you already have. These are the ones for Claud
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --no pawl check --hook"
+          }
+        ]
+      }
     ]
   }
 }
 ```
 
 Codex matches `apply_patch`, the tool it makes every edit with, and runs a project's hooks only once you trust them: review pawl's in Codex's `/hooks`. Copilot runs its hooks after every tool, so pawl skips the tools that edit nothing. Under Cursor the edit hook only fixes, and what is left reaches the agent from the stop hook, which Cursor sends as the next message.
+
+### A guard on what the check allows
+
+An agent that cannot make the check pass can make it stop failing instead: run `pawl baseline`, edit `.pawl/baseline.json`, or loosen a rule in the policy or an engine config. Each of those is your decision, so `init --agents` also adds a hook that runs before each tool and hands it to you:
+
+| Agent       | Event        | Before it                                          | What pawl answers                                                                         |
+| ----------- | ------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Claude Code | `PreToolUse` | `Edit`, `Write`, `MultiEdit` and `Bash`            | Asks you, with what the call would change                                                 |
+| Codex       | `PreToolUse` | `apply_patch` and `Bash`                           | Refuses a change to the baseline and says why, since Codex cannot ask yet; the rest passes |
+| Copilot     | `preToolUse` | Every tool                                         | Asks you; the cloud agent, with no one to ask, refuses                                    |
+| Cursor      | None         | Cursor has no hook before an edit that can ask     |                                                                                           |
+
+It runs the same command as the stop hook, `npx --no pawl check --hook`, and pawl reads from the hook's input which event it is. The guard reads only that input: it loads no project and runs no engine, so a tool call that changes none of those files goes through at once, with no answer. It guards the baseline, `pawl baseline` however pawl is run, a command that writes the baseline file, the policy files and the configs of Biome, Oxlint, ESLint and Prettier. In CI, [`--since`](/guide/ratchet/#a-baseline-that-allows-more) catches a baseline that grew on a branch however it happened.
 
 When part of the check cannot run, such as an engine that is not installed, the hooks tell you and not the agent: they print the problem and exit with 1, which the agent's tool shows you and goes past. An agent told that Biome is missing would go and install it.
 

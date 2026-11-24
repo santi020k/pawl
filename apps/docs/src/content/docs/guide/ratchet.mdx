@@ -121,6 +121,26 @@ Run `pawl baseline` to record the lower counts, and commit the file. From then o
 
 It writes the file only when the whole check ran. When an engine is missing or fails, the baseline is left as it was: a baseline recorded from half the findings would fail the other half later as new.
 
+## A baseline that allows more
+
+Recording findings makes the check allow more, and nothing else in the check would notice: the new findings are old ones now. So a check with `--since <ref>` also compares `.pawl/baseline.json` with the one where the branch left `<ref>`, and fails at the baseline file when it allows more: more findings or disable comments in a file, fewer assertions or more skipped tests in a test file, or a test file it no longer counts.
+
+```txt
+.pawl/baseline.json:1:1  error  The baseline allows more than it does on origin/main: src/a.ts: 2 more no-console findings. Fix the findings instead of recording them. If a person decided to accept them, add "Pawl-Baseline: accept" to a commit message on this branch.  pawl/no-baseline-growth
+```
+
+When accepting the findings is what you want, as after an upgrade that adds a rule, say so in a commit on the branch:
+
+```txt
+chore: accept the findings of the new rules
+
+Pawl-Baseline: accept
+```
+
+Any commit between `<ref>` and `HEAD` with that trailer accepts the baseline as the branch leaves it. The trailer is in the history for whoever reviews the pull request. On GitHub, a `CODEOWNERS` entry for `.pawl/` adds a review by the people who own the standard as well. A branch that adopts pawl and records its first baseline needs the trailer too.
+
+Set `pawl/no-baseline-growth` to `off` in the policy to turn this off. Without `--since` there is no base to compare with, so a check of the whole repo does not run it; see [Only what a pull request changed](/guide/ci/#only-what-a-pull-request-changed) for a pull request job that does.
+
 ## When two branches change it
 
 The file is plain JSON with sorted keys, so most merges are clean. When git cannot merge it, resolve the conflict by hand or run `pawl baseline` on the merged code. Until then `pawl check` stops with exit code 2, because without the baseline every old finding would count as new:

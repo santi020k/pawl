@@ -5,22 +5,35 @@ import { checkLanguages } from '../engines/languages/check.ts'
 import { activeEngines } from '../engines/registry.ts'
 import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../policy/project.ts'
-import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
+import {
+  changedFiles,
+  changedSince,
+  fileAt,
+  listFiles,
+  projectPath,
+  SinceError,
+  sinceBase,
+  trailersSince
+} from '../project/files.ts'
 import { configIgnores, ignoreMatcher } from '../project/ignores.ts'
 import { runScans, scansReadIgnored } from '../scans/registry.ts'
-import { scanIgnores } from '../scans/scan.ts'
+import { levelForFile, scanIgnores } from '../scans/scan.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
 import { mapAsync } from '../utils/list.ts'
 import {
   applyBaseline,
+  BASELINE_FILE,
+  type Baseline,
   createBaseline,
   newSuppressions,
+  parseBaseline,
   readBaseline,
   scanSuppressions,
   unreadableBaseline,
   writeBaseline
 } from './baseline.ts'
+import { ACCEPT_TRAILER, accepts, BASELINE_GROWTH, baselineGrowth, growthFinding } from './baseline-growth.ts'
 import { type CheckResult, isBlocked } from './result.ts'
 import { scanTests, testCounts, weakerTests } from './tests.ts'
 
@@ -133,6 +146,40 @@ const namedScope = (root: string, named: readonly string[]): Scope | undefined =
   const inFolders = listFiles(root).filter(file => folders.some(folder => file.startsWith(`${folder}/`)))
 
   return { targets, files: [...new Set([...targets.filter(target => !folders.includes(target)), ...inFolders])] }
+}
+
+/**
+ * The baseline compared with the one where the branch left `ref`: a finding when it allows more,
+ * unless a commit on the branch accepts it with a `Pawl-Baseline: accept` trailer.
+ */
+const growthSince = (root: string, ref: string, baseline: Baseline | undefined, policy: Policy): Finding[] => {
+  const severity = levelForFile(policy, BASELINE_GROWTH, BASELINE_FILE, 'error')
+
+  if (severity === 'off') return []
+
+  let base: string
+
+  try {
+    base = sinceBase(root, ref)
+  } catch {
+    // The scope already reported why git could not answer.
+    return []
+  }
+
+  if (trailersSince(root, base, ACCEPT_TRAILER).some(accepts)) return []
+
+  const text = fileAt(root, base, BASELINE_FILE)
+  let before: Baseline | undefined
+
+  try {
+    before = text === undefined ? undefined : parseBaseline(JSON.parse(text) as Baseline)
+  } catch {
+    before = undefined
+  }
+
+  const lines = baselineGrowth(before, baseline)
+
+  return lines.length === 0 ? [] : [growthFinding(ref, lines, severity)]
 }
 
 /** Run every active engine, then pawl's own checks, and compare with the baseline. */
@@ -277,8 +324,13 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     finding => !(finding.rule === 'vitest/no-disabled-tests' && skips.has(`${finding.file}:${finding.line}`))
   )
 
+  const growth =
+    options.since === undefined || isBlocked(setup) ? [] : growthSince(root, options.since, baseline, policy)
+
   return {
-    findings: [...engineFresh, ...newSuppressions(suppressions, baseline), ...ratchet.findings].sort(byPosition),
+    findings: [...engineFresh, ...newSuppressions(suppressions, baseline), ...ratchet.findings, ...growth].sort(
+      byPosition
+    ),
     baselined,
     setup,
     engines,

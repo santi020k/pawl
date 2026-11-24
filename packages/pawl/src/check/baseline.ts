@@ -102,13 +102,14 @@ export const blankJsonStrings = (text: string): string => {
   return out
 }
 
-export const readBaseline = (root: string): Baseline | undefined => {
-  const baseline = readJson<Baseline>(join(root, BASELINE_FILE))
-
-  return baseline?.version === 1
+/** A baseline from its JSON, or undefined when it is not one this version of pawl knows. */
+export const parseBaseline = (baseline: Baseline | undefined): Baseline | undefined =>
+  baseline?.version === 1
     ? { ...baseline, findings: baseline.findings ?? {}, suppressions: baseline.suppressions ?? {} }
     : undefined
-}
+
+export const readBaseline = (root: string): Baseline | undefined =>
+  parseBaseline(readJson<Baseline>(join(root, BASELINE_FILE)))
 
 /**
  * True when there is a baseline file that cannot be used: it is not valid JSON, as after a merge

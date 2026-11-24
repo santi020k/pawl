@@ -39,7 +39,10 @@ describe('setting up coding agents', () => {
           { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo ran' }] },
           { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }] }
         ],
-        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }]
+        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }],
+        PreToolUse: [
+          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+        ]
       }
     })
     expect(json(root, '.cursor/hooks.json')).toEqual({
@@ -71,7 +74,10 @@ describe('setting up coding agents', () => {
         PostToolUse: [
           { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }] }
         ],
-        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }]
+        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }],
+        PreToolUse: [
+          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+        ]
       }
     })
     expect(JSON.stringify(json(root, '.claude/settings.json'))).not.toContain('"npx pawl')
@@ -100,6 +106,9 @@ describe('setting up coding agents', () => {
         Stop: [
           { hooks: [{ type: 'command', command: 'say done' }] },
           { hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+        ],
+        PreToolUse: [
+          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
         ]
       }
     })
@@ -123,14 +132,18 @@ describe('setting up coding agents', () => {
     expect(json(root, '.codex/hooks.json')).toEqual({
       hooks: {
         PostToolUse: [{ matcher: 'apply_patch', hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }] }],
-        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }]
+        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }],
+        PreToolUse: [
+          { matcher: 'apply_patch|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+        ]
       }
     })
     expect(json(root, '.github/hooks/pawl.json')).toEqual({
       version: 1,
       hooks: {
         postToolUse: [{ type: 'command', command: 'npx --no pawl fix --hook', timeoutSec: 60 }],
-        agentStop: [{ type: 'command', command: 'npx --no pawl check --hook', timeoutSec: 60 }]
+        agentStop: [{ type: 'command', command: 'npx --no pawl check --hook', timeoutSec: 60 }],
+        preToolUse: [{ type: 'command', command: 'npx --no pawl check --hook', timeoutSec: 60 }]
       }
     })
     // Nothing to add the second time, and no note about Codex either.

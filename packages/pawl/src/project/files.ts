@@ -95,11 +95,10 @@ export class SinceError extends Error {
 }
 
 /**
- * Files changed since the current branch left `ref`: the commits on the branch,
- * what is not committed yet, and untracked files. Throws a `SinceError` when git
- * cannot answer, because an empty list would pass the check without running it.
+ * The commit the current branch left `ref` at: where `--since` compares from. Throws a
+ * `SinceError` when git cannot answer.
  */
-export const changedSince = (root: string, ref: string): string[] => {
+export const sinceBase = (root: string, ref: string): string => {
   if (!isGitRepo(root))
     throw new SinceError(`--since ${ref} needs a git repository.`, 'Run the check inside the repository.')
 
@@ -131,6 +130,16 @@ export const changedSince = (root: string, ref: string): string[] => {
       'Fetch the full history. In GitHub Actions, set "fetch-depth: 0" on actions/checkout.'
     )
 
+  return base
+}
+
+/**
+ * Files changed since the current branch left `ref`: the commits on the branch,
+ * what is not committed yet, and untracked files. Throws a `SinceError` when git
+ * cannot answer, because an empty list would pass the check without running it.
+ */
+export const changedSince = (root: string, ref: string): string[] => {
+  const base = sinceBase(root, ref)
   let files: string[] | undefined
 
   try {
@@ -149,6 +158,27 @@ export const changedSince = (root: string, ref: string): string[] => {
     )
 
   return [...new Set(files)].filter(file => existsSync(join(root, file)))
+}
+
+/** A file of the project as it was at a commit, or undefined when it did not exist there. */
+export const fileAt = (root: string, commit: string, file: string): string | undefined => {
+  try {
+    // "./" makes the path relative to the project folder, wherever the repository root is.
+    return gitOutput(root, ['show', `${commit}:./${file}`])
+  } catch {
+    return undefined
+  }
+}
+
+/** The values of one trailer on the commits from `base` to HEAD, such as "accept" for `Pawl-Baseline: accept`. */
+export const trailersSince = (root: string, base: string, key: string): string[] => {
+  try {
+    return git(root, ['log', `--format=%(trailers:key=${key},valueonly,separator=%x0A)`, `${base}..HEAD`]).map(value =>
+      value.trim()
+    )
+  } catch {
+    return []
+  }
 }
 
 /** Every project file: what git tracks or would track, else a directory walk. */

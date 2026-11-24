@@ -39,6 +39,7 @@ words:
   - fontsource
   - genai
   - graphqlrc
+  - valueonly
   - ghostty
   - HALFWIDTH
   - heredocs

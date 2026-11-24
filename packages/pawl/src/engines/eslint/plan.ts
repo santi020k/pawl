@@ -562,7 +562,16 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
       const preset = toList(presetOf(pack, plugin) as FlatConfig | readonly FlatConfig[] | undefined)
       config.push(
         ...preset.map(block => {
-          if (!explicitFiles || Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
+          if (Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
+          // A block of the preset with no files would reach every file ESLint lints. One that sets a
+          // parser, a language or a processor keeps to the pack's own files, or it would parse the
+          // scripts as HTML. One with rules only keeps to the scripts and the pack's own files, away
+          // from the Markdown, JSON or YAML another pack hands to its own language, where it crashes.
+          if (!explicitFiles) {
+            if (Array.isArray(block.files) || !pack.files) return block
+
+            return { ...block, files: parses(block) ? pack.files : [...SCRIPT_FILES, ...pack.files] }
+          }
           const original = Array.isArray(block.files) ? block.files : ['**/*']
           return {
             ...block,
@@ -572,10 +581,13 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
           }
         })
       )
+      // The plugin object the preset registers, which a plugin with both a CommonJS and an ES module
+      // build may not share with the module pawl imported. ESLint refuses two objects under one name.
+      const own = preset.map(block => (isRecord(block.plugins) ? block.plugins[pack.prefix] : undefined)).find(Boolean)
       config.push({
         name: `pawl/pack/${pack.name}`,
         ...(files ? { files } : {}),
-        plugins: { [pack.prefix]: plugin },
+        plugins: { [pack.prefix]: own ?? plugin },
         rules
       })
     } else {
@@ -692,6 +704,12 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
   return config
 }
 
+/** A flat config block that decides how files are read: a parser, a language or a processor. */
+const parses = (block: FlatConfig): boolean =>
+  block.language !== undefined ||
+  block.processor !== undefined ||
+  (isRecord(block.languageOptions) && block.languageOptions.parser !== undefined)
+
 /** Explicit aliases must provide real rule implementations, not just a matching namespace. */
 const suppliedPlugin = (value: unknown): Loaded =>
   isRecord(value) ? { module: value } : { error: 'the supplied plugin must be an object' }
@@ -704,13 +722,25 @@ const validateSuppliedRules = (config: FlatConfig[], options: EslintPlanOptions,
     ...Object.keys(options.policy.rules),
     ...options.policy.overrides.flatMap(override => Object.keys(override.rules))
   ])
+  // ESLint merges the plugins of every block that applies to a file, so a rule may name a plugin
+  // another block registers. A plugin's own flat preset does that: one block registers the plugin,
+  // and the blocks after it set its rules.
+  const registeredAnywhere: Record<string, unknown> = {}
+
+  for (const block of config) {
+    if (!isRecord(block.plugins)) continue
+
+    for (const [prefix, plugin] of Object.entries(block.plugins)) registeredAnywhere[prefix] ??= plugin
+  }
+
   for (const block of config) {
     if (!isRecord(block.rules)) continue
 
     for (const [name, value] of Object.entries(block.rules)) {
       const prefix = splitRule(name)
       const supplied = prefix ? options.plugins?.[prefix] : undefined
-      const registered = prefix && isRecord(block.plugins) ? block.plugins[prefix] : undefined
+      const own = prefix && isRecord(block.plugins) ? block.plugins[prefix] : undefined
+      const registered = own ?? (prefix ? registeredAnywhere[prefix] : undefined)
       const plugin = supplied ?? registered
       const level: unknown = Array.isArray(value) ? value[0] : value
 

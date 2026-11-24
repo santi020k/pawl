@@ -47,6 +47,15 @@ export const baselineGrowth = (before: Baseline | undefined, after: Baseline | u
 
     if (counts.skipped > was.skipped)
       lines.push(`${file}: ${plural(counts.skipped - was.skipped, 'more skipped test')}`)
+
+    // A count that was not there had no floor, so it is not more than before.
+    if (counts.masks !== undefined && was.masks !== undefined && counts.masks > was.masks) {
+      const more = counts.masks - was.masks
+
+      lines.push(
+        `${file}: ${more} more ${more === 1 ? 'retry, raised timeout or fixed sleep' : 'retries, raised timeouts or fixed sleeps'}`
+      )
+    }
   }
 
   // A test file whose floor is gone has no floor at all.

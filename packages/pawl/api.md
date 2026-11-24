@@ -1920,6 +1920,7 @@ From `src/check/tests.ts`.
 interface TestCounts {
   assertions: number
   skipped: number
+  masks?: number
 }
 ```
 

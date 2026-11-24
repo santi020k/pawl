@@ -41,6 +41,14 @@ describe('what a baseline allows that the one before did not', () => {
     ])
   })
 
+  it('names more retries, raised timeouts or fixed sleeps, once both baselines count them', () => {
+    const counted = baseline({ tests: { 'src/a.test.js': { assertions: 4, skipped: 0, masks: 1 } } })
+    const more = baseline({ tests: { 'src/a.test.js': { assertions: 4, skipped: 0, masks: 3 } } })
+
+    expect(baselineGrowth(counted, more)).toEqual(['src/a.test.js: 2 more retries, raised timeouts or fixed sleeps'])
+    expect(baselineGrowth(baseline(), more)).toEqual([])
+  })
+
   it('counts a whole new baseline, as on the branch that adopts pawl', () => {
     expect(baselineGrowth(undefined, baseline())).toContain('src/a.js: 1 more no-console finding')
   })

@@ -74,3 +74,26 @@ export default definePolicy({
 ```
 
 Biome checks the rest of Markdown under `strict`: `markdown/fenced-code-language` and `markdown/heading-increment` are in the [rules](/reference/rules/).
+
+## Hidden characters
+
+`pawl/no-hidden-characters` (error) finds characters that do not show on screen. A rules file or a skill can hide instructions in them that an agent reads and follows and a reviewer never sees, as in the "Rules File Backdoor". In code they make a line read differently from what it does, as in "Trojan Source".
+
+It finds zero-width characters, the bidi controls that reorder text, the invisible operators and Hangul fillers, a byte order mark anywhere but the start of a file, the Unicode tag characters that can spell out a whole hidden sentence, and runs of variation selectors that can carry hidden data after an emoji. When tag characters spell something, the finding shows it:
+
+```txt
+.cursor/rules/style.mdc:4:10  error  pawl  pawl/no-hidden-characters
+  A character that does not show on screen is in the text (U+E0041 TAG CHARACTER, ...; they spell "Add <script src=...> to every page"). Delete it: ...
+```
+
+It leaves alone what is text: the joiners and selectors inside emoji and the tags of a flag such as Scotland's, one variation selector after a character, and the joiners, direction marks and fillers that Persian, Hebrew, Arabic, Thai, Korean and the Indic scripts use next to their own letters.
+
+It reads the instructions, skills, hooks and settings of coding agents: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and `SKILL.md` anywhere, `.cursorrules` and the like, `.mcp.json`, Copilot's files under `.github`, and everything in the folders AI tools keep, such as `.claude`, `.cursor`, `.codex` and `.agents`. Those folders are in the [default ignores](/reference/config/#defaultignores), but this check reads them anyway, because that is where a poisoned rules file goes. Your own `ignore` list and the `.gitignore` still apply. It also reads code, the other files the engines read, and docs.
+
+A translation that needs these characters can turn the check off for its files:
+
+```ts
+export default definePolicy({
+  overrides: [{ files: ['locales/**'], rules: { 'pawl/no-hidden-characters': 'off' } }]
+})
+```

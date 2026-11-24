@@ -1,10 +1,14 @@
 import { type Finding } from '../types.ts'
 import { docker } from './docker.ts'
+import { hiddenScan } from './hidden.ts'
 import { markdown } from './markdown.ts'
 import { type OwnRule, runScan, type Scan, type ScanOptions } from './scan.ts'
 
 /** Every scan pawl runs itself. */
-export const SCANS: readonly Scan[] = [docker, markdown]
+export const SCANS: readonly Scan[] = [docker, markdown, hiddenScan]
+
+/** True when one of pawl's own scans reads this file even in the folders the default ignores skip. */
+export const scansReadIgnored = (file: string): boolean => SCANS.some(scan => scan.readsIgnored?.(file) === true)
 
 /** Run every scan. */
 export const runScans = (options: ScanOptions): Finding[] => SCANS.flatMap(scan => runScan(scan, options))

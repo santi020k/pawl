@@ -13,6 +13,8 @@ export interface CheckResult {
   commands: string[]
   hasBaseline: boolean
   canShrinkBaseline: boolean
+  /** The baseline was written before pawl counted tests, so they have no floor yet. */
+  testsUncounted?: boolean
   /** True when there were no files to look at, such as `--changed` on a clean tree. */
   nothingToCheck: boolean
   /** More new warnings than this fail the check. Undefined means warnings never fail it. */

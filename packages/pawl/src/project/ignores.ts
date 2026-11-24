@@ -350,6 +350,16 @@ const globToRegExp = (pattern: string): RegExp => {
   return new RegExp(`^${source}(?:/.*)?$`)
 }
 
+/**
+ * The ignores a person chose, without pawl's defaults: the root .gitignore when the policy
+ * respects it, and the policy's own patterns. For the files a check reads even in the folders
+ * the defaults skip.
+ */
+export const chosenIgnoreMatcher = (
+  root: string,
+  policy: Pick<Policy, 'gitignore' | 'ignore'>
+): ((file: string) => boolean) => makeIgnore([...(policy.gitignore ? gitignorePatterns(root) : []), ...policy.ignore])
+
 /** A matcher for pawl's own checks, which follows every ignore the engines follow. */
 export const ignoreMatcher = (
   root: string,

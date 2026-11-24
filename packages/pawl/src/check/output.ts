@@ -228,7 +228,7 @@ const formatRich = (
 
   if (result.canShrinkBaseline) {
     details.push(
-      `${style.accent(sym.arrow)} The code has fewer findings than the baseline allows. Run ${style.bold('pawl baseline')} to lock that in.`
+      `${style.accent(sym.arrow)} The code has fewer findings, or stronger tests, than the baseline records. Run ${style.bold('pawl baseline')} to lock that in.`
     )
   }
 
@@ -321,7 +321,15 @@ export const formatPretty = (
     lines.push(c.dim(`${plural(result.baselined, 'existing finding')} allowed by the baseline.`))
 
   if (result.canShrinkBaseline)
-    lines.push(c.dim('The code has fewer findings than the baseline allows. Run "pawl baseline" to lock that in.'))
+    lines.push(
+      c.dim(
+        'The code has fewer findings, or stronger tests, than the baseline records. Run "pawl baseline" to lock that in.'
+      )
+    )
+
+  if (result.testsUncounted && result.findings.length === 0) {
+    lines.push(c.dim('The baseline does not count the tests yet. Run "pawl baseline" so they cannot lose assertions.'))
+  }
 
   if (!result.hasBaseline && result.findings.length > 0) {
     lines.push(c.dim('No baseline yet. Run "pawl baseline" to accept existing findings and fail only on new ones.'))

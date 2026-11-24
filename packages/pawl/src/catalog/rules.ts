@@ -1119,6 +1119,10 @@ export const RULES: readonly RuleDef[] = [
   rule('pawl', 'pawl/no-new-disable', undefined, 'error', 'No new comments that switch a check off.', {
     guardrail: true,
     advice: 'Remove the disable comment and fix the finding it hides.'
+  }),
+  rule('pawl', 'pawl/no-weaker-tests', undefined, 'error', 'No test file losing assertions or gaining skipped tests.', {
+    guardrail: true,
+    advice: 'Put back the assertions with the values they pinned, or make the skipped test pass.'
   })
 ]
 

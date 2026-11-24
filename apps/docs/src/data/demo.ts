@@ -205,7 +205,7 @@ export const sessions: readonly Session[] = [
       [
         ['  '],
         ['→', 'ok'],
-        [' The code has fewer findings than the baseline allows. Run '],
+        [' The code has fewer findings, or stronger tests, than the baseline records. Run '],
         ['pawl baseline', 'command'],
         [' to lock that in.']
       ],

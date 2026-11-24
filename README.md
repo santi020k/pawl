@@ -18,7 +18,8 @@ A pawl is the part of a ratchet that stops it slipping backward. This tool does 
 - **Guards.** For the libraries a project uses (the AI SDKs, LangChain, MCP, Hono and others), pawl refuses imports of package internals, legacy SDKs, API keys written in the code and `dangerouslyAllowBrowser`. No plugin and no ESLint: the import rules run in Biome, Oxlint or ESLint, and the code patterns run in Biome as rules pawl writes itself, or in ESLint.
 - **Docker checks.** 17 checks of pawl's own for Dockerfiles and Compose files: unpinned images, secrets, running as root, privileged services and more.
 - **Optional packs.** 50 packs cover what only an ESLint plugin can check. Pawl holds the rules; the project installs the plugin.
-- **A ratchet.** Existing findings go into a baseline. New findings fail the check, and so do new comments that switch a check off.
+- **A ratchet.** Existing findings go into a baseline. New findings fail the check, and so do new comments that switch a check off and test files that lose assertions or gain skipped tests.
+- **Hidden characters.** Characters that do not show on screen fail the check, in code and in the rules files, skills and settings of coding agents, where they can hide instructions an agent follows and a reviewer never sees.
 - **Output for people, agents and editors.** A person at a terminal sees each finding with its code and its fix. A coding agent gets one compact JSON line per finding, with the fix, without asking for it. Editors get `--format editor` lines, and VS Code tasks that put them in the Problems panel.
 - **A shared standard.** A team publishes one policy package, like [`@santi020k/pawl-policy`](packages/pawl-policy). Repos extend it, and the company can lock rules so repos cannot loosen them.
 - **Engines stay visible.** `biome check` and `eslint .` keep working on their own, and every finding shows the engine's own rule name.
@@ -101,7 +102,7 @@ Status on 2026-11-18, checked against eslint-config-basic 3.6, Biome 2.6.8 and E
 | ------------ | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | ESLint       | The engine                                                                       | A linter you can choose, and the host for every optional pack                                   |
 | Biome        | Compatibility only: turns off overlapping ESLint rules                           | The default linter and formatter when you leave the choice to pawl                              |
-| Oxlint       | Compatibility only: turns off overlapping ESLint rules                           | A linter you can choose. It enforces 162 of the 200 rules; ESLint can host the packs next to it |
+| Oxlint       | Compatibility only: turns off overlapping ESLint rules                           | A linter you can choose. It enforces 162 of the 201 rules; ESLint can host the packs next to it |
 | Prettier     | Compatibility only                                                               | A formatter you can choose                                                                      |
 | TypeScript 7 | TypeScript files cannot be linted: typescript-eslint 8.73 does not load under it | Works through Biome, which does not use the compiler                                            |
 
@@ -131,7 +132,7 @@ The old config set 260 rules itself. Rules it inherited from plugin presets are 
 - "By Oxlint or pawl itself" means Oxlint enforces it and Biome has no equivalent (16 rules), or a guard or a Markdown check of pawl's own does (17). Oxlint still marks one of the 16, `import/export`, as unstable, so it too is on only under strict.
 - Of the 73 not in pawl yet, 18 were left out on purpose.
 
-The rule-by-rule list is in [docs/rules-from-eslint-config-basic.md](docs/rules-from-eslint-config-basic.md). Pawl also has rules the old config did not set: the catalog holds 200.
+The rule-by-rule list is in [docs/rules-from-eslint-config-basic.md](docs/rules-from-eslint-config-basic.md). Pawl also has rules the old config did not set: the catalog holds 201.
 
 ### Frameworks
 
@@ -241,7 +242,7 @@ An optional pack runs through ESLint next to Biome, or with ESLint as the only l
 | `check` and `fix`                | Through `eslint`         | Yes, across engines                                                                          |
 | `explain`                        | Yes                      | Yes                                                                                          |
 | `doctor`                         | Yes, with `--fix`        | Yes. `sync` repairs the config                                                               |
-| `baseline`                       | Yes                      | Yes, plus a ratchet on disable comments                                                      |
+| `baseline`                       | Yes                      | Yes, plus a ratchet on disable comments and on tests getting weaker                          |
 | `profile` (time budgets)         | Yes                      | Not planned                                                                                  |
 | `snapshot` and `diff`            | Yes                      | Not planned                                                                                  |
 | `config-types`                   | Yes                      | Not needed                                                                                   |

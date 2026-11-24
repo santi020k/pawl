@@ -108,7 +108,8 @@ project's dependencies: the package is \`@santi020k/pawl\`, not \`pawl\`.
 
 Do not silence a problem with a disable comment (\`biome-ignore\`, \`eslint-disable\`, \`@ts-ignore\`).
 New ones fail the check. Fix the code instead. Do not run \`pawl baseline\` to make findings go
-away either: it accepts them as they are, and that is for a person to decide.`
+away either: it accepts them as they are, and that is for a person to decide. A test that
+loses assertions or gets skipped fails the check too: make it pass instead.`
   }
 ]
 

@@ -175,13 +175,14 @@ Repos extend it. A repo can still tighten any rule, but an attempt to loosen a l
 - Findings within those counts are allowed.
 - Anything beyond them fails the check.
 - A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
+- A test file that loses assertions or gains a skipped test fails with `pawl/no-weaker-tests`. The baseline counts the assertions that pin a value, so swapping one for `toBeTruthy()` lowers the count. See [Tests that get weaker](https://pawl.santi020k.com/guide/ratchet/#tests-that-get-weaker).
 - When the code improves, `pawl check` says so. Run `pawl baseline` to lock the improvement in.
 
 Counts are per file and rule, not per line, so moving code around does not break the baseline. The cost is that when a file goes over its count, every finding of that rule in the file is shown.
 
 ## Rules
 
-The standard has 200 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome or Oxlint can enforce without a plugin is here, at the level it had.
+The standard has 201 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome or Oxlint can enforce without a plugin is here, at the level it had.
 
 - Rules for React, Qwik, Vue, Svelte and Turborepo apply only where that technology is used.
 - For each technology a project uses, pawl also turns on the rules Biome itself recommends for it: React, Next.js, React Native, Qwik, Solid, Vue, Svelte, Astro, Tailwind CSS, TanStack Query, Drizzle, Playwright and Turborepo.
@@ -235,7 +236,7 @@ Biome is pinned to one exact version, because pawl reads a report format Biome m
 
 Biome also lints and formats CSS and GraphQL, sorts `package.json` fields in the usual order, and parses Tailwind's at-rules in projects that use Tailwind.
 
-Oxlint enforces 162 of the standard's 200 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Nine more need type information and run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects. Pawl writes them where the project depends on it.
+Oxlint enforces 162 of the standard's 201 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Nine more need type information and run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects. Pawl writes them where the project depends on it.
 
 ## Packs
 
@@ -338,6 +339,10 @@ Pawl also checks Markdown files itself, skipping code blocks, code spans, HTML c
 | `pawl/markdown-no-duplicate-headings` | off   | A heading with the same text as an earlier one in the document |
 | `pawl/markdown-no-invalid-label-refs` | error | A reference with whitespace between its brackets: `[text][ ]`  |
 | `pawl/markdown-no-missing-label-refs` | off   | A reference such as `[text][label]` with no `[label]:` line    |
+
+## Hidden characters
+
+`pawl/no-hidden-characters` (error) finds characters that do not show on screen: zero-width characters, bidi controls, invisible operators, Unicode tag characters and runs of variation selectors. A rules file or a skill can hide instructions in them that an agent follows and a reviewer never sees. It reads code, docs, and the instructions, skills and settings of coding agents, including the folders such as `.claude` and `.cursor` that the default ignores skip. Emoji, flags, and the marks other scripts use next to their own letters are left alone. See [Hidden characters](https://pawl.santi020k.com/guide/guards/#hidden-characters).
 
 ## API
 

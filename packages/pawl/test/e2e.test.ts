@@ -74,7 +74,9 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(json(root, BASELINE_FILE)).toEqual({
       version: 1,
       findings: { 'src/old.ts': { '@typescript-eslint/no-explicit-any': 1, eqeqeq: 1, 'no-var': 1 } },
-      suppressions: { 'src/old.ts': 1 }
+      suppressions: { 'src/old.ts': 1 },
+      // No test files, so nothing to count, which is not the same as a baseline that never counted.
+      tests: {}
     })
 
     // The files pawl wrote pass its own check, and the old findings are allowed.
@@ -1087,7 +1089,7 @@ describe('Biome rule domains, with the real Biome', { timeout: 60_000 }, () => {
     link(root)
     await init(root, { editor: false })
     expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET] })
-    expect(json(root, BASELINE_FILE)).toEqual({ version: 1, findings: {}, suppressions: {} })
+    expect(json(root, BASELINE_FILE)).toEqual({ version: 1, findings: {}, suppressions: {}, tests: {} })
   })
 })
 

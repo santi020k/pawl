@@ -274,11 +274,11 @@ export const hookMessage = (
   const tail =
     when === 'stop'
       ? [
-          'Fix them in the code, then finish. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore): new ones fail the check.',
+          'Fix them in the code, then finish. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore), weaken a test or skip one: those fail the check too.',
           'If one needs the user, such as a tool to install or a rule to change, say so and stop.'
         ]
       : [
-          'Fix them in the code. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore): new ones fail the check.'
+          'Fix them in the code. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore), weaken a test or skip one: those fail the check too.'
         ]
   const more = (count: number): string =>
     `And ${plural(count, 'more line')}: run "${PAWL} check --changed --format agent" to see them all.`

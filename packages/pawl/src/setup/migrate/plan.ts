@@ -12,7 +12,7 @@ import { type Level, type Policy, type PolicyInput } from '../../types.ts'
 import { writeText } from '../../utils/fs.ts'
 import { isRecord, sameJson } from '../../utils/json.ts'
 import { plural } from '../../utils/text.ts'
-import { PACKAGE_NAME } from '../../version.ts'
+import { PACKAGE_NAME, PEER_RANGES } from '../../version.ts'
 import { type SetupAction } from '../plan.ts'
 import { ESLINT_CONFIG, policyFile } from '../templates.ts'
 import { MIGRATION_REPORT, type MigrateOptions, type MigratePlan, type RuleChange } from './migration.ts'
@@ -359,7 +359,10 @@ const planEslintFile = (
     })
     notes.push(`${legacyName} is no longer read. Delete it when you are happy with the result.`)
 
-    if (major < 9) notes.push(`Pawl needs ESLint 9.22 or newer. This project has ESLint ${major}: upgrade it.`)
+    if (major < 9)
+      notes.push(
+        `Pawl needs ESLint ${PEER_RANGES.eslint?.replace(/^>=/, '')} or newer. This project has ESLint ${major}: upgrade it.`
+      )
   } else if (backup) {
     actions.push({
       path: target,

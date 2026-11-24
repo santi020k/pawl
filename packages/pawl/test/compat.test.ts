@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { PACKS } from '../src/catalog/packs.ts'
 import { installedVersion, satisfies } from '../src/utils/semver.ts'
+import { PEER_RANGES } from '../src/version.ts'
 import { project } from './helpers.ts'
 
 describe('satisfies', () => {
@@ -45,5 +47,17 @@ describe('installedVersion', () => {
 
     expect(installedVersion(`${root}/packages/app`, 'eslint')).toBe('10.1.0')
     expect(installedVersion(root, 'prettier')).toBeUndefined()
+  })
+})
+
+describe('the plugin ranges', () => {
+  it('give every pack the range its plugin has as a peer, and a real floor', () => {
+    for (const pack of PACKS) {
+      if (pack.plugin === 'eslint') continue
+
+      expect(PEER_RANGES[pack.plugin], pack.plugin).toBe(pack.range)
+      expect(pack.range, pack.plugin).not.toBe('*')
+      expect(pack.range, pack.plugin).toMatch(/^>=\d+\.\d+\.\d+$/)
+    }
   })
 })

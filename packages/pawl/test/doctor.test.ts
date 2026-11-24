@@ -286,7 +286,7 @@ describe('pawl doctor', () => {
       `@biomejs/biome 2.5.0 is not a version pawl works with (${BIOME_VERSION}). Install @biomejs/biome@${BIOME_VERSION}.`
     )
     expect(report.problems).toContain(
-      'eslint 8.57.0 is not a version pawl works with (>=9.22.0). Install eslint@">=9.22.0".'
+      'eslint 8.57.0 is not a version pawl works with (>=9.35.0). Install eslint@">=9.35.0".'
     )
   })
 })

@@ -91,6 +91,35 @@ describe('public ESLint integrations', () => {
     ])
   })
 
+  it('registers the plugin object a flat preset registers, when the module pawl imported is another one', async () => {
+    // eslint-plugin-astro 1.x: its ES module build's default export is not the object its presets register.
+    const root = project({
+      'package.json': { name: 'consumer', type: 'module', devDependencies: { 'eslint-plugin-yml': '1.0.0' } },
+      'pawl.config.json': { engine: 'eslint', packs: ['yaml'] },
+      'node_modules/eslint-plugin-yml/package.json': {
+        name: 'eslint-plugin-yml',
+        version: '3.0.0',
+        type: 'module',
+        exports: './index.js'
+      },
+      'node_modules/eslint-plugin-yml/index.js': [
+        'const rule = { create() { return {} } }',
+        'const inner = { rules: { "no-empty-mapping-value": rule } }',
+        'export default { rules: inner.rules, configs: { "flat/recommended": [{ plugins: { yml: inner } }] } }'
+      ].join('\n')
+    })
+    const config = await eslint({ root })
+    const registered = config.flatMap(block => {
+      const plugins = (block.plugins ?? {}) as Record<string, unknown>
+
+      return plugins.yml ? [plugins.yml] : []
+    })
+
+    expect(new Set(registered).size).toBe(1)
+    const runner = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: config })
+    await expect(runner.lintText('export const a = 1\n', { filePath: 'src/index.js' })).resolves.toBeDefined()
+  })
+
   it('keeps a flat preset block that sets a parser and names no files to the pack own files', async () => {
     // @html-eslint/eslint-plugin's flat preset is one block with the plugin, its parser and its rules.
     const root = project({

@@ -581,10 +581,13 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
           }
         })
       )
+      // The plugin object the preset registers, which a plugin with both a CommonJS and an ES module
+      // build may not share with the module pawl imported. ESLint refuses two objects under one name.
+      const own = preset.map(block => (isRecord(block.plugins) ? block.plugins[pack.prefix] : undefined)).find(Boolean)
       config.push({
         name: `pawl/pack/${pack.name}`,
         ...(files ? { files } : {}),
-        plugins: { [pack.prefix]: plugin },
+        plugins: { [pack.prefix]: own ?? plugin },
         rules
       })
     } else {

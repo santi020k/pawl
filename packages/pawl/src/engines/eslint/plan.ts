@@ -562,7 +562,12 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
       const preset = toList(presetOf(pack, plugin) as FlatConfig | readonly FlatConfig[] | undefined)
       config.push(
         ...preset.map(block => {
-          if (!explicitFiles || Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
+          if (Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
+          // A block of the preset with no files would reach every file ESLint lints, including the
+          // Markdown, JSON, YAML and HTML another pack hands to its own language, where the rules of
+          // this one crash. Such a block keeps the scripts and the pack's own files.
+          if (!explicitFiles)
+            return Array.isArray(block.files) ? block : { ...block, files: [...SCRIPT_FILES, ...(pack.files ?? [])] }
           const original = Array.isArray(block.files) ? block.files : ['**/*']
           return {
             ...block,
@@ -704,13 +709,25 @@ const validateSuppliedRules = (config: FlatConfig[], options: EslintPlanOptions,
     ...Object.keys(options.policy.rules),
     ...options.policy.overrides.flatMap(override => Object.keys(override.rules))
   ])
+  // ESLint merges the plugins of every block that applies to a file, so a rule may name a plugin
+  // another block registers. A plugin's own flat preset does that: one block registers the plugin,
+  // and the blocks after it set its rules.
+  const registeredAnywhere: Record<string, unknown> = {}
+
+  for (const block of config) {
+    if (!isRecord(block.plugins)) continue
+
+    for (const [prefix, plugin] of Object.entries(block.plugins)) registeredAnywhere[prefix] ??= plugin
+  }
+
   for (const block of config) {
     if (!isRecord(block.rules)) continue
 
     for (const [name, value] of Object.entries(block.rules)) {
       const prefix = splitRule(name)
       const supplied = prefix ? options.plugins?.[prefix] : undefined
-      const registered = prefix && isRecord(block.plugins) ? block.plugins[prefix] : undefined
+      const own = prefix && isRecord(block.plugins) ? block.plugins[prefix] : undefined
+      const registered = own ?? (prefix ? registeredAnywhere[prefix] : undefined)
       const plugin = supplied ?? registered
       const level: unknown = Array.isArray(value) ? value[0] : value
 

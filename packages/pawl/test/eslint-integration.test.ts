@@ -53,6 +53,44 @@ describe('public ESLint integrations', () => {
     await expect(eslint({ root: disabled, plugins: { custom: { rules: {} } } })).resolves.toBeDefined()
   })
 
+  it('finds the plugin a flat preset registers in one block for the rules it sets in the next', async () => {
+    // eslint-plugin-vue, eslint-plugin-yml, eslint-plugin-storybook and others ship their flat preset
+    // as several blocks: the first registers the plugin, the later ones set its rules.
+    const root = project({
+      'package.json': { name: 'consumer', type: 'module', devDependencies: { 'eslint-plugin-yml': '1.0.0' } },
+      'pawl.config.json': { engine: 'eslint', packs: ['yaml'] },
+      'node_modules/eslint-plugin-yml/package.json': {
+        name: 'eslint-plugin-yml',
+        version: '3.0.0',
+        type: 'module',
+        exports: './index.js'
+      },
+      'node_modules/eslint-plugin-yml/index.js': [
+        'const rule = { create() { return {} } }',
+        'const plugin = { rules: { "no-empty-key": rule, "no-empty-mapping-value": rule } }',
+        'plugin.configs = {',
+        '  "flat/recommended": [',
+        '    { plugins: { yml: plugin } },',
+        '    { files: ["**/*.yml"], rules: { "yml/no-empty-key": "error" } },',
+        '    { rules: { "yml/no-empty-mapping-value": "error" } }',
+        '  ]',
+        '}',
+        'export default plugin'
+      ].join('\n')
+    })
+    const plan = await eslintPlanFor(root)
+
+    expect(plan.notEnforced.filter(item => item.rule.startsWith('yml/'))).toEqual([])
+    await expect(eslint({ root })).resolves.toBeDefined()
+
+    // The preset's block with no files keeps to scripts and YAML, away from what other packs parse.
+    const unscoped = plan.config.find(block => Object.keys(block.rules ?? {}).includes('yml/no-empty-mapping-value'))
+    expect(unscoped?.files).toEqual(['**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}', '**/*.{yml,yaml}'])
+    expect(plan.config.find(block => Object.keys(block.rules ?? {}).includes('yml/no-empty-key'))?.files).toEqual([
+      '**/*.yml'
+    ])
+  })
+
   it('resolves plugins through public exports in additional shared-config roots', async () => {
     const root = fixture()
     const shared = project({

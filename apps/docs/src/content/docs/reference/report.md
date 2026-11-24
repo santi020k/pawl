@@ -1,6 +1,6 @@
 ---
 
-title: JSON report contract
+title: JSON report
 description: "Consume Pawl check reports safely: validate the version, findings and setup problems together with the process exit code, without hiding failed checks."
 ---
 

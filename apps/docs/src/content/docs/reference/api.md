@@ -80,14 +80,14 @@ Technology presets live under `@santi020k/pawl/biome/<technology>`: `react`, `ne
 
 `eslint(options)` and `eslintPlanFor(root, policy?, integration?)` accept public
 plugin roots, explicit plugin bindings, shared base configuration, untyped processor
-files and pack scopes. See [Shared ESLint configs](/guide/shared-eslint/) for the
+files and pack scopes. See [Shared ESLint configs](/guide/existing-eslint/#shared-eslint-plugins) for the
 composition order and locked-floor guarantees.
 
 `planInit({ root, baseline: false })` omits automatic baseline creation.
 `check({ root, eslintCache: true })` opts into the declared deterministic cache
-contract; see [ESLint caching](/guide/eslint-cache/).
+contract; see [ESLint caching](/guide/speed/#cache-eslint-checks).
 
 `formatJson` adds `reportVersion: 1` without moving existing result fields. Use
 `readCheckReport(stdout, status, { ci })` at a subprocess boundary and treat
 invalid output or operational failure as failure. See the
-[JSON report contract](/guide/report-contract/).
+[JSON report contract](/reference/report/).

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { BASELINE_FILE } from '../../check/baseline.ts'
 import { type CheckOptions, type CheckProgress, check } from '../../check/check.ts'
-import { engineTitle, format, type RichOptions } from '../../check/output.ts'
+import { engineTitle, format, type OutputFormat, type RichOptions } from '../../check/output.ts'
 import { type CheckResult, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
 import { plural } from '../../utils/text.ts'
 import { assertHookFlags, type Flags, formatFromEnv, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
@@ -207,15 +207,30 @@ export const workspaceBase = (root: string, env: Readonly<Record<string, string 
   return path === '' || path.startsWith('..') || isAbsolute(path) ? '' : path.split(sep).join('/')
 }
 
+/**
+ * The format when neither `--format` nor `PAWL_FORMAT` names one: `agent` for a coding agent, even one
+ * that runs in GitHub Actions, `github` in any other GitHub Actions job, which puts each new finding
+ * on its line in the pull request and prints the plain report after it, and `pretty` everywhere else.
+ */
+export const defaultFormat = (
+  agent: string | undefined,
+  env: Readonly<Record<string, string | undefined>>
+): OutputFormat => {
+  if (agent) return 'agent'
+
+  return env.GITHUB_ACTIONS === 'true' ? 'github' : 'pretty'
+}
+
 export const runCheck = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
   if (flags.hook === true) return runHook(root, files, flags, fix)
 
   const term = terminal()
   const ci = flags.ci === true || inCi(process.env.CI)
   // Every option is read before anything runs: "fix" must not change files and then refuse a flag.
-  // --format wins, then PAWL_FORMAT from a program that reads pawl, then a coding agent's own format.
+  // --format wins, then PAWL_FORMAT from a program that reads pawl, then a coding agent's own format,
+  // then GitHub Actions annotations in a GitHub Actions job.
   const fallback = flags.format === undefined ? formatFromEnv(process.env) : undefined
-  const kind = outputFormat(flags, fallback ?? (term.agent ? 'agent' : 'pretty'))
+  const kind = outputFormat(flags, fallback ?? defaultFormat(term.agent, process.env))
   const limit = maxWarnings(flags)
   const since = sinceRef(flags, files)
   const options: CheckOptions = {

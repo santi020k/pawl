@@ -95,7 +95,7 @@ jobs:
 
 The doctor step fails the job when it finds a problem, such as a Biome other than the pinned one or a tool older than pawl supports.
 
-For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for Bun it adds `oven-sh/setup-bun`. If the workflow file already exists, `init` leaves it alone. To get the annotations in a workflow written by an earlier version, add `--format github` to its check.
+For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for Bun it adds `oven-sh/setup-bun`. If the workflow file already exists, `init` leaves it alone. A workflow written by an earlier version gets the annotations too: in GitHub Actions, `pawl check` uses `--format github` when no format is given.
 
 ### Findings on the pull request
 
@@ -104,6 +104,8 @@ pawl check --ci --format github
 ```
 
 `--format github` prints a GitHub Actions annotation for each new finding, with its file, line, rule and fix, so it shows on that line in the pull request's changed files. Setup problems and the warning limit show on the run. The annotations sit in a group the log folds away, and the plain report follows, so the log reads as it always did. GitHub turns at most 10 errors and 10 warnings of a step into annotations; the log keeps every finding. Findings the baseline allows get none.
+
+`pawl check` and `pawl fix` pick `--format github` on their own in a GitHub Actions job (`GITHUB_ACTIONS=true`) when neither `--format` nor `PAWL_FORMAT` names a format, unless a coding agent runs them there, which gets `agent`. Set `PAWL_FORMAT=pretty` on the step to go back to the plain report alone.
 
 When pawl runs in a folder below the root of the repository, the annotations name files from the root, as GitHub reads them, using the `GITHUB_WORKSPACE` folder the job checked out.
 

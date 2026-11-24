@@ -307,7 +307,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))('the CLI', { timeo
     const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), ...args], {
       cwd: root,
       encoding: 'utf8',
-      env: { ...process.env, CI: '', NO_COLOR: '1' }
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' }
     })
 
     return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }

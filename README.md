@@ -35,6 +35,8 @@ pawl fix                   # apply safe fixes and format
 
 The docs are at [pawl.santi020k.com](https://pawl.santi020k.com), and [packages/pawl/README.md](packages/pawl/README.md) is the full reference.
 
+For Codex and Claude Code, the optional [Pawl agent plugin](plugins/pawl/README.md) adds a shared skill for setup, checks, fixes and diagnosis. It uses the existing CLI and adds no automatic hooks. Installation instructions are included for local checkouts.
+
 ## This repository
 
 | Path                   | What it is                                                                   |

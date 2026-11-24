@@ -1,0 +1,94 @@
+name: Engine canary
+
+# Once a week, try what pawl pins against what is new: each group of engines moved to its newest
+# version, and every pack against its plugin at the oldest and the newest version pawl allows. A
+# failure here does not block anything; it says an upgrade or a floor needs work before a user
+# finds out. GitHub sends the failure to whoever last changed this schedule.
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-canary
+  cancel-in-progress: true
+
+jobs:
+  engines:
+    name: Newest ${{ matrix.group }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [biome, oxlint, eslint, prettier]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+
+      - name: Set up pnpm workspace
+        uses: santi020k/quality/actions/setup-pnpm@b456ccc07a80cac227cc314be16c8309557ea8e6 # v2.1.0
+        with:
+          node-version: 22
+          install: "false"
+
+      # The newest versions that are at least a day old, as pnpm's minimumReleaseAge would allow.
+      - name: Move ${{ matrix.group }} to its newest versions
+        run: node scripts/canary.ts "${{ matrix.group }}"
+
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build
+        run: pnpm --filter @santi020k/pawl run build
+
+      # What the upgrade changes in the generated files, such as the rules a new Oxlint enforces.
+      - name: Regenerate the generated files
+        run: |
+          pnpm --filter @santi020k/pawl run preset
+          pnpm --filter @santi020k/pawl run oxlint-rules
+          pnpm --filter @santi020k/pawl run docs:rules
+          pnpm --filter @santi020k/pawl run schema
+          {
+            echo '#### What the upgrade changes in the generated files'
+            echo
+            echo '```'
+            git diff --stat -- packages/pawl/presets packages/pawl/src/engines/oxlint/rules.ts apps/docs/src/content/docs/reference/rules.md packages/pawl/pawl.config.schema.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Test against the newest ${{ matrix.group }}
+        run: pnpm --filter @santi020k/pawl test
+
+      - name: Run pawl on its own code
+        run: node packages/pawl/dist/cli.js check
+
+  packs:
+    name: Pack plugins (${{ matrix.versions }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        versions: [floor, latest]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+
+      - name: Set up pnpm workspace
+        uses: santi020k/quality/actions/setup-pnpm@b456ccc07a80cac227cc314be16c8309557ea8e6 # v2.1.0
+        with:
+          node-version: 22
+
+      - name: Build
+        run: pnpm --filter @santi020k/pawl run build
+
+      # Every pack on at once, in a new project, with each plugin at the floor of its range or at
+      # its newest version. A plugin that lacks a rule or a preset, or crashes, fails the job.
+      - name: Run every pack against its plugin
+        run: node scripts/check-pack-plugins.ts "${{ matrix.versions }}"

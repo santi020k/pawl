@@ -43,6 +43,12 @@ Use a Conventional Commit title, keep changes focused and add tests for behavior
 
 `packages/pawl/api.md` is the public API of the package, generated from the built declarations by `pnpm --filter @santi020k/pawl run api` after a build. A pull request that changes an export, or a type an export refers to, changes that file: review the diff as an API change, and say in the changeset whether it breaks users. `pnpm ok` fails when the file is out of date.
 
+## Engine canary
+
+`.github/workflows/engine-canary.yml` runs every Monday and on demand. One job per group (Biome, Oxlint, ESLint with the fixture plugins, Prettier) moves that group to its newest versions that are at least a day old with `node scripts/canary.ts <group>`, regenerates the generated files and runs the tests: it is the upgrade a maintainer would make, tried before anyone asks for it. Two more jobs run `node scripts/check-pack-plugins.ts floor` and `latest`: every pack at once, in a new project, against its plugin at the oldest and the newest version its range allows. A plugin that lacks a rule or a preset the pack names, or crashes, fails the job. Run the same script locally after the build before changing a pack's range.
+
+A failed canary blocks nothing. Fix the floor, the pack or the upgrade on a branch, as for any other change.
+
 ## Releases
 
 `@santi020k/pawl` and `@santi020k/pawl-policy` share one version. A release is a pull request from a `release/v<version>` branch into `main`; nothing else changes a version, and CI refuses a version change on any other branch.

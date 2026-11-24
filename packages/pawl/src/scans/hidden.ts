@@ -112,6 +112,10 @@ const isSelector = (code: number): boolean => (code >= 0xfe00 && code <= 0xfe0f)
 
 const BLACK_FLAG = 0x1f3f4
 
+// Unicode RGI tag flags: England, Scotland and Wales.
+const TAG_FLAG =
+  /^\u{1F3F4}\u{E0067}\u{E0062}(?:\u{E0065}\u{E006E}\u{E0067}|\u{E0073}\u{E0063}\u{E0074}|\u{E0077}\u{E006C}\u{E0073})\u{E007F}$/u
+
 const CANCEL_TAG = 0xe007f
 
 const FOREIGN_LETTER = /[\p{L}\p{M}]/u
@@ -168,7 +172,7 @@ export const findHidden = (line: string, firstLine = false): Hidden | undefined 
   const codes: number[] = []
   let column = 0
   let offset = 0
-  let flag = false
+  let flagEnd = -1
 
   for (const [index, char] of chars.entries()) {
     const code = char.codePointAt(0) ?? 0
@@ -179,18 +183,12 @@ export const findHidden = (line: string, firstLine = false): Hidden | undefined 
 
     offset += char.length
 
-    // A flag such as Scotland's is a black flag, tag characters, and a cancel tag.
-    if (code === BLACK_FLAG) flag = true
-
-    if (isTag(code)) {
-      if (flag) {
-        if (code === CANCEL_TAG) flag = false
-
-        continue
-      }
-    } else if (code !== BLACK_FLAG) {
-      flag = false
+    // Only complete Unicode flag sequences may hide tags; an arbitrary payload is not a flag.
+    if (code === BLACK_FLAG && TAG_FLAG.test(chars.slice(index, index + 7).join(''))) {
+      flagEnd = index + 6
     }
+
+    if (isTag(code) && index <= flagEnd) continue
 
     const hidden =
       isTag(code) ||

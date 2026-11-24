@@ -2,6 +2,9 @@ version: "0.2"
 # The docs and code use both British and American spellings.
 language: en,en-GB
 words:
+  - gbeng
+  - gbsct
+  - gbwls
   - activedescendant
   - agentchat
   - alnum

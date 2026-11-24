@@ -214,7 +214,8 @@ export const runCheck = async (root: string, files: string[], flags: Flags, fix:
   const ci = flags.ci === true || inCi(process.env.CI)
   // Every option is read before anything runs: "fix" must not change files and then refuse a flag.
   // --format wins, then PAWL_FORMAT from a program that reads pawl, then a coding agent's own format.
-  const kind = outputFormat(flags, formatFromEnv(process.env) ?? (term.agent ? 'agent' : 'pretty'))
+  const fallback = flags.format === undefined ? formatFromEnv(process.env) : undefined
+  const kind = outputFormat(flags, fallback ?? (term.agent ? 'agent' : 'pretty'))
   const limit = maxWarnings(flags)
   const since = sinceRef(flags, files)
   const options: CheckOptions = {

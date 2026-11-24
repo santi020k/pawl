@@ -70,6 +70,12 @@
 
 ### Patch Changes
 
+- Keep rich diagnostic frames safe at the end of long lines and honor explicit output formats over environment defaults.
+
+- Preserve TypeScript replacements when enforcing locked ESLint rules, avoiding false positives from core rules on valid TypeScript.
+
+- Restrict hidden Unicode tag exemptions to complete flag emoji sequences, so arbitrary or incomplete tag payloads after a flag remain findings.
+
 - Explain when ordered asynchronous work and necessary CSS overrides should remain intact, with guidance for narrow policy exceptions and behavioral verification.
 
 - Preserve ordered policy exclusions and later re-inclusion in ESLint and Oxlint. Escape literal bracket workspace paths and exclude nested workspace ownership so framework rules do not leak into plain sibling or child packages.

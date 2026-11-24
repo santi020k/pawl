@@ -92,7 +92,13 @@ export const codeFrame = (
   const span = Math.max(1, TOKEN.exec(text.slice(at))?.[0].length ?? 1)
   const number = String(line)
   const room = Math.max(20, width - number.length - 10)
-  const start = text.length > room ? Math.max(0, Math.min(at - Math.floor(room / 3), text.length - room)) : 0
+  const start =
+    text.length + (at === text.length ? 1 : 0) > room
+      ? Math.max(
+          0,
+          Math.min(at - Math.floor(room / 3), text.length - room + sym.ellipsis.length + (at === text.length ? 1 : 0))
+        )
+      : 0
   const lead = start > 0 ? sym.ellipsis : ''
   const shown = `${lead}${truncate(text.slice(start), room - lead.length, sym.ellipsis)}`
   const offset = at - start + lead.length

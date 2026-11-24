@@ -144,6 +144,17 @@ describe('the rich view, for a person at a terminal', () => {
     expect(stripAnsi(formatPretty(drift, { rich: view({ style: createStyle(1), ci: true }) }))).toContain(' FAIL ')
   })
 
+  it.each([20, 29, 100])('keeps a visible caret at the end of %s-character lines on narrow terminals', length => {
+    const term = view({ width: 40 })
+    for (const column of [length, length + 1, length + 50]) {
+      const [code = '', mark = ''] = codeFrame('a'.repeat(length), 1, column, term)
+
+      expect(code).toContain('a')
+      expect(mark).toContain('^')
+      expect(mark.length).toBeLessThanOrEqual(40)
+    }
+  })
+
   it('marks the token a finding points at, past tabs and indentation, and cuts a long line around it', () => {
     const plain = view()
     const frame = (source: string, line: number, column: number, width = 80): string[] =>

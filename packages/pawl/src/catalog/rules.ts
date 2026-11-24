@@ -1123,7 +1123,19 @@ export const RULES: readonly RuleDef[] = [
   rule('pawl', 'pawl/no-weaker-tests', undefined, 'error', 'No test file losing assertions or gaining skipped tests.', {
     guardrail: true,
     advice: 'Put back the assertions with the values they pinned, or make the skipped test pass.'
-  })
+  }),
+  rule(
+    'pawl',
+    'pawl/no-baseline-growth',
+    undefined,
+    'error',
+    'No baseline that allows more than the one on the base branch, with --since, unless a person accepted it.',
+    {
+      guardrail: true,
+      advice:
+        'Fix the findings instead of recording them. A person who accepts them adds "Pawl-Baseline: accept" to a commit message on the branch.'
+    }
+  )
 ]
 
 const BY_NAME = new Map(RULES.flatMap(def => [def.name, ...(def.aliases ?? [])].map(name => [name, def] as const)))

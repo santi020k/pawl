@@ -9,6 +9,7 @@ import { type CheckResult, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../.
 import { plural } from '../../utils/text.ts'
 import { assertHookFlags, type Flags, formatFromEnv, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
 import { type Terminal, terminal } from '../audience.ts'
+import { guardFinding, guardReply, readGuardPayload } from '../guard.ts'
 import {
   handOffMessage,
   hookFiles,
@@ -104,6 +105,17 @@ const runHook = async (root: string, files: string[], flags: Flags, fix: boolean
   assertHookFlags(flags, files)
 
   const text = await readStdin()
+  // Before a tool runs: hand a change to what the check allows to a person. Nothing else runs.
+  const guard = readGuardPayload(text, { copilot: !fix })
+
+  if (guard) {
+    const reply = guardReply(guard, guardFinding(root, guard))
+
+    if (reply) out(reply)
+
+    return EXIT_OK
+  }
+
   const stop = readStopPayload(text)
 
   if (stop) return runStopHook(root, stop, fix)

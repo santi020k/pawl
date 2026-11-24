@@ -38,6 +38,7 @@ words:
   - fflate
   - fontsource
   - genai
+  - valueonly
   - ghostty
   - HALFWIDTH
   - heredocs

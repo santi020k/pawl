@@ -203,6 +203,13 @@ export const AGENT_HOOK_COMMAND = `${PAWL} fix --hook`
 export const STOP_HOOK_COMMAND = `${PAWL} check --hook`
 
 /**
+ * What a coding agent's hook before each tool runs: the guard, which asks a person before the
+ * agent changes the baseline, the policy or an engine config. The same command as the stop hook:
+ * pawl reads which event it is from the hook's input.
+ */
+export const GUARD_HOOK_COMMAND = `${PAWL} check --hook`
+
+/**
  * Hook commands earlier versions of pawl wrote. Claude Code never saw the first one's output,
  * and the second fixed every changed file after each edit. Init swaps them for the one above.
  */

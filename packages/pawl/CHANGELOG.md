@@ -12,6 +12,10 @@
 
 - Compile workspace framework rules into root-scoped Biome overrides so exact policy ignores and rule overrides retain their meaning. Existing nested workspace configurations now block checks and fixes until explicitly reviewed and migrated; originals are never silently modified or removed. See the upgrade guide for preserving customized settings and backups.
 
+### Patch Changes
+
+- Harden the prepared 0.4.0 workspace scope release: escape literal bracketed directories, retain template import safety when global engine-scoped rules are configured, and refuse ambiguous inline override replacement. Preserve original configurations and require explicit reconciliation before checks or fixes run.
+
 ## 0.3.0
 
 ### Minor Changes

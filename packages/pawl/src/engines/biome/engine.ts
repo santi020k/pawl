@@ -63,7 +63,11 @@ export const biome: Engine = {
     return {
       ...(config.file ? { config: config.file } : {}),
       status: config.status,
-      runnable: loadable && config.status !== 'missing' && nested.length === 0,
+      runnable:
+        loadable &&
+        config.status !== 'missing' &&
+        config.issue?.code !== 'biome-overrides-conflict' &&
+        nested.length === 0,
       issues
     }
   },

@@ -650,20 +650,25 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
     })
     expect(json(root, BASELINE_FILE)).not.toHaveProperty(['findings', 'packages/api/src/a.js'])
 
-    // A package that starts using React is reported until the config is synced.
+    // Existing inline arrays need explicit reconciliation when package scopes change.
     write(root, { 'packages/api/package.json': { name: 'api', private: true, dependencies: { next: '^16.0.0' } } })
 
-    const drifted = await check({ root })
+    const before = readFileSync(join(root, 'biome.json'), 'utf8')
+    const drifted = await check({ root, fix: true })
 
-    expect(drifted.setup).toEqual([
-      expect.objectContaining({
-        code: 'biome-config-stale',
-        message: 'biome.json is out of date with the policy.'
-      })
-    ])
-    expect((await planInit({ root, install: false, editor: false })).actions.map(action => action.path)).toEqual([
-      'biome.json'
-    ])
+    expect(drifted.setup).toEqual([expect.objectContaining({ code: 'biome-overrides-conflict' })])
+    expect(exitCode(drifted)).toBe(2)
+    expect(drifted.commands).toEqual([])
+    const reconciliation = await planInit({ root, install: false, editor: false })
+    expect(reconciliation.actions.some(action => action.path === 'biome.json')).toBe(false)
+    applyPlan(reconciliation)
+    expect(readFileSync(join(root, 'biome.json'), 'utf8')).toBe(before)
+
+    // This fixture has only generated entries: preserve the original before explicitly regenerating them.
+    write(root, { 'biome.before-scopes.json': before, 'biome.json': { extends: [BIOME_PRESET] } })
+    applyPlan(await planInit({ root, install: false, editor: false }))
+    expect((await check({ root })).setup).toEqual([])
+    expect(readFileSync(join(root, 'biome.before-scopes.json'), 'utf8')).toBe(before)
   })
 
   it('adds the Turborepo rules repo-wide and leaves a hand-written package config alone', async () => {

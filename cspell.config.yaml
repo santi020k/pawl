@@ -43,6 +43,7 @@ words:
   - lockfiles
   - menuitemcheckbox
   - menuitemradio
+  - miniflare
   - minimatch
   - miterlimit
   - modelcontextprotocol
@@ -78,6 +79,7 @@ words:
   - treegrid
   - tsgolint
   - Turborepo
+  - undici
   - unstub
   - vdom
   - vitesse

@@ -3,7 +3,7 @@ import { GATED_TAGS, getRule, isGated, type RuleTag, scopedRule, type Technology
 import { extraGlobals } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { defaultPolicy } from '../../policy/merge.ts'
-import { configIgnores, DEFAULT_IGNORES, toBiomeIgnore, toEngineGlob } from '../../project/ignores.ts'
+import { configIgnores, DEFAULT_IGNORES, literalBrackets, toBiomeIgnore, toEngineGlob } from '../../project/ignores.ts'
 import { type Level, type Policy, type Runtime } from '../../types.ts'
 import { isRecord, type Json, type JsonObject, sameJson, sortKeys } from '../../utils/json.ts'
 import { nestedPackageExclusions, packagePatterns } from './scopes.ts'
@@ -84,9 +84,12 @@ const biomeEntry = (
   name: string,
   level: Level,
   include: (tag: RuleTag) => boolean,
-  optionsFor: OptionsFor
+  optionsFor: OptionsFor,
+  includeScoped = true
 ): [string, Json] | undefined => {
   const scoped = scopedRule(name, 'biome')
+  if (scoped !== undefined && !includeScoped) return undefined
+
   const def = scoped === undefined ? getRule(name) : undefined
   const biomeRule = scoped ?? def?.biome
 
@@ -102,16 +105,17 @@ const biomeEntry = (
 const biomeEntries = (
   levels: Iterable<[string, Level]>,
   include: (tag: RuleTag) => boolean,
-  optionsFor: OptionsFor
+  optionsFor: OptionsFor,
+  includeScoped = true
 ): [string, Json][] =>
   [...levels].flatMap(([name, level]) => {
-    const entry = biomeEntry(name, level, include, optionsFor)
+    const entry = biomeEntry(name, level, include, optionsFor, includeScoped)
 
     return entry ? [entry] : []
   })
 
-const lintRules = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObject =>
-  toGroups(biomeEntries(effectiveRules(policy), include, name => policy.biomeOptions[name]))
+const lintRules = (policy: Policy, include: (tag: RuleTag) => boolean, includeScoped = true): JsonObject =>
+  toGroups(biomeEntries(effectiveRules(policy), include, name => policy.biomeOptions[name], includeScoped))
 
 /** The policy's overrides as Biome's: one per override that sets a rule Biome has, or gives one options. */
 const biomeOverrides = (
@@ -120,15 +124,16 @@ const biomeOverrides = (
   packages: NonNullable<BiomeContext['packages']> = {}
 ): JsonObject[] =>
   policy.overrides.flatMap(override => {
-    const entries = (accept: (tag: RuleTag) => boolean): [string, Json][] =>
+    const entries = (accept: (tag: RuleTag) => boolean, includeScoped = true): [string, Json][] =>
       biomeEntries(
         overrideRules(override, undefined, policy, override.biomeOptions),
         accept,
-        name => override.biomeOptions[name] ?? policy.biomeOptions[name]
+        name => override.biomeOptions[name] ?? policy.biomeOptions[name],
+        includeScoped
       )
     const shared = entries(include)
     const scoped = Object.entries(packages).flatMap(([dir, technologies]) => {
-      const own = entries(tag => !include(tag) && isGated(tag) && technologies.includes(tag))
+      const own = entries(tag => !include(tag) && isGated(tag) && technologies.includes(tag), false)
       const includes = packagePatterns(override.files, dir)
 
       if (own.length === 0 || !includes.some(pattern => !pattern.startsWith('!'))) return []
@@ -160,12 +165,12 @@ const packageOverrides = (policy: Policy, packages: NonNullable<BiomeContext['pa
       return [
         {
           ...parser,
-          includes: [`${dir}/**`, ...nestedPackageExclusions(dir, Object.keys(packages))],
+          includes: [`${literalBrackets(dir)}/**`, ...nestedPackageExclusions(dir, Object.keys(packages))],
           ...(lint
             ? {
                 linter: {
                   domains: { [BIOME_DOMAINS[technology]]: 'recommended' },
-                  rules: lintRules(policy, tag => tag === technology)
+                  rules: lintRules(policy, tag => tag === technology, false)
                 }
               }
             : {})

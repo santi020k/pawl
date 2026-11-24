@@ -6,6 +6,7 @@ import {
   biomeContextFor,
   checkBiomeConfig,
   checkRuleFiles,
+  inlineOverridesConflict,
   nestedBiomeConfigs,
   syncBiomeGlobals
 } from '../engines/biome/state.ts'
@@ -58,6 +59,15 @@ export const planBiomeConfig = (
   const expected = biomeProjectConfig(policy, context, state.preset ?? BIOME_PRESET)
 
   if (state.status === 'stale') {
+    // Inline override arrays have no ownership marker; replacing or reordering them can lose custom behavior.
+    if (inlineOverridesConflict(value, expected)) {
+      notes.push(
+        `${file} has inline overrides whose ownership cannot be established. Preserve a backup and reconcile them with the root policy before syncing; pawl left the file unchanged.`
+      )
+
+      return undefined
+    }
+
     return {
       path: file,
       kind: 'update',

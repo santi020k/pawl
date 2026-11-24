@@ -38,6 +38,82 @@ const fixture = (): string => {
 }
 
 describe('root policy scopes in mixed workspaces', () => {
+  it('escapes bracketed workspace roots in domains, projected overrides and nested exclusions', async () => {
+    const component = 'export const View = () => <div dangerouslySetInnerHTML={{ __html: "hello" }} />\n'
+    const root = project({
+      'package.json': { name: 'brackets', private: true, workspaces: ['apps/*', 'apps/*/examples/*'] },
+      'pawl.config.json': {
+        engine: 'biome',
+        overrides: [{ files: ['**/*.jsx'], rules: { 'react/no-danger': 'error' } }]
+      },
+      'apps/[web]/package.json': { name: 'web', dependencies: { react: '^19.0.0' } },
+      'apps/[web]/view.jsx': component,
+      'apps/[web]/examples/[plain]/package.json': { name: 'plain' },
+      'apps/[web]/examples/[plain]/view.jsx': component
+    })
+    link(root)
+    applyPlan(await planSync(root))
+    const result = await check({ root })
+    expect(result.setup).toEqual([])
+    expect(result.findings.filter(finding => finding.rule === 'react/no-danger').map(finding => finding.file)).toEqual([
+      'apps/[web]/view.jsx'
+    ])
+  })
+
+  it.each([
+    [
+      'vue',
+      '<script setup lang="ts">\nimport { Status } from "./types"\ndefineProps<{ status: Status }>()\n</script>\n<template>{{ Status.Active }}</template>\n'
+    ],
+    [
+      'svelte',
+      '<script lang="ts">\nimport { Status } from "./types"\nexport let status: Status\n</script>\n{Status.Active}\n'
+    ],
+    [
+      'astro',
+      '---\nimport { Status } from "./types"\nconst status: Status = Astro.props.status\n---\n<p>{Status.Active}</p>\n'
+    ]
+  ])('keeps globally scoped import rules out of %s package overrides during fix', async (technology, component) => {
+    const root = project({
+      'package.json': { name: 'components', private: true, workspaces: ['apps/*'] },
+      'pawl.config.json': { engine: 'biome', rules: { 'biome:style/useImportType': 'error' } },
+      'apps/component/package.json': { name: 'component', dependencies: { [technology]: '*' } },
+      [`apps/component/view.${technology}`]: component,
+      'apps/component/types.ts': "export enum Status { Active = 'active' }\n",
+      'apps/component/plain.ts':
+        "import { Status } from './types'\nexport const identity = (status: Status): Status => status\n"
+    })
+    link(root)
+    applyPlan(await planSync(root))
+    const result = await check({ root, fix: true })
+    expect(result.setup).toEqual([])
+    const fixed = readFileSync(join(root, `apps/component/view.${technology}`), 'utf8')
+    expect(fixed).toMatch(/import \{ Status \}/)
+    expect(fixed).not.toContain('import type')
+    expect(readFileSync(join(root, 'apps/component/plain.ts'), 'utf8')).toMatch(
+      /import (?:type \{ Status \}|\{ type Status \})/
+    )
+  })
+
+  it('preserves unowned inline overrides and refuses to fix until they are reconciled', async () => {
+    const root = fixture()
+    const config = {
+      extends: ['@santi020k/pawl/biome'],
+      overrides: [{ includes: ['tests/**'], linter: { rules: { suspicious: { noDebugger: 'off' } } } }]
+    }
+    write(root, { 'biome.json': config })
+    const before = readFileSync(join(root, 'biome.json'), 'utf8')
+    const plan = await planSync(root)
+    expect(plan.actions.some(action => action.path === 'biome.json')).toBe(false)
+    expect(plan.notes.join(' ')).toContain('inline overrides whose ownership cannot be established')
+    applyPlan(plan)
+    expect(readFileSync(join(root, 'biome.json'), 'utf8')).toBe(before)
+    const result = await check({ root, fix: true })
+    expect(exitCode(result)).toBe(2)
+    expect(result.commands).toEqual([])
+    expect(readFileSync(join(root, 'apps/docs/blocked.js'), 'utf8')).toBe(source)
+  })
+
   it('keeps exact overrides rooted, including same-named paths beneath a package', async () => {
     const root = fixture()
 

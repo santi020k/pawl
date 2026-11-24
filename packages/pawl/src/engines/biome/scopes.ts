@@ -1,5 +1,5 @@
 import { matchesGlob } from 'node:path'
-import { expandBraces, toEngineGlob } from '../../project/ignores.ts'
+import { expandBraces, literalBrackets, toEngineGlob } from '../../project/ignores.ts'
 
 /** Intersect a policy glob with one package without changing the root-relative meaning. */
 export const packagePatterns = (patterns: readonly string[], dir: string): string[] => {
@@ -33,7 +33,7 @@ export const packagePatterns = (patterns: readonly string[], dir: string): strin
         return result
       }
 
-      return visit(0, 0).map(suffix => `${negated ? '!' : ''}${dir}/${suffix}`)
+      return visit(0, 0).map(suffix => `${negated ? '!' : ''}${literalBrackets(dir)}/${suffix}`)
     })
   }
 
@@ -42,4 +42,4 @@ export const packagePatterns = (patterns: readonly string[], dir: string): strin
 
 /** A package owns its files, but not another workspace nested beneath it. */
 export const nestedPackageExclusions = (dir: string, packages: readonly string[]): string[] =>
-  packages.filter(candidate => candidate.startsWith(`${dir}/`)).map(candidate => `!${candidate}/**`)
+  packages.filter(candidate => candidate.startsWith(`${dir}/`)).map(candidate => `!${literalBrackets(candidate)}/**`)

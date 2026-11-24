@@ -81,6 +81,13 @@ const contains = (actual: Json | undefined, expected: Json): boolean => {
   return sameJson(actual, expected)
 }
 
+/** Inline arrays do not identify which entries Pawl owns; do not guess their precedence. */
+export const inlineOverridesConflict = (actual: JsonRecord, expected: JsonRecord): boolean =>
+  Array.isArray(actual.overrides) &&
+  actual.overrides.length > 0 &&
+  expected.overrides !== undefined &&
+  !sameJson(actual.overrides, expected.overrides)
+
 /** The global names pawl writes for a runtime. Any other name in `javascript.globals` is the project's own. */
 const PAWL_GLOBALS = new Set(extraGlobals(RUNTIMES))
 
@@ -178,6 +185,19 @@ export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeCon
   }
 
   const { extends: expectedExtends, ...expected } = biomeProjectConfig(policy, context, preset)
+  if (inlineOverridesConflict(value, expected)) {
+    return {
+      status: 'stale',
+      file,
+      preset,
+      issue: {
+        code: 'biome-overrides-conflict',
+        message: `${file} has inline overrides whose ownership cannot be established.`,
+        fix: 'Preserve a backup and reconcile inline overrides with the root policy before syncing; Pawl leaves the file unchanged.'
+      }
+    }
+  }
+
   const present = extendsList(value)
   const extendsOk = (expectedExtends as Json[]).every(entry => present.includes(entry))
   const globalsOk = sameJson(ownedGlobals(value), ownedGlobals(expected))

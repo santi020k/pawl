@@ -105,6 +105,18 @@ The counts come from a line scan, so an assertion inside a string, such as a cod
 
 A baseline written by a version of pawl before 0.5 has no test counts, so tests have no floor yet. `pawl check` says so when it finds nothing else to report; run `pawl baseline` then to start counting.
 
+### Retries, raised timeouts and fixed sleeps
+
+An agent can also make a flaky test pass now and then without fixing it: retry it, give it more time, or sleep before the assertion. The baseline counts those lines per test file too, as `masks`, and a file with more of them fails as `pawl/no-weaker-tests`:
+
+| Kind            | What counts                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| Retry           | `retry: 3`, `retries: 2`, `test.retry(2)`, `jest.retryTimes(2)`, `this.retries(2)`                |
+| Raised timeout  | A `timeout` option, `jest.setTimeout`, `test.setTimeout`, `test.slow()`, `}, 30000)` after a test |
+| Fixed sleep     | `page.waitForTimeout(1000)`, `cy.wait(500)`, `setTimeout(resolve, 500)`, `sleep(500)`             |
+
+A `timeout` on an assertion that retries, such as `await expect(button).toBeVisible({ timeout: 10_000 })`, or on `waitFor`, waits for the thing itself, so it does not count. Each line counts once. A baseline written before pawl counted these has no floor for them until `pawl baseline` runs again.
+
 ## Locking in improvements
 
 When the code improves, `pawl check` says so:

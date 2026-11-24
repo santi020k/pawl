@@ -20,12 +20,19 @@ export interface TestCounts {
   assertions: number
   /** Tests that are skipped, left to do, or marked to fix later. */
   skipped: number
+  /**
+   * Lines that can hide a flaky test instead of fixing it: a retry, a raised timeout or a fixed
+   * sleep. Absent in a baseline an earlier version of pawl wrote: then they have no floor yet.
+   */
+  masks?: number
 }
 
-/** What one test file has now, with the line of each skipped test. */
+/** What one test file has now, with the line of each skipped test and of each retry, timeout or sleep. */
 export interface TestFile extends TestCounts {
   file: string
   skips: { line: number; text: string }[]
+  masks: number
+  maskLines: { line: number; text: string }[]
 }
 
 /** Vitest, Jest, Playwright and Cypress files, and the files under a __tests__ folder. */
@@ -55,6 +62,36 @@ const WEAK =
 const SKIP =
   /\b(?:(?:describe|it|test|suite|context|bench)(?:\.(?:concurrent|sequential|each|serial|parallel))*\.(?:skip|todo|fixme)\b|x(?:describe|it|test)\s*\()/
 
+/**
+ * What makes a flaky test pass now and then instead of fixing it: a retry (Vitest's `retry`,
+ * Playwright's `retries`, Jest's `retryTimes`, Mocha's `this.retries`), a raised timeout (a
+ * `timeout` option, `jest.setTimeout`, `test.setTimeout`, `test.slow()`, a number after the test's
+ * function), or a fixed sleep (`waitForTimeout`, `cy.wait(500)`, `setTimeout(resolve, 500)`,
+ * `sleep(500)`). Each line counts once, however many of them it has.
+ */
+const MASKS: readonly RegExp[] = [
+  /\bretry\s*:\s*[1-9]/,
+  /\bretries\s*:\s*[1-9]/,
+  /\.retry\s*\(\s*[1-9]/,
+  /\bretryTimes\s*\(/,
+  /\.retries\s*\(\s*[1-9]/,
+  /\b(?:test)?timeout\s*:\s*\d/i,
+  /\b(?:jest|vi|test|this)\.setTimeout\s*\(/,
+  /\bthis\.timeout\s*\(\s*\d/,
+  /\btest\.slow\s*\(/,
+  /^\s*\}\s*,\s*\d{3,}\s*\)/,
+  /\bwaitForTimeout\s*\(/,
+  /\bcy\.wait\s*\(\s*\d/,
+  /\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*\d/,
+  /\b(?:sleep|delay|wait)\s*\(\s*\d/
+]
+
+/** A `timeout` option, which on an assertion that retries or a wait for something is how to wait well. */
+const TIMEOUT_OPTION = /\b(?:test)?timeout\s*:/i
+
+/** An assertion that retries, or a wait for a thing rather than for a time. */
+const WAITS_FOR = /\b(?:expect(?:\.poll)?|waitFor\w*|toPass)\s*\(/
+
 /** A line that is only a comment. Assertions shown in a comment are not run. */
 const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/
 
@@ -72,11 +109,21 @@ export const countTests = (file: string, text: string): TestFile => {
     return match ? [{ line: index + 1, text: match[0].replace(/\s*\($/, '') }] : []
   })
 
+  const maskLines = code.split('\n').flatMap((line, index) => {
+    // A timeout on an assertion that retries, or on a wait for something, is how to wait well.
+    const waitsWell = WAITS_FOR.test(line)
+    const pattern = MASKS.find(mask => mask.test(line) && !(waitsWell && TIMEOUT_OPTION.test(line)))
+
+    return pattern ? [{ line: index + 1, text: line.trim().slice(0, 80) }] : []
+  })
+
   return {
     file,
     assertions: Math.max(0, count(code, ASSERTION) - count(code, WEAK)),
     skipped: skips.length,
-    skips
+    skips,
+    masks: maskLines.length,
+    maskLines
   }
 }
 
@@ -90,8 +137,8 @@ export const scanTests = (root: string, ignored: (file: string) => boolean, file
 export const testCounts = (tests: readonly TestFile[]): Record<string, TestCounts> =>
   Object.fromEntries(
     tests
-      .filter(test => test.assertions > 0 || test.skipped > 0)
-      .map(test => [test.file, { assertions: test.assertions, skipped: test.skipped }])
+      .filter(test => test.assertions > 0 || test.skipped > 0 || test.masks > 0)
+      .map(test => [test.file, { assertions: test.assertions, skipped: test.skipped, masks: test.masks }])
   )
 
 export interface TestRatchet {
@@ -144,7 +191,10 @@ export const weakerTests = (
 
     const severity = levelForFile(policy, WEAKER_TESTS, test.file, 'error')
 
-    canTighten ||= test.assertions > recorded.assertions || test.skipped < recorded.skipped
+    canTighten ||=
+      test.assertions > recorded.assertions ||
+      test.skipped < recorded.skipped ||
+      (recorded.masks !== undefined && test.masks < recorded.masks)
 
     if (severity === 'off') continue
 
@@ -171,6 +221,28 @@ export const weakerTests = (
           )
         )
       }
+    }
+  }
+
+  for (const test of tests) {
+    const allowed = baseline[test.file]?.masks
+
+    if (allowed === undefined || test.masks <= allowed) continue
+
+    const severity = levelForFile(policy, WEAKER_TESTS, test.file, 'error')
+
+    if (severity === 'off') continue
+
+    for (const mask of test.maskLines) {
+      findings.push(
+        finding(
+          test.file,
+          mask.line,
+          `A new retry, raised timeout or fixed sleep ("${mask.text}") can make a flaky test pass now and then instead of fixing it. Find what the test waits for and wait for that, with an assertion that retries. ${PERSON}`,
+          severity,
+          allowed > 0 ? { overBaseline: { allowed, found: test.masks } } : {}
+        )
+      )
     }
   }
 

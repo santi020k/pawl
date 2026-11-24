@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { BASELINE_FILE } from '../src/check/baseline.ts'
 import { check } from '../src/check/check.ts'
 import { formatPretty } from '../src/check/output.ts'
-import { countTests, isTestFile, type TestCounts, type TestFile, weakerTests } from '../src/check/tests.ts'
+import { countTests, isTestFile, type TestCounts, type TestFile, testCounts, weakerTests } from '../src/check/tests.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
 import { applyPlan } from '../src/setup/plan.ts'
@@ -95,11 +95,13 @@ describe('counting a test file', () => {
 
 describe('the ratchet', () => {
   const policy = defaultPolicy()
-  const counts = (file: string, assertions: number, skipped = 0): TestFile => ({
+  const counts = (file: string, assertions: number, skipped = 0, masks = 0): TestFile => ({
     file,
     assertions,
     skipped,
-    skips: Array.from({ length: skipped }, (_, index) => ({ line: index + 10, text: 'it.skip' }))
+    skips: Array.from({ length: skipped }, (_, index) => ({ line: index + 10, text: 'it.skip' })),
+    masks,
+    maskLines: Array.from({ length: masks }, (_, index) => ({ line: index + 20, text: 'await sleep(500)' }))
   })
   const baseline: Record<string, TestCounts> = {
     'src/a.test.ts': { assertions: 3, skipped: 0 },
@@ -161,6 +163,82 @@ describe('the ratchet', () => {
   })
 })
 
+describe('retries, raised timeouts and fixed sleeps', () => {
+  const policy = defaultPolicy()
+
+  it('counts each line that can hide a flaky test once, and leaves good waits alone', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('a', { retry: 3 }, async () => {",
+        '  await new Promise(resolve => setTimeout(resolve, 500))',
+        '  await page.waitForTimeout(1000)',
+        '  cy.wait(250)',
+        "  await expect(page.getByText('done')).toBeVisible({ timeout: 10_000 })",
+        '  await waitFor(() => expect(spy).toHaveBeenCalled(), { timeout: 2000 })',
+        '  // await sleep(100)',
+        '  vi.advanceTimersByTime(500)',
+        '}, 30000)',
+        'test.describe.configure({ retries: 2 })',
+        'jest.retryTimes(2)',
+        'jest.setTimeout(20000)',
+        'test.slow()'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => mask.line)).toEqual([1, 2, 3, 4, 9, 10, 11, 12, 13])
+    expect(file.masks).toBe(9)
+  })
+
+  it('fails a file with more of them than the baseline recorded, and has no floor without a count', () => {
+    const tests = [
+      {
+        ...countTests('src/a.test.ts', "test('a', async () => {\n  await sleep(500)\n  expect(1).toBe(1)\n})"),
+        file: 'src/a.test.ts'
+      }
+    ]
+    const counted = weakerTests(
+      tests,
+      { 'src/a.test.ts': { assertions: 1, skipped: 0, masks: 0 } },
+      {
+        policy,
+        whole: false,
+        ignored: () => false
+      }
+    )
+    const uncounted = weakerTests(
+      tests,
+      { 'src/a.test.ts': { assertions: 1, skipped: 0 } },
+      {
+        policy,
+        whole: false,
+        ignored: () => false
+      }
+    )
+    const fewer = weakerTests(
+      tests,
+      { 'src/a.test.ts': { assertions: 1, skipped: 0, masks: 2 } },
+      {
+        policy,
+        whole: false,
+        ignored: () => false
+      }
+    )
+
+    expect(counted.findings).toMatchObject([{ rule: 'pawl/no-weaker-tests', line: 2, file: 'src/a.test.ts' }])
+    expect(counted.findings[0]?.message).toContain('sleep(500)')
+    expect(uncounted.findings).toEqual([])
+    expect(fewer.findings).toEqual([])
+    expect(fewer.canTighten).toBe(true)
+  })
+
+  it('are kept in the baseline next to the assertions and the skips', () => {
+    const file = countTests('src/a.test.ts', "test('a', () => {\n  expect(1).toBe(1)\n}, 10000)")
+
+    expect(testCounts([file])).toEqual({ 'src/a.test.ts': { assertions: 1, skipped: 0, masks: 1 } })
+  })
+})
+
 describe('the ratchet in a check, with the real Biome', { timeout: 60_000 }, () => {
   const setUp = async () => {
     const root = project({
@@ -189,7 +267,7 @@ describe('the ratchet in a check, with the real Biome', { timeout: 60_000 }, () 
     const root = await setUp()
     const baseline = JSON.parse(readFileSync(join(root, BASELINE_FILE), 'utf8')) as { tests?: unknown }
 
-    expect(baseline.tests).toEqual({ 'src/sum.test.ts': { assertions: 3, skipped: 0 } })
+    expect(baseline.tests).toEqual({ 'src/sum.test.ts': { assertions: 3, skipped: 0, masks: 0 } })
     expect(rules(await check({ root }))).toEqual([])
 
     // The failing assertion becomes one that passes for any number.

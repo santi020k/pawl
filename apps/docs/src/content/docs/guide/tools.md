@@ -14,6 +14,17 @@ Pawl has no dependencies. Every tool is an optional peer, and `init` installs th
 
 Biome is the default because it lints and formats in one binary. ESLint and Prettier are equal choices.
 
+## Which tool should I choose?
+
+| Choose   | When it fits                                                                                        | What to check                                                                               |
+| -------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Biome    | You want one tool for linting and formatting, with Pawl's default setup.                            | Check the [component support notes](#biome) if you use Vue, Svelte or Astro.                |
+| Oxlint   | You already use Oxlint or want it to enforce Pawl's standard while choosing a formatter separately. | Type-aware rules need `oxlint-tsgolint` in the root project. See [Oxlint's setup](#oxlint). |
+| ESLint   | You want ESLint to enforce the standard and run your optional plugin packs.                         | Install the plugins for the [packs](/guide/packs/) you enable.                              |
+| Prettier | You want to keep Prettier as your formatter alongside any of the linters.                           | Select it with `--formatter prettier`; it does not replace the linter.                      |
+
+Packs can also run in ESLint alongside Biome or Oxlint. After choosing, run `pawl doctor` to see which rules your installed tools can enforce before relying on the check in [CI](/guide/ci/).
+
 ## Picking
 
 ```sh

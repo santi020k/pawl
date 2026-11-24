@@ -47,7 +47,9 @@ npx @santi020k/pawl init --agents
 
 `--agents` adds up to three things.
 
-**A Claude Code hook**, so Claude Code sees the findings after every edit. It goes in `.claude/settings.json`, next to any hooks you already have:
+### Claude Code
+
+A hook lets Claude Code see the findings after every edit. It goes in `.claude/settings.json`, next to any hooks you already have:
 
 ```json title=".claude/settings.json"
 {
@@ -67,7 +69,9 @@ npx @santi020k/pawl init --agents
 }
 ```
 
-**A Cursor hook**, in repos that already have a `.cursor` folder. Cursor does not read a hook's output back, so this hook applies safe fixes and formatting after each edit, and the `AGENTS.md` instructions tell the agent to run the check:
+### Cursor
+
+Pawl adds a hook in repos that already have a `.cursor` folder. Cursor does not read a hook's output back, so this hook applies safe fixes and formatting after each edit, and the `AGENTS.md` instructions tell the agent to run the check:
 
 ```json title=".cursor/hooks.json"
 {
@@ -82,7 +86,9 @@ npx @santi020k/pawl init --agents
 }
 ```
 
-**Instructions in `AGENTS.md`**, for every agent. Pawl writes them between `<!-- pawl:start -->` and `<!-- pawl:end -->` markers, so running `init` again updates its block and leaves the rest of the file alone:
+### AGENTS.md
+
+These instructions apply to every agent that reads `AGENTS.md`. Pawl writes them between `<!-- pawl:start -->` and `<!-- pawl:end -->` markers, so running `init` again updates its block and leaves the rest of the file alone:
 
 ```md title="AGENTS.md"
 ## Code quality

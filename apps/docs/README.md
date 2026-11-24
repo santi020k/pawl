@@ -55,6 +55,10 @@ The landing page uses the hand-made `public/og.jpg`. Every doc page gets its own
 
 `pnpm --filter @santi020k/pawl-docs run audit` checks the built `dist/`: titles, descriptions, canonicals, robots, Open Graph and X tags, JSON-LD, that every social image exists at 1200×630, the sitemap, `robots.txt`, and `llms.txt` with the Markdown copy of every page. CI and the deploy workflow run it after the build.
 
+`public/_headers` gives each Markdown copy an HTTP `Link` header pointing to the equivalent HTML page as canonical. Cloudflare Pages applies these headers to static files; Astro's development and preview servers do not. After deployment, check a nested page such as `/guide/ratchet.md` and a top-level page such as `/changelog.md` with `curl -I`.
+
+The production alias `pawl-docs.pages.dev` also serves the site, with canonical tags pointing to the custom domain. Redirecting that hostname requires a Cloudflare Bulk Redirect; Pages `_redirects` does not support hostname matching. Configure only the production alias, preserve paths and query strings, and leave preview deployment hostnames available. Verify the homepage and a nested documentation path after enabling the redirect.
+
 ## Deploy
 
 `.github/workflows/deploy-docs.yml` builds the site and deploys `dist` to the Cloudflare Pages project `pawl-docs` with `wrangler pages deploy`. It runs on a push to `main` that touches `apps/docs/`, `packages/pawl/` or the lockfile, and on demand from the Actions tab. A push that brings a new, untagged version is the exception: the release workflow deploys that one, after it has created the tag, so a release builds the site once. It uses the GitHub environment `docs-production`, which gets two secrets from Doppler (project `pawl`, config `prd`) through a Doppler sync. Change them in Doppler, not in GitHub:

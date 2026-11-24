@@ -1,5 +1,5 @@
 ---
-title: The ratchet
+title: Lint baselines and the ratchet
 description: "Adopt a lint standard without fixing everything first. Pawl records existing findings per file and rule, fails new ones, and lets you lock in each improvement."
 head: [{ tag: title, content: "The ratchet: a lint baseline that only moves forward | pawl" }]
 ---
@@ -9,6 +9,41 @@ import RatchetChart from '../../../components/RatchetChart.astro'
 A pawl is the part of a ratchet that stops it slipping backward. Pawl does the same for a codebase: the findings a repo has when it adopts the standard are recorded once, and from then on quality can only move forward.
 
 <RatchetChart />
+
+## Adopt a baseline in an existing repo
+
+Start at the repository root. If you are moving an existing ESLint configuration, read the [migration guide](/guide/migrate/) first.
+
+### Record existing findings
+
+```sh
+npx @santi020k/pawl init
+npx pawl check
+```
+
+Review the setup plan and accept it when it matches your project. Once the tools are installed and the check can run, `init` records the existing findings in `.pawl/baseline.json`. The next check allows those counts, so you can adopt the standard before fixing every old finding. Review and commit the generated configuration, dependency changes and baseline together.
+
+### Check a new finding
+
+For example, suppose the baseline allows one `eqeqeq` finding in `src/server.ts`, as in the JSON below. Adding a second comparison that violates that rule in the same file exceeds the count. Run:
+
+```sh
+npx pawl check
+```
+
+The check fails because the count increased and reports both comparisons. Fix the new comparison and check again; the original finding is still allowed. Do not run `pawl baseline` to clear this failure unless you intend to accept the additional finding.
+
+### Lower the baseline after a fix
+
+Fix the original comparison too, then run:
+
+```sh
+npx pawl check
+npx pawl baseline
+npx pawl check
+```
+
+Review the baseline diff and commit it with the code fix. With the count lowered, reintroducing that finding fails the next check. Use `pawl check --ci` in [CI](/guide/ci/) to enforce the committed baseline for the team.
 
 ## The baseline
 

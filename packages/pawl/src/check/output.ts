@@ -68,7 +68,8 @@ const ENGINE_TITLES: Readonly<Record<string, string>> = {
 export const engineTitle = (name: string): string => ENGINE_TITLES[name] ?? name
 
 /** One line of the message, so an engine's message that runs over lines stays one finding. */
-const oneLine = (message: string): string => message.replace(/\s*\n\s*/g, ' ').trim()
+const oneLine = (message: string): string =>
+  message.replace(/\s+/g, space => (space.includes('\n') ? ' ' : space)).trim()
 
 /** Above this many findings the code is left out of the rich view, so the list stays a list. */
 const FRAME_LIMIT = 30

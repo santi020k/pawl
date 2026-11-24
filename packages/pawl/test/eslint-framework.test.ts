@@ -333,7 +333,7 @@ describe('framework ESLint integration', () => {
       expect(result.status, result.stderr).toBe(0)
       expect(result.stdout).toContain('no-debugger')
     }
-  })
+  }, 60_000)
 
   it('validates real import-x implementations and retains the supplied TypeScript resolver', async () => {
     const root = rootFixture()

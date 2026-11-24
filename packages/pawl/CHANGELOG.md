@@ -70,6 +70,8 @@
 
 ### Patch Changes
 
+- Safely count and read baseline entries with prototype-related names. Keep diagnostic whitespace and test-path matching linear for long inputs.
+
 - Keep rich diagnostic frames safe at the end of long lines and honor explicit output formats over environment defaults.
 
 - Preserve TypeScript replacements when enforcing locked ESLint rules, avoiding false positives from core rules on valid TypeScript.

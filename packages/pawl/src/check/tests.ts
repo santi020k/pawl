@@ -29,8 +29,16 @@ export interface TestFile extends TestCounts {
 }
 
 /** Vitest, Jest, Playwright and Cypress files, and the files under a __tests__ folder. */
-export const isTestFile = (file: string): boolean =>
-  /\.(?:test|spec|cy|e2e)\.[cm]?[jt]sx?$/.test(file) || /(?:^|\/)__tests__\/.+\.[cm]?[jt]sx?$/.test(file)
+export const isTestFile = (file: string): boolean => {
+  if (/\.(?:test|spec|cy|e2e)\.[cm]?[jt]sx?$/.test(file)) return true
+
+  const segments = file.split('/')
+  const folder = segments.indexOf('__tests__')
+
+  // Find the directory once, then check its remainder once: repeated directory names must not
+  // restart a scan of the entire remaining path when its extension does not match.
+  return folder >= 0 && /^.+\.[cm]?[jt]sx?$/.test(segments.slice(folder + 1).join('/'))
+}
 
 /** expect, its soft and polling forms, the type-level ones, and node:assert. */
 const ASSERTION = /\b(?:expect(?:\.soft|\.poll)?|expectTypeOf|assertType|assert(?:\.[A-Za-z]+)?)\s*\(/g

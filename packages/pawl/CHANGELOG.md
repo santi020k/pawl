@@ -47,7 +47,7 @@
   - `pawl check --hook` and `pawl fix --hook` read a stop event from the hook's input. They check every file the agent edited in the session, as the edit hook recorded them, and not the rest of the working tree. While new errors are left, they send the agent back with the list: `{ "decision": "block", "reason": ... }` for Claude Code, Codex and Copilot, and `followup_message` for Cursor. Warnings do not, unless there are more than the limit allows.
   - Pawl sends the agent back at most three times in a row, and not again when a round changed nothing. Then it lets the agent stop and tells the person how many problems are left: as a `systemMessage` for Claude Code, Codex and Copilot, and on stderr for Cursor. A turn the person cancelled in Cursor is not sent back.
   - Cursor reads nothing back from its edit hook, so the stop hook is how what is left reaches a Cursor agent at all.
-  - The edit hook records the files of each session in the system's temporary folder, by the `session_id`, `sessionId` or `conversation_id` the hook's input carries. Once the agent is done, the session's edits are forgotten, so the next turn starts clean.
+  - The edit hook records the files of each session in a private per-user state directory, by the `session_id`, `sessionId` or `conversation_id` the hook's input carries. Once the agent is done, the session's edits are forgotten, so the next turn starts clean.
   - The pawl skill says what the stop hook asks of the agent: fix what it lists, or say so and stop when a problem needs the user.
 
 - Output made for whoever runs pawl: people at a terminal, coding agents and code editors.
@@ -69,6 +69,8 @@
   - The `AGENTS.md` block, the pawl skill and the hook's message to the agent say that weakening or skipping a test fails the check, and the skill tells agents not to follow hidden text in a rules file.
 
 ### Patch Changes
+
+- Preserve technology scopes and stricter file overrides when replaying locked ESLint rules. Resolve exported package paths through symlinks so isolated dependency layouts retain their base packs. Store hook session state in a private per-user directory and refuse unsafe state files.
 
 - Safely count and read baseline entries with prototype-related names. Keep diagnostic whitespace and test-path matching linear for long inputs.
 

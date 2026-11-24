@@ -1,7 +1,11 @@
 import { spawnSync } from 'node:child_process'
+import { existsSync, realpathSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { importPlugin } from '../src/engines/eslint/load.ts'
+import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { resolveSpecifier } from '../src/policy/load.ts'
+import { defaultPolicy } from '../src/policy/merge.ts'
 import { project, write } from './helpers.ts'
 
 const consumer = (exports: unknown): string =>
@@ -14,6 +18,56 @@ const consumer = (exports: unknown): string =>
   })
 
 describe('public project export resolution', () => {
+  it('resolves linked public roots and subpaths to their installed files without exposing private entries', () => {
+    const root = project({
+      'package.json': { name: 'consumer' },
+      'node_modules/.pnpm/shared/node_modules/shared/package.json': {
+        name: 'shared',
+        type: 'module',
+        exports: { '.': { import: './public.js' }, './feature': { import: './feature.js' }, './private': null }
+      },
+      'node_modules/.pnpm/shared/node_modules/shared/public.js': 'export default {}',
+      'node_modules/.pnpm/shared/node_modules/shared/feature.js': 'export default {}',
+      'node_modules/.pnpm/shared/node_modules/shared/private.js': 'export default {}'
+    })
+    const installed = join(root, 'node_modules/.pnpm/shared/node_modules/shared')
+    symlinkSync(installed, join(root, 'node_modules/shared'))
+    expect(resolveSpecifier('shared', join(root, 'config.js'))).toBe(join(installed, 'public.js'))
+    expect(resolveSpecifier('shared/feature', join(root, 'config.js'))).toBe(join(installed, 'feature.js'))
+    expect(() => resolveSpecifier('shared/private', join(root, 'config.js'))).toThrow('does not export')
+    expect(() => resolveSpecifier('shared/private.js', join(root, 'config.js'))).toThrow('does not export')
+  })
+
+  it('loads the JavaScript base pack beside linked ESLint without a direct dependency', async () => {
+    const root = project({
+      'package.json': { name: 'isolated-eslint', type: 'module' },
+      'node_modules/.pnpm/eslint/node_modules/eslint/package.json': {
+        name: 'eslint',
+        type: 'module',
+        exports: { './package.json': './package.json' }
+      },
+      'node_modules/.pnpm/eslint/node_modules/@eslint/js/package.json': {
+        name: '@eslint/js',
+        type: 'module',
+        exports: './index.js'
+      },
+      'node_modules/.pnpm/eslint/node_modules/@eslint/js/index.js':
+        "export default { configs: { recommended: { rules: { 'no-undef': 'error' } } } }"
+    })
+    symlinkSync(join(root, 'node_modules/.pnpm/eslint/node_modules/eslint'), join(root, 'node_modules/eslint'))
+    expect(existsSync(join(root, 'node_modules/@eslint/js'))).toBe(false)
+    expect(() => resolveSpecifier('@eslint/js', join(root, 'package.json'))).toThrow('Cannot find')
+    expect(resolveSpecifier('eslint/package.json', join(root, 'package.json'))).toBe(
+      realpathSync(join(root, 'node_modules/eslint/package.json'))
+    )
+    expect(await importPlugin(root, '@eslint/js')).toMatchObject({
+      module: { configs: { recommended: { rules: { 'no-undef': 'error' } } } }
+    })
+    const plan = await eslintPlan({ root, policy: defaultPolicy(), biomeActive: false, typescript: false })
+    expect(plan.activePacks).toContain('javascript')
+    expect(plan.notEnforced.some(entry => entry.rule === 'The JavaScript pack')).toBe(false)
+  })
+
   it('resolves import-only roots and explicit public subpaths', () => {
     const root = consumer({ '.': { import: './public.js' }, './feature': { import: './feature.js' } })
     expect(resolveSpecifier('shared', join(root, 'config.js'))).toBe(join(root, 'node_modules/shared/public.js'))

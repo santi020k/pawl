@@ -2,7 +2,7 @@ import { readdirSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative as relativePath } from 'node:path'
 import { IMPORTS_RULE, importRestrictions, SYNTAX_RULE, syntaxRestrictions } from '../../catalog/guards.ts'
 import { PACKS, type Pack } from '../../catalog/packs.ts'
-import { getRule, isGated, notFor, scopedRule, type Technology } from '../../catalog/rules.ts'
+import { canonicalName, getRule, isGated, notFor, scopedRule, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { findProjectRoot } from '../../policy/load.ts'
@@ -837,7 +837,7 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
         : []
     )
   )
-  const result = all.flatMap((block): FlatConfig[] => {
+  const routed = all.map((block): FlatConfig[] => {
     const language = isRecord(block.languageOptions) ? block.languageOptions : undefined
     const parser = isRecord(language?.parserOptions) ? language.parserOptions : undefined
     const typed =
@@ -859,6 +859,7 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
       }
     ]
   })
+  const result = routed.flat()
 
   if (Object.keys(typeRules).length > 0)
     result.push({
@@ -916,17 +917,37 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
         return prefix && plugins[prefix] ? [[prefix, plugins[prefix]]] : []
       })
     )
-  if (Object.keys(rules).length > 0) result.push({ name: 'pawl/locked', files: physical, plugins: used(rules), rules })
+  const locked: FlatConfig[] = []
+  if (Object.keys(rules).length > 0) locked.push({ name: 'pawl/locked', files: physical, plugins: used(rules), rules })
   if (Object.keys(twins).length > 0)
-    result.push({ name: 'pawl/locked/typescript-twins', files: TS_FILES, plugins: used(twins), rules: twins })
+    locked.push({ name: 'pawl/locked/typescript-twins', files: TS_FILES, plugins: used(twins), rules: twins })
   if (Object.keys(typedRules).length > 0)
-    result.push({
+    locked.push({
       name: 'pawl/locked/typescript',
       files: TS_FILES,
       ignores: virtual,
       plugins: used(typedRules),
       rules: typedRules
     })
+  result.push(...scopeTechnologies(locked, options))
+
+  // Replay the policy's ordered file exceptions after its global floors, keeping their original
+  // intersections, exclusions and processor routing. Shared config contributes no policy floors.
+  for (const block of routed.slice(0, config.length).flat()) {
+    if (typeof block.name !== 'string' || !block.name.startsWith('pawl/override/') || !isRecord(block.rules)) continue
+    const rules = Object.fromEntries(
+      Object.entries(block.rules).filter(([name]) => options.policy.locked.includes(canonicalName(name)))
+    )
+    if (Object.keys(rules).length === 0) continue
+    const { files, ignores } = block
+    result.push({
+      name: `${block.name}/locked`,
+      ...(files === undefined ? {} : { files }),
+      ...(ignores === undefined ? {} : { ignores }),
+      plugins: used(rules),
+      rules
+    })
+  }
   return result
 }
 

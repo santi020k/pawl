@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -239,7 +239,8 @@ export const resolveSpecifier = (specifier: string, fromFile: string): string =>
     target.includes('*')
   )
     throw new Error(`Unsupported or unsafe export target for "${specifier}".`)
-  return resolve(dirname(manifest.path), target)
+  // Package dependencies resolve beside the installed target, not a workspace's symlink to it.
+  return realpathSync(resolve(dirname(manifest.path), target))
 }
 
 /**

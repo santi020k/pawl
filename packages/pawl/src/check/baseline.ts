@@ -156,28 +156,36 @@ export const scanSuppressions = (
 }
 
 const countBy = (suppressions: readonly Suppression[]): Record<string, number> => {
-  const counts: Record<string, number> = {}
+  const counts = new Map<string, number>()
 
-  for (const { file } of suppressions) counts[file] = (counts[file] ?? 0) + 1
+  for (const { file } of suppressions) counts.set(file, (counts.get(file) ?? 0) + 1)
 
-  return counts
+  return Object.fromEntries(counts)
 }
+
+/** Baseline keys are user-controlled names, never inherited object properties. */
+const ownValue = <T>(record: Readonly<Record<string, T>>, key: string): T | undefined =>
+  Object.hasOwn(record, key) ? record[key] : undefined
 
 export const createBaseline = (
   findings: readonly Finding[],
   suppressions: readonly Suppression[],
   tests?: Record<string, TestCounts>
 ): Baseline => {
-  const byFile: Record<string, Record<string, number>> = {}
+  const byFile = new Map<string, Map<string, number>>()
 
   for (const { file, rule } of findings) {
-    byFile[file] ??= {}
-    byFile[file][rule] = (byFile[file][rule] ?? 0) + 1
+    const rules = byFile.get(file) ?? new Map<string, number>()
+
+    rules.set(rule, (rules.get(rule) ?? 0) + 1)
+    byFile.set(file, rules)
   }
 
   return {
     version: 1,
-    findings: sortKeys(Object.fromEntries(Object.entries(byFile).map(([file, rules]) => [file, sortKeys(rules)]))),
+    findings: sortKeys(
+      Object.fromEntries([...byFile].map(([file, rules]) => [file, sortKeys(Object.fromEntries(rules))]))
+    ),
     suppressions: sortKeys(countBy(suppressions)),
     ...(tests ? { tests: sortKeys(tests) } : {})
   }
@@ -214,8 +222,12 @@ export const applyBaseline = (findings: readonly Finding[], baseline: Baseline |
   let canShrink = false
 
   for (const group of groups.values()) {
-    const first = group[0] as Finding
-    const allowed = baseline.findings[first.file]?.[first.rule] ?? 0
+    const first = group[0]
+
+    if (!first) continue
+
+    const rules = ownValue(baseline.findings, first.file)
+    const allowed = (rules ? ownValue(rules, first.rule) : undefined) ?? 0
 
     if (group.length <= allowed) {
       baselined += group.length
@@ -242,7 +254,7 @@ export const newSuppressions = (suppressions: readonly Suppression[], baseline: 
   const findings: Finding[] = []
 
   for (const suppression of suppressions) {
-    const allowed = baseline.suppressions[suppression.file] ?? 0
+    const allowed = ownValue(baseline.suppressions, suppression.file) ?? 0
     const found = counts[suppression.file] ?? 0
 
     if (found <= allowed) continue

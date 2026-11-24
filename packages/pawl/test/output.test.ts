@@ -196,6 +196,15 @@ describe('editor output', () => {
     expect(formatEditor(result([]))).toBe('')
   })
 
+  it('handles long whitespace runs while preserving spacing within a message line', () => {
+    const spaces = ' '.repeat(50_000)
+    const inline = `First${spaces}line.`
+    const multiline = `First${spaces}\r\n\t${spaces}second.`
+
+    expect(formatEditor(result([{ ...any, message: inline }]))).toContain(inline)
+    expect(formatEditor(result([{ ...any, message: multiline }]))).toContain('First second.')
+  })
+
   it('keeps a finding on one line, and puts setup problems and the warning limit under pawl', () => {
     const text = formatEditor(
       result([{ ...any, message: 'First line.\n  Second line.' }, any], {

@@ -77,6 +77,20 @@ describe('counting a test file', () => {
       expect(isTestFile(file), file).toBe(false)
     }
   })
+
+  it('recognizes nested test directories without rescanning repeated path segments', () => {
+    for (const file of ['__tests__/a.js', 'src/__tests__/nested/a.cts', 'src/__tests__/__tests__/a.tsx']) {
+      expect(isTestFile(file), file).toBe(true)
+    }
+    for (const file of ['src/not__tests__/a.ts', 'src/__tests__suffix/a.ts', '__tests__/.ts', '__tests__/a.ts.map']) {
+      expect(isTestFile(file), file).toBe(false)
+    }
+
+    const repeated = '__tests__/'.repeat(20_000)
+
+    expect(isTestFile(`${repeated}a.ts`)).toBe(true)
+    expect(isTestFile(`${repeated}a.ts.map`)).toBe(false)
+  })
 })
 
 describe('the ratchet', () => {

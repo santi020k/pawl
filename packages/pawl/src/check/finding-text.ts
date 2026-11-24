@@ -15,4 +15,5 @@ export const adviceFor = (finding: Finding, fixCommand = 'pawl fix'): string | u
   finding.fixable ? `Run "${fixCommand}".` : getRule(finding.rule)?.advice
 
 /** One line of the message, so an engine's message that runs over lines stays one finding. */
-export const oneLine = (message: string): string => message.replace(/\s*\n\s*/g, ' ').trim()
+export const oneLine = (message: string): string =>
+  message.replace(/\s+/g, space => (space.includes('\n') ? ' ' : space)).trim()

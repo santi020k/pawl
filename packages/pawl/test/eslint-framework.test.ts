@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { ESLint } from 'eslint'
+import { ESLint, type Rule } from 'eslint'
 import { describe, expect, it } from 'vitest'
 import { eslintPlan, mergeLayers } from '../src/index.ts'
 import {
@@ -51,6 +51,95 @@ const frameworkPlan = (root: string) =>
   })
 
 describe('framework ESLint integration', () => {
+  it.each([false, true])('keeps locked technology rules in their packages with shared config: %s', async shared => {
+    const paths = ['apps/[web]/index.js', 'apps/plain/index.js', 'apps/[web]/examples/plain/index.js']
+    const root = project({
+      'package.json': { name: 'workspace-fixture', type: 'module' },
+      ...Object.fromEntries(paths.map(file => [file, 'export const value = 1;\n']))
+    })
+    const rule: Rule.RuleModule = {
+      create: context => ({ Program: node => context.report({ node, message: 'React-only check.' }) })
+    }
+    const plan = await eslintPlan({
+      root,
+      policy: mergeLayers([
+        {
+          source: 'company',
+          input: { rules: { 'react-hooks/rules-of-hooks': 'error' }, locked: ['react-hooks/rules-of-hooks'] }
+        }
+      ]),
+      biomeActive: false,
+      typescript: false,
+      technologies: ['react'],
+      sharedTechnologies: [],
+      packages: {
+        'apps/[web]': { technologies: ['react'], dependencies: ['react'] },
+        'apps/plain': { technologies: [], dependencies: [] },
+        'apps/[web]/examples/plain': { technologies: [], dependencies: [] }
+      },
+      plugins: { 'react-hooks': { rules: { 'rules-of-hooks': rule } } },
+      ...(shared ? { baseConfig: [{ rules: { 'react-hooks/rules-of-hooks': 'off' } }] } : {})
+    })
+    const runner = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: plan.config })
+    const reports = await runner.lintFiles(paths)
+
+    expect(reports.flatMap(report => report.messages).filter(message => message.fatal)).toEqual([])
+    expect(
+      reports
+        .filter(report => report.messages.some(message => message.ruleId === 'react-hooks/rules-of-hooks'))
+        .map(report => report.filePath)
+    ).toEqual([join(root, 'apps/[web]/index.js')])
+  })
+
+  it.each([false, true])('retains ordered locked override levels and options with shared config: %s', async shared => {
+    const paths = ['root.js', 'src/index.js', 'src/generated/ignored.js', 'src/generated/checked.js', 'src/later.js']
+    const root = project({
+      'package.json': { name: 'override-fixture', type: 'module' },
+      ...Object.fromEntries(paths.map(file => [file, 'debugger; export const equal = value == null;\n']))
+    })
+    const plan = await eslintPlan({
+      root,
+      policy: mergeLayers([
+        {
+          source: 'company',
+          input: {
+            rules: { 'no-debugger': 'warn', eqeqeq: 'warn' },
+            options: { eqeqeq: ['smart'] },
+            locked: ['no-debugger', 'eqeqeq'],
+            overrides: [
+              {
+                files: ['src/**', '!src/generated/**', 'src/generated/checked.js'],
+                rules: { 'no-debugger': 'error', eqeqeq: 'error' },
+                options: { eqeqeq: ['always'] }
+              },
+              { files: ['src/later.js'], rules: { 'no-debugger': 'warn' } }
+            ]
+          }
+        }
+      ]),
+      biomeActive: false,
+      typescript: false,
+      ...(shared ? { baseConfig: [{ rules: { 'no-debugger': 'off', eqeqeq: 'off' } }] } : {})
+    })
+    const runner = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: plan.config })
+    for (const [index, file] of paths.entries()) {
+      const stronger = index === 1 || index === 3 || index === 4
+      const severity = stronger && index !== 4 ? 2 : 1
+      const config: unknown = await runner.calculateConfigForFile(join(root, file))
+
+      expect(config).toMatchObject({
+        rules: { 'no-debugger': [severity], eqeqeq: [stronger ? 2 : 1, stronger ? 'always' : 'smart'] }
+      })
+      const messages = (await runner.lintFiles([file])).flatMap(report => report.messages)
+
+      expect(messages.filter(message => message.fatal)).toEqual([])
+      expect(messages.filter(message => message.ruleId === 'no-debugger')).toEqual([
+        expect.objectContaining({ severity })
+      ])
+      expect(messages.filter(message => message.ruleId === 'eqeqeq')).toHaveLength(stronger ? 1 : 0)
+    }
+  })
+
   it.each([false, true])('preserves locked TypeScript twins with shared config: %s', async shared => {
     const root = rootFixture()
     write(root, { 'src/contract.ts': 'export interface API { run(value: string): void }\nconst unused = 1;\n' })
@@ -333,7 +422,7 @@ describe('framework ESLint integration', () => {
       expect(result.status, result.stderr).toBe(0)
       expect(result.stdout).toContain('no-debugger')
     }
-  })
+  }, 60_000)
 
   it('validates real import-x implementations and retains the supplied TypeScript resolver', async () => {
     const root = rootFixture()

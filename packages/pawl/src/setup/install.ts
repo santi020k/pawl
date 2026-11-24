@@ -53,6 +53,14 @@ export const installCommand = (detection: Detection, packages: readonly string[]
   return `${INSTALL[manager]}${workspaceFlag} ${specs.join(' ')}`
 }
 
+/** The command that installs packages as they are given, with a version each, with the project's own package manager. */
+export const upgradeCommand = (detection: Detection, specs: readonly string[]): string => {
+  const manager = detection.packageManager ?? 'npm'
+  const workspaceFlag = manager === 'pnpm' && detection.workspace.packages.length > 0 ? ' -w' : ''
+
+  return `${INSTALL[manager]}${workspaceFlag} ${specs.join(' ')}`
+}
+
 /** The packages a project already lists, in any dependency group. */
 export const listed = (root: string): Set<string> => {
   const manifest = readJson<Record<string, Record<string, string> | undefined>>(join(root, 'package.json'))

@@ -563,11 +563,15 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
       config.push(
         ...preset.map(block => {
           if (Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
-          // A block of the preset with no files would reach every file ESLint lints, including the
-          // Markdown, JSON, YAML and HTML another pack hands to its own language, where the rules of
-          // this one crash. Such a block keeps the scripts and the pack's own files.
-          if (!explicitFiles)
-            return Array.isArray(block.files) ? block : { ...block, files: [...SCRIPT_FILES, ...(pack.files ?? [])] }
+          // A block of the preset with no files would reach every file ESLint lints. One that sets a
+          // parser, a language or a processor keeps to the pack's own files, or it would parse the
+          // scripts as HTML. One with rules only keeps to the scripts and the pack's own files, away
+          // from the Markdown, JSON or YAML another pack hands to its own language, where it crashes.
+          if (!explicitFiles) {
+            if (Array.isArray(block.files) || !pack.files) return block
+
+            return { ...block, files: parses(block) ? pack.files : [...SCRIPT_FILES, ...pack.files] }
+          }
           const original = Array.isArray(block.files) ? block.files : ['**/*']
           return {
             ...block,
@@ -696,6 +700,12 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
 
   return config
 }
+
+/** A flat config block that decides how files are read: a parser, a language or a processor. */
+const parses = (block: FlatConfig): boolean =>
+  block.language !== undefined ||
+  block.processor !== undefined ||
+  (isRecord(block.languageOptions) && block.languageOptions.parser !== undefined)
 
 /** Explicit aliases must provide real rule implementations, not just a matching namespace. */
 const suppliedPlugin = (value: unknown): Loaded =>

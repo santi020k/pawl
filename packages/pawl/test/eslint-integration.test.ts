@@ -91,6 +91,34 @@ describe('public ESLint integrations', () => {
     ])
   })
 
+  it('keeps a flat preset block that sets a parser and names no files to the pack own files', async () => {
+    // @html-eslint/eslint-plugin's flat preset is one block with the plugin, its parser and its rules.
+    const root = project({
+      'package.json': { name: 'consumer', type: 'module', devDependencies: { '@html-eslint/eslint-plugin': '1.0.0' } },
+      'pawl.config.json': { engine: 'eslint', packs: ['html'] },
+      'node_modules/@html-eslint/eslint-plugin/package.json': {
+        name: '@html-eslint/eslint-plugin',
+        version: '0.41.0',
+        type: 'module',
+        exports: './index.js'
+      },
+      'node_modules/@html-eslint/eslint-plugin/index.js': [
+        'const rule = { create() { return {} } }',
+        'const parser = { parseForESLint() { return { ast: { type: "Program", body: [] } } } }',
+        'const plugin = { rules: { "no-inline-styles": rule, "require-button-type": rule, "require-doctype": rule } }',
+        'plugin.configs = {',
+        '  "flat/recommended": { plugins: { "@html-eslint": plugin }, languageOptions: { parser }, rules: { "@html-eslint/require-doctype": "error" } }',
+        '}',
+        'export default plugin'
+      ].join('\n')
+    })
+    const plan = await eslintPlanFor(root)
+    const preset = plan.config.find(block => Object.keys(block.rules ?? {}).includes('@html-eslint/require-doctype'))
+
+    expect(plan.notEnforced.filter(item => item.rule.startsWith('@html-eslint/'))).toEqual([])
+    expect(preset?.files).toEqual(['**/*.html'])
+  })
+
   it('resolves plugins through public exports in additional shared-config roots', async () => {
     const root = fixture()
     const shared = project({

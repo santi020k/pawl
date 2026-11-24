@@ -41,6 +41,8 @@ Run `pnpm changeset` for any user-visible change to `@santi020k/pawl`. Choose pa
 
 Use a Conventional Commit title, keep changes focused and add tests for behavior changes. After changing a rule, the style or the Biome version, regenerate the presets and the rules page; `pnpm ok` fails if they are out of date.
 
+`packages/pawl/api.md` is the public API of the package, generated from the built declarations by `pnpm --filter @santi020k/pawl run api` after a build. A pull request that changes an export, or a type an export refers to, changes that file: review the diff as an API change, and say in the changeset whether it breaks users. `pnpm ok` fails when the file is out of date.
+
 ## Releases
 
 `@santi020k/pawl` and `@santi020k/pawl-policy` share one version. A release is a pull request from a `release/v<version>` branch into `main`; nothing else changes a version, and CI refuses a version change on any other branch.

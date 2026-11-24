@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { GUARDS, getGuard } from '../catalog/guards.ts'
 import { getPack, PACKS } from '../catalog/packs.ts'
 import { ESLINT_CONFIG_FILES, hasAny, PAWL_CONFIG_FILES } from '../project/config-files.ts'
 import { type Policy, type PolicyInput } from '../types.ts'
-import { ancestors } from '../utils/fs.ts'
+import { ancestors, toPosix } from '../utils/fs.ts'
 import { isRecord } from '../utils/json.ts'
 import { toList } from '../utils/list.ts'
 import { defaultPolicy, type Layer, mergeLayers } from './merge.ts'
@@ -353,5 +353,5 @@ export const loadPolicy = async (root: string): Promise<Policy> => {
 
   if (!file) return defaultPolicy()
 
-  return resolvePolicy(await loadFile(file), file, file.slice(root.length + 1))
+  return resolvePolicy(await loadFile(file), file, toPosix(relative(root, file)))
 }

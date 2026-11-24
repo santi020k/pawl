@@ -1,4 +1,6 @@
 // cspell:ignore Asuspicious Aformat Aengine Aout Abiome
+import { mkdirSync, symlinkSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { formatGithub, formatSarif } from '../src/check/ci-output.ts'
 import {
@@ -13,6 +15,7 @@ import { type CheckResult, exitCode } from '../src/check/result.ts'
 import { workspaceBase } from '../src/cli/commands/check.ts'
 import { type Finding } from '../src/types.ts'
 import { createStyle, stripAnsi, symbols } from '../src/utils/terminal.ts'
+import { project } from './helpers.ts'
 
 const result = (findings: Finding[], extra: Partial<CheckResult> = {}): CheckResult => ({
   findings,
@@ -473,13 +476,30 @@ describe('SARIF', () => {
 })
 
 describe('the folder pawl runs in, under GitHub Actions', () => {
-  it('is the path from the checked-out repository, and empty at its root or outside it', () => {
+  it('is the path from the checked-out repository, preserves ..tools, resolves symlinks, and is empty outside it', () => {
     const actions = { GITHUB_WORKSPACE: '/work/repo' }
 
     expect(workspaceBase('/work/repo/packages/web', actions)).toBe('packages/web')
+    expect(workspaceBase('/work/repo/..tools', actions)).toBe('..tools')
+    expect(workspaceBase('/work/repo/..foo/sub', actions)).toBe('..foo/sub')
+    expect(workspaceBase('/work/repo/.config', actions)).toBe('.config')
     expect(workspaceBase('/work/repo', actions)).toBe('')
+    expect(workspaceBase('/work/repo/', actions)).toBe('')
+    expect(workspaceBase('/work/repo/../outside', actions)).toBe('')
+    expect(workspaceBase('/work/repo-other', actions)).toBe('')
+    expect(workspaceBase('/work', actions)).toBe('')
     expect(workspaceBase('/elsewhere', actions)).toBe('')
     expect(workspaceBase('/work/repo', {})).toBe('')
+
+    const root = project()
+    const real = join(root, 'real')
+    const pkg = join(real, 'packages/web')
+    const link = join(root, 'workspace-link')
+
+    mkdirSync(pkg, { recursive: true })
+    symlinkSync(real, link)
+    expect(workspaceBase(pkg, { GITHUB_WORKSPACE: link })).toBe('packages/web')
+    expect(workspaceBase(real, { GITHUB_WORKSPACE: link })).toBe('')
   })
 })
 

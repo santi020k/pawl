@@ -32,11 +32,54 @@
 
 - Version JSON check reports with an additive `reportVersion: 1` field and export `readCheckReport` for consumers that validate captured output against the actual process exit code. The reader rejects malformed reports, unsupported versions, contradictory baseline metadata and false success after setup failures. Existing result fields stay at the top level.
 
+- Hooks that fix each edit and hand what is left back to the agent, for more agents.
+
+  - `pawl fix --hook` runs from a coding agent's post-edit hook. It reads the files the agent edited from the hook's input, fixes and checks only those files, and answers in the shape that agent reads back: `hookSpecificOutput.additionalContext` for Claude Code and Codex, `additionalContext` for Copilot, and nothing for Cursor, which reads nothing back. When the check cannot run, the problem goes to stderr with exit code 1, for the person and not the agent. `pawl check --hook` reports without fixing.
+  - The Claude Code hook that `init --agents` writes now runs `npx --no pawl fix --hook`. The old hook ran `pawl check --changed --format agent`, and Claude Code does not show the model a hook's plain output, so Claude never saw the findings. The Cursor hook now fixes only the files the agent edited, not every changed file. Running `init --agents` again swaps the old commands for the new one in place.
+  - `init --agents` adds a Codex hook to `.codex/hooks.json` in repos with a `.codex` folder, and a Copilot hook to `.github/hooks/pawl.json` in repos that use Copilot.
+  - Claude Code reads `CLAUDE.md`, not `AGENTS.md`, so `init --agents` adds an `@AGENTS.md` import to `CLAUDE.md`, or writes a `CLAUDE.md` that has one. In a repo with a `.gemini` folder, it adds `AGENTS.md` to the files Gemini CLI reads.
+  - `init --agents` writes a pawl skill to `.claude/skills/pawl/SKILL.md` and `.agents/skills/pawl/SKILL.md`: what to run after an edit, how to read the findings, and what not to do.
+  - The `AGENTS.md` block also tells agents not to run `pawl baseline` to make findings go away.
+
+- A check when the coding agent stops, which sends it back while new errors are left.
+
+  - `init --agents` adds a stop hook next to each edit hook: `Stop` in `.claude/settings.json` and `.codex/hooks.json`, `agentStop` in `.github/hooks/pawl.json`, and `stop` in `.cursor/hooks.json`. It runs `npx --no pawl check --hook`.
+  - `pawl check --hook` and `pawl fix --hook` read a stop event from the hook's input. They check every file the agent edited in the session, as the edit hook recorded them, and not the rest of the working tree. While new errors are left, they send the agent back with the list: `{ "decision": "block", "reason": ... }` for Claude Code, Codex and Copilot, and `followup_message` for Cursor. Warnings do not, unless there are more than the limit allows.
+  - Pawl sends the agent back at most three times in a row, and not again when a round changed nothing. Then it lets the agent stop and tells the person how many problems are left: as a `systemMessage` for Claude Code, Codex and Copilot, and on stderr for Cursor. A turn the person cancelled in Cursor is not sent back.
+  - Cursor reads nothing back from its edit hook, so the stop hook is how what is left reaches a Cursor agent at all.
+  - The edit hook records the files of each session in the system's temporary folder, by the `session_id`, `sessionId` or `conversation_id` the hook's input carries. Once the agent is done, the session's edits are forgotten, so the next turn starts clean.
+  - The pawl skill says what the stop hook asks of the agent: fix what it lists, or say so and stop when a problem needs the user.
+
+- Output made for whoever runs pawl: people at a terminal, coding agents and code editors.
+
+  - **People.** In a terminal, `pawl check` and `pawl fix` show each finding with the line of code it points at, a mark under the part it means and how to fix it, then a summary with a pass or fail badge, the baseline and the time the check took. A spinner names each engine while it runs. `pawl init` and `pawl migrate` draw each step on a rail, ask with arrow-key menus, show the plan with `+` for new files and `~` for changed ones, and install behind a spinner, showing the package manager's output only when it fails. `pawl doctor` puts its lines under Project, Tools, and Ratchet and guards, with a mark for each. `pawl explain`, `pawl sync`, `pawl add` and `pawl baseline` get colors and marks too. In a pipe or a log, every command prints the same plain lines as before.
+  - **`init` asks what else to set up.** In a terminal, when no option says, `init` asks which of the editor, coding agents, a pre-commit hook and a GitHub workflow to add, with the editor and coding agents ticked.
+  - **Coding agents.** Pawl knows Claude Code, Cursor, Codex, Gemini CLI, Amp, Qwen Code, Augment, Cline, OpenCode and Antigravity by the variables they set, and the shared `AGENT` and `AI_AGENT`. An agent that runs `pawl check` or `pawl fix` gets `--format agent` without asking, and no command shows an agent colors, spinners or a question: a question in a terminal an agent drives would wait forever. `init` and `add` show an agent the package manager's output only when an install fails. `PAWL_AGENT=0` says a person is running pawl, and `PAWL_AGENT=1` an agent.
+  - **Code editors.** `--format editor` prints one `file:line:col: error: message [rule]` line per finding, which problem matchers, Vim's quickfix list and Emacs's compilation mode read. `init` writes `.vscode/tasks.json` with `pawl: check` and `pawl: fix` tasks whose problem matcher puts the findings in VS Code's Problems panel, and `.zed/tasks.json` in repos with a `.zed` folder. An existing tasks file gets only the tasks it does not have; one with comments is left alone, with a note. `formatEditor` is exported for the API.
+  - **Help.** `pawl <command> --help` and `pawl help <command>` show that command's options and examples, and a person at a terminal gets the commands first. A mistyped command, option or format gets a suggestion, such as `Did you mean "pawl check"?`, and an option with no value says so.
+  - **Programs that read pawl.** `PAWL_FORMAT` sets the format when `--format` is not given, for a program that runs pawl and reads what it prints, such as Quality with `editor`. The VS Code problem matcher also takes an `info` severity.
+  - `NO_COLOR` turns colors off only when it is set to something, as the convention says, and `FORCE_COLOR` keeps colors in a pipe.
+  - Cancelling a question with Escape or Ctrl+C exits with 130 and changes nothing.
+
+- Two more things an agent cannot get past: hidden characters and weaker tests.
+
+  - `pawl/no-hidden-characters` (error) finds characters that do not show on screen: zero-width characters, bidi controls, invisible operators and fillers, Unicode tag characters, a byte order mark past the start of a file, and runs of variation selectors. A rules file or a skill can hide instructions in them that an agent follows and a reviewer never sees. When tag characters spell out text, the finding shows it. Emoji, flags, one variation selector after a character, and the marks other scripts use next to their own letters are left alone. It reads code, the other files the engines read, docs, and the instructions, skills, hooks and settings of coding agents, including the folders such as `.claude`, `.cursor` and `.agents` that the default ignores skip. The policy's own ignores and the `.gitignore` still apply.
+  - `pawl/no-weaker-tests` (error): the baseline now counts, per test file, the assertions that pin a value and the skipped tests. A file with fewer assertions or more skipped tests than the baseline recorded fails, and so, on a check of the whole repo, does a counted test file that is gone unless new test files have its assertions. A check that passes for almost any value, such as `toBeTruthy()`, does not count as an assertion, so swapping one in lowers the count. Tests that got stronger are an improvement `pawl baseline` locks in. A baseline from an earlier version has no test counts: `pawl check` says so, and `pawl baseline` starts counting.
+  - A new skipped test is reported once, by `pawl/no-weaker-tests`, not also as the `vitest/no-disabled-tests` warning.
+  - The `AGENTS.md` block, the pawl skill and the hook's message to the agent say that weakening or skipping a test fails the check, and the skill tells agents not to follow hidden text in a rules file.
+
 ### Patch Changes
 
 - Explain when ordered asynchronous work and necessary CSS overrides should remain intact, with guidance for narrow policy exceptions and behavioral verification.
 
 - Preserve ordered policy exclusions and later re-inclusion in ESLint and Oxlint. Escape literal bracket workspace paths and exclude nested workspace ownership so framework rules do not leak into plain sibling or child packages.
+
+- Every command pawl writes runs the project's own pawl, and never downloads the unscoped `pawl` package from npm.
+
+  - A plain `npx pawl` looks on npm for a package called `pawl` when the project has not installed `@santi020k/pawl`, as in a fresh clone before the install. That name belongs to someone else. In a hook, an agent's shell or CI, npm answers its own question with yes. The agent hooks, the pre-commit hook, the `AGENTS.md` block, the skill, the VS Code and Zed tasks and the GitHub workflow now run `npx --no pawl`, which runs the local copy or fails.
+  - Running `init --agents` again swaps the hooks earlier versions wrote, `npx pawl check --changed --format agent` for Claude Code and `npx pawl fix --changed` for Cursor, for `npx --no pawl fix --hook`. `init --hooks` swaps the `npx pawl check --changed` line pawl wrote in `.husky/pre-commit` or `.git/hooks/pre-commit`, and `init` the command of a `pawl: check` or `pawl: fix` task pawl wrote.
+  - The `AGENTS.md` block and the skill tell agents what to do when npx cannot find pawl: install the project's dependencies, and never the package called `pawl`.
+  - Without a `package.json`, `init` now says to run `npx @santi020k/pawl check`.
 
 ## 0.4.0
 

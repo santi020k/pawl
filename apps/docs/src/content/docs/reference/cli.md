@@ -23,7 +23,7 @@ head: [{ tag: title, content: "CLI reference: every pawl command and option | pa
 | -------------------- | ------------------------------------------------------------------------------------ |
 | `--changed`          | Only files changed against HEAD, plus untracked ones                                 |
 | `--since <ref>`      | Only files changed since the branch left `<ref>`, such as `origin/main`              |
-| `--format <kind>`    | `pretty`, `agent`, `editor` or `json`; see [Output](#output)                         |
+| `--format <kind>`    | `pretty`, `agent`, `editor`, `github`, `sarif` or `json`; see [Output](#output)      |
 | `--ci`               | Also fail when the setup has drifted from the policy                                 |
 | `--max-warnings <n>` | Fail when there are more than `n` new warnings                                       |
 | `--eslint-cache`     | Opt into the [deterministic ESLint cache](/guide/eslint-cache/); disabled by default |
@@ -45,6 +45,8 @@ Pawl picks its output for whoever runs it. `--format` chooses one outright.
 | `pretty` | People          | In a terminal: each finding with the line of code it points at and how to fix it, then a summary. In a pipe or a log: the same facts as plain lines    |
 | `agent`  | Coding agents   | One JSON line per finding, errors first, with a `fix` where pawl has one, and nothing when there is nothing to do; see [Coding agents](/guide/agents/) |
 | `editor` | Code editors    | One `file:line:col: error: message [rule]` line per finding, the shape problem matchers, Vim and Emacs read; see [Editors](/guide/editors/)            |
+| `github` | GitHub Actions  | An annotation per finding, on its line in the pull request, then the plain report for the log; see [CI](/guide/ci/#findings-on-the-pull-request)       |
+| `sarif`  | Code scanning   | SARIF 2.1.0 with the new findings, for GitHub code scanning and other tools; see [CI](/guide/ci/#code-scanning-with-sarif)                             |
 | `json`   | CI, other tools | The versioned [check report](/guide/report-contract/) as one document                                                                                  |
 
 Without `--format`, a person gets `pretty` and a coding agent gets `agent`. Pawl knows an agent by the variables agents set on the commands they run: `CLAUDECODE` for Claude Code, `CURSOR_AGENT` for Cursor, `CODEX_SANDBOX` and `CODEX_THREAD_ID` for Codex, `GEMINI_CLI` for Gemini CLI, and the ones Amp, Qwen Code, Augment, Cline, OpenCode and Antigravity set, as well as the shared `AGENT` and `AI_AGENT`. An agent also gets no colors, no spinners and no questions, in every command, and the package manager's output only when an install fails.

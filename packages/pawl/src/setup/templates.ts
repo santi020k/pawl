@@ -71,8 +71,9 @@ const WORKFLOW_SETUP: Record<PackageManager, string> = {
 }
 
 /**
- * The GitHub workflow: the check on every pull request, then the doctor's report as an artifact,
- * which shows the tool versions and any drift even when the check fails.
+ * The GitHub workflow: the check on every pull request, with annotations that put each finding on
+ * its line, then the doctor's report as an artifact, which shows the tool versions and any drift
+ * even when the check fails.
  */
 export const workflowFile = (manager: PackageManager): string => {
   const install = manager === 'npm' ? 'npm ci' : `${manager} install --frozen-lockfile`
@@ -97,7 +98,7 @@ jobs:
         with:
           node-version: 22
 ${setup}      - run: ${install}
-      - run: ${PAWL} check --ci
+      - run: ${PAWL} check --ci --format github
       - name: Check the setup and the tool versions
         if: always()
         run: ${PAWL} doctor --format json > pawl-doctor.json

@@ -103,7 +103,7 @@ describe('the help', () => {
     const rich = stripAnsi(helpText(undefined, createStyle(1)))
 
     expect(plain).toContain('  pawl init             Set up this repo\n')
-    expect(plain).toContain('  --format <kind>       pretty, agent, editor or json (see Output below)\n')
+    expect(plain).toContain('  --format <kind>       pretty, agent, editor, github, sarif or json (see Output below)\n')
     expect(plain).toContain('  PAWL_AGENT=0|1        Say whether a coding agent is running pawl')
     expect(rich).toContain('Commands\n  init                  Set up this repo\n')
     expect(rich).toContain('Run pawl <command> --help for the options of a command.')

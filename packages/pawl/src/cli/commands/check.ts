@@ -1,7 +1,7 @@
 /** `pawl check`, `pawl fix` and `pawl baseline`: run the engines, then report or record what they found. */
 
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import { BASELINE_FILE } from '../../check/baseline.ts'
 import { type CheckOptions, type CheckProgress, check } from '../../check/check.ts'
 import { engineTitle, format, type RichOptions } from '../../check/output.ts'
@@ -192,6 +192,21 @@ const checkWithSpinner = async (
   }
 }
 
+/**
+ * The folder pawl runs in, from the root of the repository a GitHub Actions job checked out, so the
+ * paths of `--format github` and `--format sarif` point at the right files. Empty at that root and
+ * outside GitHub Actions, where the paths stay as pawl names them.
+ */
+export const workspaceBase = (root: string, env: Readonly<Record<string, string | undefined>>): string => {
+  const workspace = env.GITHUB_WORKSPACE
+
+  if (!workspace) return ''
+
+  const path = relative(workspace, root)
+
+  return path === '' || path.startsWith('..') || isAbsolute(path) ? '' : path.split(sep).join('/')
+}
+
 export const runCheck = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
   if (flags.hook === true) return runHook(root, files, flags, fix)
 
@@ -216,7 +231,13 @@ export const runCheck = async (root: string, files: string[], flags: Flags, fix:
   if (!rich) {
     const result = await check(options)
 
-    out(format(result, kind, { verbose: flags.verbose === true }))
+    out(
+      format(result, kind, {
+        verbose: flags.verbose === true,
+        ci,
+        base: workspaceBase(root, process.env)
+      })
+    )
 
     return exitCode(result, ci)
   }

@@ -41,7 +41,7 @@ const SECTIONS: readonly HelpSection[] = [
     rows: [
       row('--changed', 'Only files changed against HEAD, plus untracked ones', '(every file outside a git repository)'),
       row('--since <ref>', 'Only files changed since the branch left <ref>, such as origin/main'),
-      row('--format <kind>', 'pretty, agent, editor or json (see Output below)'),
+      row('--format <kind>', 'pretty, agent, editor, github, sarif or json (see Output below)'),
       row('--ci', 'Also fail when the setup has drifted from the policy'),
       row('--max-warnings <n>', 'Fail when there are more than n new warnings'),
       row('--verbose', 'Show the engine commands that ran'),
@@ -105,6 +105,12 @@ const SECTIONS: readonly HelpSection[] = [
         'For code editors: file:line:col: error: message [rule], the lines',
         'problem matchers, Vim and Emacs read'
       ),
+      row(
+        'github',
+        'For GitHub Actions: annotations that put each finding on its line in',
+        'the pull request, then the plain report for the log'
+      ),
+      row('sarif', 'SARIF 2.1.0 for code scanning, such as GitHub code scanning'),
       row('json', 'The whole result as one document, for CI and other tools'),
       row('PAWL_AGENT=0|1', 'Say whether a coding agent is running pawl, when the guess is wrong'),
       row('PAWL_FORMAT', 'The format when --format is not given, for programs that read pawl'),

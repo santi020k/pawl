@@ -1,17 +1,19 @@
-import { getRule } from '../catalog/rules.ts'
 import { type Finding, type SetupIssue } from '../types.ts'
 import { type Style, type Symbols, truncate } from '../utils/terminal.ts'
 import { andList, plural } from '../utils/text.ts'
+import { type CiOutputOptions, formatGithub, formatSarif } from './ci-output.ts'
+import { adviceFor, engineLabel, oneLine, scopedLabel } from './finding-text.ts'
 import { CHECK_REPORT_VERSION } from './report-contract.ts'
 import { BLOCKING, type CheckResult, exitCode, isBlocked, tooManyWarnings } from './result.ts'
 
 /**
  * Who the output is for: `pretty` for people, `agent` for coding agents, `editor` for the
- * problem matchers of code editors, and `json` for other tools.
+ * problem matchers of code editors, `github` for GitHub Actions annotations, `sarif` for code
+ * scanning, and `json` for other tools.
  */
-export type OutputFormat = 'pretty' | 'agent' | 'editor' | 'json'
+export type OutputFormat = 'pretty' | 'agent' | 'editor' | 'github' | 'sarif' | 'json'
 
-export const OUTPUT_FORMATS: readonly OutputFormat[] = ['pretty', 'agent', 'editor', 'json']
+export const OUTPUT_FORMATS: readonly OutputFormat[] = ['pretty', 'agent', 'editor', 'github', 'sarif', 'json']
 
 /** The full view for a person at a terminal: symbols, code frames and a summary that stands out. */
 export interface RichOptions {
@@ -27,7 +29,7 @@ export interface RichOptions {
   ci?: boolean
 }
 
-export interface FormatOptions {
+export interface FormatOptions extends CiOutputOptions {
   color?: boolean
   /** Show the engine commands that ran. */
   verbose?: boolean
@@ -43,17 +45,6 @@ const paint = (enabled: boolean) => {
   return { red: wrap(31), yellow: wrap(33), dim: wrap(2), bold: wrap(1), green: wrap(32) }
 }
 
-/** The engine's own name for the rule, so it can be searched in that engine's docs. */
-const engineLabel = (finding: Finding): string => (finding.engine === 'pawl' ? finding.rule : finding.engineRule)
-
-/** The rule as agents and editors get it: the engine's rule with the engine in front, or pawl's own. */
-const scopedLabel = (finding: Finding): string =>
-  finding.engine === 'pawl' ? finding.rule : `${finding.engine}:${finding.engineRule}`
-
-/** How to fix a finding, when pawl knows: its fix command, or the advice of its rule in the catalog. */
-const adviceFor = (finding: Finding, fixCommand = 'pawl fix'): string | undefined =>
-  finding.fixable ? `Run "${fixCommand}".` : getRule(finding.rule)?.advice
-
 const ENGINE_TITLES: Readonly<Record<string, string>> = {
   biome: 'Biome',
   oxlint: 'Oxlint',
@@ -66,9 +57,6 @@ const ENGINE_TITLES: Readonly<Record<string, string>> = {
 
 /** An engine's name as people write it, such as ESLint and SwiftLint. */
 export const engineTitle = (name: string): string => ENGINE_TITLES[name] ?? name
-
-/** One line of the message, so an engine's message that runs over lines stays one finding. */
-const oneLine = (message: string): string => message.replace(/\s*\n\s*/g, ' ').trim()
 
 /** Above this many findings the code is left out of the rich view, so the list stays a list. */
 const FRAME_LIMIT = 30
@@ -429,6 +417,17 @@ export const format = (result: CheckResult, kind: OutputFormat, options: FormatO
   if (kind === 'editor') return formatEditor(result)
 
   if (kind === 'json') return formatJson(result)
+
+  if (kind === 'sarif') return formatSarif(result, options)
+
+  if (kind === 'github') {
+    // The annotations go in a group the log folds away, and the plain report follows for the log.
+    const annotations = formatGithub(result, options)
+    const { rich: _rich, ...plain } = options
+    const report = formatPretty(result, plain)
+
+    return annotations ? `::group::Annotations\n${annotations}\n::endgroup::\n${report}` : report
+  }
 
   return formatPretty(result, options)
 }

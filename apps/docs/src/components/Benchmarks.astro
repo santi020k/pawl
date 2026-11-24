@@ -1,0 +1,40 @@
+---
+/**
+ * The benchmark table on the benchmarks page, from src/data/benchmarks.json, which
+ * `node scripts/bench.ts --write` measures and writes. Nothing here is typed by hand.
+ */
+import data from '../data/benchmarks.json'
+
+const ms = (value: number): string => (value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value} ms`)
+---
+
+<table>
+  <thead>
+    <tr>
+      <th>Case</th>
+      <th style="text-align: right">Median</th>
+      <th style="text-align: right">Fastest</th>
+      <th style="text-align: right">Slowest</th>
+    </tr>
+  </thead>
+  <tbody>
+    {
+      data.results.map(result => (
+        <tr>
+          <td>{result.label}</td>
+          <td style="text-align: right">{ms(result.medianMs)}</td>
+          <td style="text-align: right">{ms(result.minMs)}</td>
+          <td style="text-align: right">{ms(result.maxMs)}</td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>
+
+<p>
+  Measured on {data.date}: {data.corpus.files} files and {data.corpus.lines.toLocaleString('en')} lines of {
+    data.corpus.description
+  }, {data.runs} runs of each case after one to warm up. Node {data.node} on {data.machine.os}, {data.machine.cpu}
+  with {data.machine.cores} cores. pawl {data.versions.pawl}, Biome {data.versions.biome}, Oxlint {data.versions.oxlint},
+  ESLint {data.versions.eslint}.
+</p>

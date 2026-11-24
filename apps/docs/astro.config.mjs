@@ -81,6 +81,7 @@ export default defineConfig({
             { label: 'The ratchet', slug: 'guide/ratchet' },
             { label: 'The policy', slug: 'guide/policy' },
             { label: 'Choosing tools', slug: 'guide/tools' },
+            { label: 'Benchmarks', slug: 'guide/benchmarks' },
             { label: 'Packs', slug: 'guide/packs' },
             { label: 'Guards and file checks', slug: 'guide/guards' }
           ]

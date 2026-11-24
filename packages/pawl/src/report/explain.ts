@@ -10,6 +10,12 @@ import { kebabCase } from '../utils/text.ts'
 
 /** Findings pawl names itself that are neither in the catalog nor a check of its own. */
 const OWN_RULES: Record<string, { summary: string; checkedBy: string; advice: string }> = {
+  'biome:complexity/noImportantStyles': {
+    summary: 'Avoid CSS declarations that bypass the normal cascade.',
+    checkedBy: 'Biome',
+    advice:
+      'Check cascade layers and specificity first. Keep necessary reduced-motion or generated-theme overrides; document a narrow policy exception and test rendered behavior before removing !important.'
+  },
   'prettier:parse': {
     summary: 'Prettier cannot parse the file, so it cannot tell whether the file is formatted.',
     checkedBy: 'Prettier',

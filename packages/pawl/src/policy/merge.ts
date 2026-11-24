@@ -1,5 +1,6 @@
 import { getGuard } from '../catalog/guards.ts'
 import { canonicalName, defaultLevel, getRule, scopedRule } from '../catalog/rules.ts'
+import { TEST_RUNNERS } from '../catalog/test-runners.ts'
 import { expandBraces, literalBrackets } from '../project/ignores.ts'
 import { type Language } from '../project/languages.ts'
 import { findOwnRule } from '../scans/registry.ts'
@@ -10,10 +11,12 @@ import {
   type Policy,
   type PolicyInput,
   type SetupIssue,
-  type StyleOptions
+  type StyleOptions,
+  type TestRunner
 } from '../types.ts'
 import { isRecord } from '../utils/json.ts'
 import { toList } from '../utils/list.ts'
+import { testRunnerFiles } from './test-runners.ts'
 
 export const DEFAULT_STYLE: StyleOptions = {
   indent: 2,
@@ -44,6 +47,7 @@ const emptyPolicy = (): Policy => ({
   options: {},
   biomeOptions: {},
   overrides: [],
+  testRunners: {},
   locked: [],
   ignore: [],
   gitignore: true,
@@ -114,6 +118,7 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
     if (input.runtime !== undefined) policy.runtime = [...new Set(toList(input.runtime))]
 
     mergeLanguages(policy, input.languages)
+    mergeTestRunners(policy, input.testRunners, source)
 
     if (input.detect === false || input.detect === true) policy.detect = { ...policy.detect, enabled: input.detect }
     else if (input.detect) {
@@ -124,9 +129,42 @@ export const mergeLayers = (layers: readonly Layer[]): Policy => {
     }
   }
 
+  for (const name of policy.locked) {
+    if (testRunnerFiles(policy, name, true) && policy.rules[name] !== 'off')
+      throw new Error(
+        `testRunners cannot narrow locked rule "${name}". Keep its existing scope or revise the owning policy explicitly.`
+      )
+  }
+
   requireLevels(policy)
 
   return policy
+}
+
+/** Explicit scopes replace that runner's previous declaration, never another runner's. */
+const mergeTestRunners = (policy: Policy, input: PolicyInput['testRunners'], source: string): void => {
+  if (input === undefined) return
+
+  if (!isRecord(input) || Object.keys(input).length === 0)
+    throw new Error(`${source}: testRunners must name at least one runner and its files.`)
+
+  for (const [runner, patterns] of Object.entries(input)) {
+    if (!TEST_RUNNERS.includes(runner as TestRunner)) throw new Error(`${source}: unknown test runner "${runner}".`)
+
+    if (
+      !Array.isArray(patterns) ||
+      patterns.length === 0 ||
+      patterns.some(
+        pattern =>
+          typeof pattern !== 'string' || pattern.trim() !== pattern || pattern === '' || pattern.startsWith('!')
+      )
+    )
+      throw new Error(
+        `${source}: testRunners.${runner} needs nonempty positive file globs; exclusions are not supported.`
+      )
+
+    policy.testRunners[runner as TestRunner] = [...new Set(patterns.flatMap(expandBraces).map(literalBrackets))]
+  }
 }
 
 const BOTH_TOOLS: LanguageTools = { lint: true, format: true }

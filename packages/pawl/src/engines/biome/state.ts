@@ -14,6 +14,7 @@ import { isRecord, type Json, type JsonObject, type JsonRecord, readJsonc, sameJ
 import { toList } from '../../utils/list.ts'
 import { PACKAGE_NAME } from '../../version.ts'
 import { BIOME_PRESET, type BiomeContext, biomeProjectConfig, isRuleValue } from './config.ts'
+import { ownsBiomeOverrides } from './ownership.ts'
 
 /** Biome reads the .gitignore when the policy wants it and there is a .gitignore or a git repo to read. */
 export const biomeVcs = (root: string, policy: Pick<Policy, 'gitignore'>): boolean =>
@@ -185,7 +186,9 @@ export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeCon
   }
 
   const { extends: expectedExtends, ...expected } = biomeProjectConfig(policy, context, preset)
-  if (inlineOverridesConflict(value, expected)) {
+  const ownedOverrides = ownsBiomeOverrides(root, file, value)
+
+  if (inlineOverridesConflict(value, expected) && !ownedOverrides) {
     return {
       status: 'stale',
       file,
@@ -202,7 +205,9 @@ export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeCon
   const extendsOk = (expectedExtends as Json[]).every(entry => present.includes(entry))
   const globalsOk = sameJson(ownedGlobals(value), ownedGlobals(expected))
 
-  if (!extendsOk || !globalsOk || !contains(withoutGlobals(value), withoutGlobals(expected))) {
+  const overridesOk = !ownedOverrides || sameJson(value.overrides ?? [], expected.overrides ?? [])
+
+  if (!extendsOk || !globalsOk || !overridesOk || !contains(withoutGlobals(value), withoutGlobals(expected))) {
     return {
       status: 'stale',
       file,

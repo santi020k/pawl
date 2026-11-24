@@ -19,16 +19,17 @@ head: [{ tag: title, content: "CLI reference: every pawl command and option | pa
 
 ## Options for check and fix
 
-| Option               | Meaning                                                                 |
-| -------------------- | ----------------------------------------------------------------------- |
-| `--changed`          | Only files changed against HEAD, plus untracked ones                    |
-| `--since <ref>`      | Only files changed since the branch left `<ref>`, such as `origin/main` |
-| `--format <kind>`    | `pretty` (default), `agent` or `json`                                   |
-| `--ci`               | Also fail when the setup has drifted from the policy                    |
-| `--max-warnings <n>` | Fail when there are more than `n` new warnings                          |
-| `--verbose`          | Show the engine commands that ran                                       |
+| Option               | Meaning                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `--changed`          | Only files changed against HEAD, plus untracked ones                                 |
+| `--since <ref>`      | Only files changed since the branch left `<ref>`, such as `origin/main`              |
+| `--format <kind>`    | `pretty` (default), `agent` or `json`                                                |
+| `--ci`               | Also fail when the setup has drifted from the policy                                 |
+| `--max-warnings <n>` | Fail when there are more than `n` new warnings                                       |
+| `--eslint-cache`     | Opt into the [deterministic ESLint cache](/guide/eslint-cache/); disabled by default |
+| `--verbose`          | Show the engine commands that ran                                                    |
 
-`[files]` are files and folders, each relative to the folder pawl runs in or absolute, as lint-staged passes them; a folder stands for every file in it, and a path outside the project is left out. Outside a git repository nothing can say what changed, so `--changed` checks every file. `--since` takes the place of `--changed` and of a list of files; see [Only what a pull request changed](/guide/ci/#only-what-a-pull-request-changed). `--ci` is on automatically when the `CI` environment variable is set, as CI services set it; an empty value, `0` and `false` mean it is not. `--max-warnings` counts only warnings the baseline does not allow, and fails with exit code 1; when the policy sets [`maxWarnings`](/reference/config/#maxwarnings), the lower limit wins. `--format agent` prints one JSON line per finding, errors first, with a `fix` where pawl has one; see [Coding agents](/guide/agents/). `--format json` prints the whole result as one document.
+`[files]` are files and folders, each relative to the folder pawl runs in or absolute, as lint-staged passes them; a folder stands for every file in it, and a path outside the project is left out. Outside a git repository nothing can say what changed, so `--changed` checks every file. `--since` takes the place of `--changed` and of a list of files; see [Only what a pull request changed](/guide/ci/#only-what-a-pull-request-changed). `--ci` is on automatically when the `CI` environment variable is set, as CI services set it; an empty value, `0` and `false` mean it is not. `--max-warnings` counts only warnings the baseline does not allow, and fails with exit code 1; when the policy sets [`maxWarnings`](/reference/config/#maxwarnings), the lower limit wins. `--format agent` prints one JSON line per finding, errors first, with a `fix` where pawl has one; see [Coding agents](/guide/agents/). `--format json` prints the versioned [check report](/guide/report-contract/) as one document.
 
 ## Options for init
 
@@ -43,6 +44,7 @@ head: [{ tag: title, content: "CLI reference: every pawl command and option | pa
 | `--workflow`         | Add a GitHub Actions workflow that also keeps the doctor report       |
 | `--agents`           | Add hooks for Claude Code and Cursor, and instructions in `AGENTS.md` |
 | `--hooks`            | Add a pre-commit hook that checks changed files                       |
+| `--no-baseline`      | Do not create or update a baseline; existing baselines still apply    |
 | `--no-editor`        | Skip editor settings                                                  |
 | `--no-install`       | Do not run the package manager                                        |
 
@@ -62,7 +64,7 @@ head: [{ tag: title, content: "CLI reference: every pawl command and option | pa
 | `-h`, `--help`    | Show the help       |
 | `-v`, `--version` | Show the version    |
 
-`--dry-run` also works with `add` and `migrate`, `--yes` with `migrate`, and `--no-install` with `add`.
+`--dry-run` also works with `add`, `migrate` and `sync`, `--yes` with `migrate`, and `--no-install` with `add`.
 
 ## Options for migrate
 

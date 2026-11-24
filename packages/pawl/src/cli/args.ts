@@ -26,6 +26,7 @@ Options for check and fix
   --ci                  Also fail when the setup has drifted from the policy
   --max-warnings <n>    Fail when there are more than n new warnings
   --verbose             Show the engine commands that ran
+  --eslint-cache        Opt in to .pawl/eslint-cache.json (checks only; fixes remain uncached)
 
 Options for doctor
   --format <kind>       pretty (default) or json
@@ -36,10 +37,11 @@ Options for init
   --formatter <name>    The formatter: biome or prettier
   --packs <a,b>         Optional packs to switch on
   --yes                 Accept the plan without asking (also for migrate)
-  --dry-run             Show the plan and change nothing (also for add and migrate)
+  --dry-run             Show the plan and change nothing (also for add, migrate and sync)
   --workflow            Add a GitHub Actions workflow
   --agents              Add hooks for Claude Code and Cursor, and instructions in AGENTS.md
   --hooks               Add a pre-commit hook that checks changed files
+  --no-baseline         Do not record existing findings; check keeps reporting them
   --no-editor           Skip editor settings
   --no-install          Do not run the package manager (also for add)
 
@@ -58,6 +60,7 @@ export const OPTIONS = {
   ci: { type: 'boolean' },
   'max-warnings': { type: 'string' },
   verbose: { type: 'boolean' },
+  'eslint-cache': { type: 'boolean' },
   mode: { type: 'string' },
   yes: { type: 'boolean', short: 'y' },
   'dry-run': { type: 'boolean' },
@@ -67,6 +70,7 @@ export const OPTIONS = {
   engine: { type: 'string' },
   formatter: { type: 'string' },
   packs: { type: 'string' },
+  'no-baseline': { type: 'boolean' },
   'no-editor': { type: 'boolean' },
   'no-install': { type: 'boolean' },
   'keep-config': { type: 'boolean' },

@@ -1,7 +1,10 @@
 /** Bringing each engine's config file in line with the policy, for `init` and `sync`. */
 
+import { createHash } from 'node:crypto'
+import { existsSync, lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { BIOME_PRESET, type BiomeContext, biomeProjectConfig } from '../engines/biome/config.ts'
+import { BIOME_OWNERSHIP_FILE, biomeOwnership, ownsBiomeOverrides } from '../engines/biome/ownership.ts'
 import {
   biomeContextFor,
   checkBiomeConfig,
@@ -17,35 +20,135 @@ import { type Detection } from '../project/detect.ts'
 import { type Toolset } from '../project/toolset.ts'
 import { type Policy } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
-import { type JsonRecord, mergeDeep, readJsonc, writeJson } from '../utils/json.ts'
+import { type JsonRecord, mergeDeep, readJsonc, sameJson, writeJson } from '../utils/json.ts'
 import { toList } from '../utils/list.ts'
 import { type SetupAction } from './plan.ts'
 
 /** Join two `extends` lists, keeping the order and dropping repeats. */
 const mergeExtends = (first: unknown, second: unknown): unknown[] => [...new Set([...toList(first), ...toList(second)])]
 
-/** Bring biome.json in line with the policy. Used by both `init` and `sync`. */
+/** Plan one config write, with an exact backup and ownership recorded only after the write succeeds. */
+const biomeWrite = (
+  root: string,
+  file: string,
+  value: JsonRecord,
+  previous: string | undefined,
+  own: boolean,
+  summary: string
+): SetupAction[] => {
+  const path = join(root, file)
+  const backup =
+    previous !== undefined && own
+      ? `.pawl/backups/biome-${createHash('sha256').update(previous).digest('hex')}.json`
+      : undefined
+  const metadataPath = join(root, BIOME_OWNERSHIP_FILE)
+  const plainPath = (relative: string, directory = false): void => {
+    const stat = lstatSync(join(root, relative), { throwIfNoEntry: false })
+
+    if (stat && (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile() || stat.nlink !== 1)))
+      throw new Error(`${relative} is not a plain ${directory ? 'directory' : 'file'}. Pawl left it unchanged.`)
+  }
+  const paths = (): void => {
+    plainPath(file)
+    if (!own) return
+
+    plainPath('.pawl', true)
+    plainPath(BIOME_OWNERSHIP_FILE)
+    if (backup) {
+      plainPath('.pawl/backups', true)
+      plainPath(backup)
+      if (existsSync(join(root, backup)) && readFileSync(join(root, backup), 'utf8') !== previous)
+        throw new Error(`${backup} differs from the expected backup.`)
+    }
+  }
+
+  // Validate every destination before returning any action, including the metadata written last.
+  paths()
+  const metadata = own && existsSync(metadataPath) ? readFileSync(metadataPath, 'utf8') : undefined
+  if (metadata !== undefined) {
+    const oldConfig = previous === undefined ? undefined : readJsonc<JsonRecord>(path).value
+
+    if (!oldConfig || !ownsBiomeOverrides(root, file, oldConfig))
+      throw new Error(`${BIOME_OWNERSHIP_FILE} is not verified ownership metadata. Pawl left it unchanged.`)
+  }
+
+  const preflight = (): void => {
+    paths()
+    if (own && (existsSync(metadataPath) ? readFileSync(metadataPath, 'utf8') : undefined) !== metadata)
+      throw new Error(`${BIOME_OWNERSHIP_FILE} changed after planning. Run pawl sync again.`)
+  }
+  const unchanged = (): void => {
+    preflight()
+    const current = existsSync(path) ? readFileSync(path, 'utf8') : undefined
+
+    if (current !== previous) throw new Error(`${file} changed after planning. Run pawl sync again.`)
+  }
+  const actions: SetupAction[] = []
+
+  if (previous !== undefined && backup) {
+    const backupPath = join(root, backup)
+
+    actions.push({
+      path: backup,
+      kind: 'create',
+      summary: `recoverable copy of ${file} before updating generated scopes`,
+      apply: () => {
+        unchanged()
+        if (existsSync(backupPath)) {
+          if (readFileSync(backupPath, 'utf8') !== previous)
+            throw new Error(`${backup} differs from the expected backup.`)
+        } else writeText(backupPath, previous)
+      }
+    })
+  }
+
+  actions.push({
+    path: file,
+    kind: previous === undefined ? 'create' : 'update',
+    summary,
+    apply: () => {
+      unchanged()
+      writeJson(path, value)
+    }
+  })
+
+  if (own) {
+    actions.push({
+      path: BIOME_OWNERSHIP_FILE,
+      kind: existsSync(join(root, BIOME_OWNERSHIP_FILE)) ? 'update' : 'create',
+      summary: 'record the exact generated Biome override array',
+      apply: () => {
+        preflight()
+        const current = readJsonc<JsonRecord>(path).value
+
+        if (!current || !sameJson(current.overrides ?? [], value.overrides ?? []))
+          throw new Error(`${file} changed before ownership could be recorded. Run pawl sync again.`)
+
+        writeJson(join(root, BIOME_OWNERSHIP_FILE), biomeOwnership(file, value))
+      }
+    })
+  }
+
+  return actions
+}
+
+/** Bring biome.json in line with the policy. Used by both init and sync. */
 export const planBiomeConfig = (
   root: string,
   policy: Policy,
   context: BiomeContext,
   notes: string[]
-): SetupAction | undefined => {
+): SetupAction[] => {
   const state = checkBiomeConfig(root, policy, context)
   const file = state.file ?? 'biome.json'
   const path = join(root, file)
 
-  if (state.status === 'ok') return undefined
+  if (state.status === 'ok') return []
 
-  if (state.status === 'missing') {
-    return {
-      path: file,
-      kind: 'create',
-      summary: 'the pawl standard for Biome',
-      apply: () => writeJson(path, biomeProjectConfig(policy, context))
-    }
-  }
+  if (state.status === 'missing')
+    return biomeWrite(root, file, biomeProjectConfig(policy, context), undefined, true, 'the pawl standard for Biome')
 
+  const previous = readFileSync(path, 'utf8')
   const { value, hasComments } = readJsonc<JsonRecord>(path)
 
   if (!value || hasComments) {
@@ -53,46 +156,50 @@ export const planBiomeConfig = (
       `${file} has comments or could not be read, so pawl left it alone. Add "${BIOME_PRESET}" to its "extends" by hand.`
     )
 
-    return undefined
+    return []
   }
 
   const expected = biomeProjectConfig(policy, context, state.preset ?? BIOME_PRESET)
+  const owned = ownsBiomeOverrides(root, file, value)
 
   if (state.status === 'stale') {
-    // Inline override arrays have no ownership marker; replacing or reordering them can lose custom behavior.
-    if (inlineOverridesConflict(value, expected)) {
+    if (inlineOverridesConflict(value, expected) && !owned) {
       notes.push(
         `${file} has inline overrides whose ownership cannot be established. Preserve a backup and reconcile them with the root policy before syncing; pawl left the file unchanged.`
       )
 
-      return undefined
+      return []
     }
 
-    return {
-      path: file,
-      kind: 'update',
-      summary: 'bring it in line with the policy',
-      apply: () =>
-        writeJson(
-          path,
-          syncBiomeGlobals(
-            { ...mergeDeep(value, expected), extends: mergeExtends(expected.extends, value.extends) },
-            expected
-          )
-        )
-    }
+    const merged = syncBiomeGlobals(
+      { ...mergeDeep(value, expected), extends: mergeExtends(expected.extends, value.extends) },
+      expected
+    )
+
+    if (owned && expected.overrides === undefined) delete merged.overrides
+
+    return biomeWrite(
+      root,
+      file,
+      merged,
+      previous,
+      owned || !Array.isArray(value.overrides) || value.overrides.length === 0,
+      'bring it in line with the policy'
+    )
   }
 
   notes.push(
     `Your existing ${file} settings still override the standard. Remove the ones you no longer need to adopt it fully.`
   )
 
-  return {
-    path: file,
-    kind: 'update',
-    summary: 'extend the pawl standard, keeping your settings on top',
-    apply: () => writeJson(path, { ...value, extends: mergeExtends(expected.extends, value.extends) })
-  }
+  return biomeWrite(
+    root,
+    file,
+    { ...value, extends: mergeExtends(expected.extends, value.extends) },
+    previous,
+    false,
+    'extend the pawl standard, keeping your settings on top'
+  )
 }
 
 /** Write the files of pawl's own Biome rules that are missing or out of date. */
@@ -214,7 +321,7 @@ export const planEngineConfigs = (
     const context = biomeContextFor(root, policy, detection, tools)
     const config = planBiomeConfig(root, policy, context, notes)
 
-    if (config) actions.push(config)
+    actions.push(...config)
 
     actions.push(
       ...planBiomePackages(root, notes, policy.gitignore && policy.defaultIgnores && detection.git),

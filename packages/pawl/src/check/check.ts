@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { type Engine, EngineError, type RunOptions } from '../engines/engine.ts'
+import { formatterOwnership } from '../engines/eslint/format-ownership.ts'
 import { checkLanguages } from '../engines/languages/check.ts'
 import { activeEngines } from '../engines/registry.ts'
 import { lockIssues } from '../policy/merge.ts'
@@ -23,6 +24,8 @@ import { type CheckResult, isBlocked } from './result.ts'
 
 export interface CheckOptions {
   root: string
+  /** Opt in to the declared deterministic ESLint cache. Fix runs are always uncached. */
+  eslintCache?: boolean
   /** Only look at files changed against HEAD, plus untracked ones. Outside a git repository, every file. */
   changed?: boolean
   /** Only look at files changed since the branch left this git ref, such as `origin/main`. */
@@ -138,16 +141,25 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const empty = scoped !== undefined && scoped.targets.length === 0
   // Without its baseline a check would report every old finding as new, so it does not run at all.
   const unreadable = options.updateBaseline === true ? undefined : unreadableBaseline(root)
-  const idle = empty || unreadable !== undefined
+  let idle = empty || unreadable !== undefined
 
   if (unreadable) setup.push(unreadable)
 
   setup.push(...lockIssues(policy))
+  if (!idle) {
+    const ownership = await formatterOwnership(
+      project,
+      (scoped?.files ?? listFiles(root)).filter(file => !ignored(file))
+    )
+    setup.push(...ownership)
+    if (ownership.length > 0) idle = true
+  }
 
   const findings: Finding[] = []
   const own = scoped ? { files: scoped.files } : {}
   const run: RunOptions = {
     root,
+    eslintCache: options.eslintCache === true,
     ...(scoped ? { files: scoped.targets } : {}),
     write: options.fix === true,
     // For Prettier, which has no config file of pawl's to read them from.

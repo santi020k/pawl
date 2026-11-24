@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
 import { BASELINE_FILE } from '../src/check/baseline.ts'
@@ -57,6 +57,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(plan.engines).toEqual(['biome'])
     expect(plan.actions.map(action => action.path)).toEqual([
       'biome.json',
+      '.pawl/biome-overrides.json',
       'package.json',
       '.vscode/settings.json',
       '.vscode/extensions.json'
@@ -156,7 +157,11 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
 
     const plan = await planInit({ root, install: false, editor: false })
 
-    expect(plan.actions.map(action => `${action.kind} ${action.path}`)).toEqual(['update biome.json'])
+    expect(plan.actions.map(action => `${action.kind} ${action.path}`)).toEqual([
+      expect.stringMatching(/^create \.pawl\/backups\/biome-[a-f0-9]{64}\.json$/),
+      'update biome.json',
+      'update .pawl/biome-overrides.json'
+    ])
     applyPlan(plan)
     await formatWritten(root, ['biome.json'])
     expect(json(root, 'biome.json')).toEqual({
@@ -196,7 +201,12 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(plan.engines).toEqual(['eslint'])
     expect(plan.formatter).toBe('biome')
     expect(plan.policy.engine).toBe('eslint')
-    expect(plan.actions.map(action => action.path)).toEqual(['pawl.config.ts', 'biome.json', 'package.json'])
+    expect(plan.actions.map(action => action.path)).toEqual([
+      'pawl.config.ts',
+      'biome.json',
+      '.pawl/biome-overrides.json',
+      'package.json'
+    ])
     applyPlan(plan)
     expect(readFileSync(join(root, 'pawl.config.ts'), 'utf8')).toContain("engine: 'eslint'")
     // ESLint lints, so Biome is only there to format.
@@ -220,7 +230,11 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
 
     // ESLint reads flat config only, so with an .eslintrc alone Biome is the one linter.
     expect(plan.engines).toEqual(['biome'])
-    expect(plan.actions.map(action => action.path)).toEqual(['biome.json', 'package.json'])
+    expect(plan.actions.map(action => action.path)).toEqual([
+      'biome.json',
+      '.pawl/biome-overrides.json',
+      'package.json'
+    ])
     expect(plan.notes).toContain(
       '.eslintrc.json is a legacy ESLint config, which pawl does not run. Run "pawl migrate" in place of "pawl init" to carry its rules into the policy, or remove ESLint and the file when you are ready.'
     )
@@ -251,6 +265,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       expect(plan.actions.map(action => action.path)).toEqual([
         'pawl.config.ts',
         'biome.json',
+        '.pawl/biome-overrides.json',
         'eslint.config.js',
         'package.json'
       ])
@@ -285,6 +300,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(plan.install).toBe('pnpm add -D -w @santi020k/pawl @biomejs/biome@2.6.8 eslint')
     expect(plan.actions.map(action => action.path)).toEqual([
       'biome.json',
+      '.pawl/biome-overrides.json',
       'eslint.config.js',
       'package.json',
       '.vscode/settings.json',
@@ -639,7 +655,11 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
 
     const { plan } = await init(root, { editor: false })
 
-    expect(plan.actions.map(action => action.path)).toEqual(['biome.json', 'package.json'])
+    expect(plan.actions.map(action => action.path)).toEqual([
+      'biome.json',
+      '.pawl/biome-overrides.json',
+      'package.json'
+    ])
     expect(json(root, 'biome.json')).toMatchObject({
       extends: [BIOME_PRESET],
       overrides: [{ includes: ['apps/web/**'], linter: { domains: { react: 'recommended' } } }]
@@ -650,7 +670,8 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
     })
     expect(json(root, BASELINE_FILE)).not.toHaveProperty(['findings', 'packages/api/src/a.js'])
 
-    // Existing inline arrays need explicit reconciliation when package scopes change.
+    // Legacy inline arrays without ownership evidence need explicit reconciliation when scopes change.
+    rmSync(join(root, '.pawl/biome-overrides.json'))
     write(root, { 'packages/api/package.json': { name: 'api', private: true, dependencies: { next: '^16.0.0' } } })
 
     const before = readFileSync(join(root, 'biome.json'), 'utf8')
@@ -728,7 +749,11 @@ describe('hooks and agent instructions', () => {
     const root = project({ 'package.json': { name: 'fixture' }, 'lefthook.yml': 'pre-commit:\n' })
     const plan = await planInit({ root, install: false, editor: false, hooks: true })
 
-    expect(plan.actions.map(action => action.path)).toEqual(['biome.json', 'package.json'])
+    expect(plan.actions.map(action => action.path)).toEqual([
+      'biome.json',
+      '.pawl/biome-overrides.json',
+      'package.json'
+    ])
     expect(plan.notes.join(' ')).toContain('Add "npx pawl check --changed" to the pre-commit commands in lefthook.yml')
   })
 
@@ -851,6 +876,7 @@ describe("the tools are the project's choice", { timeout: 60_000 }, () => {
     expect(plan.actions.map(action => action.path)).toEqual([
       'pawl.config.ts',
       'biome.json',
+      '.pawl/biome-overrides.json',
       '.prettierrc.json',
       'package.json'
     ])

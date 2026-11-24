@@ -91,7 +91,7 @@ describe('eslintPlan', () => {
     expect(block(plan.config, 'pawl/typescript')).toMatchObject({ rules: {}, languageOptions: { parserOptions: {} } })
     expect(plan.coveredByBiome).toContain('no-debugger')
     expect(plan.coveredByBiome).toContain('react-hooks/rules-of-hooks')
-    expect(plan.notEnforced).toEqual([{ rule: 'vue/no-v-html', needs: 'eslint-plugin-vue' }])
+    expect(plan.notEnforced).toEqual([{ rule: 'vue/no-v-html', needs: 'eslint-plugin-vue', required: true }])
   })
 
   it('next to Biome, asks for no plugin for a rule Biome lacks unless the policy names it', async () => {
@@ -112,7 +112,9 @@ describe('eslintPlan', () => {
       typescript: false
     })
 
-    expect(named.notEnforced).toEqual([{ rule: 'unicorn/prefer-spread', needs: 'eslint-plugin-unicorn' }])
+    expect(named.notEnforced).toEqual([
+      { rule: 'unicorn/prefer-spread', needs: 'eslint-plugin-unicorn', required: true }
+    ])
   })
 
   it('leaves to Oxlint the rules Oxlint enforces and Biome does not', async () => {
@@ -226,7 +228,7 @@ describe('eslintPlan', () => {
       const policy = mergeLayers([{ source: 'repo', input: { packs: ['unicorn'] } }])
       const plan = await eslintPlan({ ...options, root: project({ 'package.json': { name: 'fixture' } }), policy })
 
-      expect(plan.notEnforced).toEqual([{ rule: 'The Unicorn pack', needs: 'eslint-plugin-unicorn' }])
+      expect(plan.notEnforced).toEqual([{ rule: 'The Unicorn pack', needs: 'eslint-plugin-unicorn', required: true }])
     })
 
     it('takes the jsx-a11y catalog rules only with their pack when ESLint lints alone', async () => {
@@ -241,14 +243,14 @@ describe('eslintPlan', () => {
       const loud = await eslintPlan({ ...eslintOnly, policy: named })
 
       expect(loud.notEnforced.filter(item => item.rule.startsWith('jsx-a11y/'))).toEqual([
-        { rule: 'jsx-a11y/alt-text', needs: 'eslint-plugin-jsx-a11y' }
+        { rule: 'jsx-a11y/alt-text', needs: 'eslint-plugin-jsx-a11y', required: true }
       ])
     })
 
     it('gives the active jsx-a11y pack the catalog levels and options of its rules', async () => {
       const a11y = plugin(
         'eslint-plugin-jsx-a11y',
-        "{ rules: { 'alt-text': {}, 'no-static-element-interactions': {}, 'anchor-ambiguous-text': {} }, flatConfigs: { recommended: { rules: { 'jsx-a11y/alt-text': 'warn', 'jsx-a11y/anchor-ambiguous-text': 'warn' } } } }"
+        "{ rules: { 'alt-text': { create() { return {} } }, 'no-static-element-interactions': { create() { return {} } }, 'anchor-ambiguous-text': { create() { return {} } } }, flatConfigs: { recommended: { rules: { 'jsx-a11y/alt-text': 'warn', 'jsx-a11y/anchor-ambiguous-text': 'warn' } } } }"
       )
       const policy = mergeLayers([{ source: 'repo', input: { packs: ['jsx-a11y'] } }])
       const plan = await eslintPlan({

@@ -15,6 +15,8 @@ export type { CheckOptions } from './check/check.ts'
 export { check } from './check/check.ts'
 export type { OutputFormat } from './check/output.ts'
 export { format, formatAgent, formatJson, formatPretty } from './check/output.ts'
+export type { CheckReport, CheckReportRead, ReadCheckReportOptions } from './check/report-contract.ts'
+export { CHECK_REPORT_VERSION, readCheckReport } from './check/report-contract.ts'
 export type { CheckResult } from './check/result.ts'
 export { EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode } from './check/result.ts'
 export type { BiomeContext } from './engines/biome/config.ts'
@@ -28,7 +30,14 @@ export {
   biomeTechPreset
 } from './engines/biome/config.ts'
 export { checkBiomeConfig } from './engines/biome/state.ts'
-export type { EslintOptions, EslintPlan, EslintPlanOptions, FlatConfig, PackageScope } from './engines/eslint/plan.ts'
+export type {
+  EslintIntegrationOptions,
+  EslintOptions,
+  EslintPlan,
+  EslintPlanOptions,
+  FlatConfig,
+  PackageScope
+} from './engines/eslint/plan.ts'
 export { eslint, eslintPlan, eslintPlanFor } from './engines/eslint/plan.ts'
 export type { LanguageCheckOptions, LanguageCheckResult } from './engines/languages/check.ts'
 export { checkLanguages } from './engines/languages/check.ts'
@@ -58,6 +67,16 @@ export {
 export { ALWAYS_IGNORED, DEFAULT_IGNORES } from './project/ignores.ts'
 export type { Language, LanguageInfo, LanguageProject } from './project/languages.ts'
 export { LANGUAGE_INFO, LANGUAGES } from './project/languages.ts'
+export type { LintOverlap, LintTool, LintTraversal, LintTraversalReport } from './project/lint-traversal.ts'
+export { analyzeLintTraversal } from './project/lint-traversal.ts'
+export type {
+  TaskCache,
+  TaskConsumer,
+  TaskFile,
+  TaskFileReachability,
+  TaskReachability
+} from './project/task-reachability.ts'
+export { analyzeTaskReachability } from './project/task-reachability.ts'
 export type { Toolset } from './project/toolset.ts'
 export { toolset } from './project/toolset.ts'
 export type { Compatibility, DoctorReport } from './report/doctor.ts'
@@ -93,7 +112,8 @@ export type {
   PolicyInput,
   Runtime,
   SetupIssue,
-  StyleOptions
+  StyleOptions,
+  TestRunner
 } from './types.ts'
 export { satisfies } from './utils/semver.ts'
 export { VERSION } from './version.ts'

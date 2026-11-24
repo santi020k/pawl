@@ -7,6 +7,9 @@ export type Level = 'off' | 'warn' | 'error'
  */
 export type Language = 'rust' | 'swift' | 'kotlin'
 
+/** Test APIs whose assertion conventions can be assigned explicit file scopes. */
+export type TestRunner = 'vitest' | 'jest' | 'playwright' | 'node'
+
 /** Engines pawl can compile a policy for. */
 export type EngineName = 'biome' | 'oxlint' | 'eslint'
 
@@ -118,6 +121,8 @@ export interface PolicyInput {
   biomeOptions?: Record<string, Record<string, unknown>>
   /** Rule levels and options for some files only, such as tests. Later entries win. */
   overrides?: readonly OverrideInput[]
+  /** Explicit positive file globs per test runner. Unnamed runners keep existing enforcement. */
+  testRunners?: Partial<Record<TestRunner, readonly string[]>>
   /** Rules that later layers may tighten but never loosen. */
   locked?: readonly string[]
   /** Extra glob patterns to skip. A pattern without a slash matches at any depth. */
@@ -172,6 +177,7 @@ export interface Policy {
   /** Options by rule, in Biome's shape. */
   biomeOptions: Record<string, Record<string, unknown>>
   overrides: Override[]
+  testRunners: Partial<Record<TestRunner, string[]>>
   locked: string[]
   /** The patterns, with each `[` and `]` escaped: in a policy they are the characters themselves. */
   ignore: string[]

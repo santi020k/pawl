@@ -21,10 +21,13 @@ import { describe, filePacks } from '../project/detect.ts'
 import { listFiles } from '../project/files.ts'
 import { makeIgnore } from '../project/ignores.ts'
 import { LANGUAGE_INFO, type Language } from '../project/languages.ts'
+import { analyzeLintTraversal, type LintTraversalReport } from '../project/lint-traversal.ts'
+import { analyzeTaskReachability, type TaskReachability } from '../project/task-reachability.ts'
 import { type EngineName, type FormatterName, type Policy, type Runtime, type SetupIssue } from '../types.ts'
 import { installedVersion, satisfies } from '../utils/semver.ts'
 import { plural } from '../utils/text.ts'
 import { NODE_RANGE, PACKAGE_NAME, PACKAGE_ROOT, PEER_RANGES, VERSION } from '../version.ts'
+import { frameworkLimitations } from './framework-coverage.ts'
 
 /** One tool's installed version against the versions pawl works with. */
 export interface Compatibility {
@@ -90,6 +93,12 @@ export interface DoctorReport {
   guardsImportsOnly: boolean
   baseline: { allowed: number } | { missing: 'none' | 'unreadable' }
   problems: string[]
+  /** Known coverage boundaries; advisory, because separate framework validators may already run. */
+  limitations: string[]
+  /** Advisory overlap between declared lint commands, not a trace of executed tasks. */
+  lintTraversal: LintTraversalReport
+  /** Static task evidence; unknown reachability never exempts a file from lint checks. */
+  taskReachability: TaskReachability
 }
 
 const LINTER_NAMES: Record<EngineName, string> = { biome: 'Biome', oxlint: 'Oxlint', eslint: 'ESLint' }
@@ -376,7 +385,13 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
     // Biome runs the code patterns as rules of pawl's own. ESLint runs them as selectors. Oxlint cannot.
     guardsImportsOnly: guards.some(guard => guard.syntax) && !tools.eslint && tools.linter !== 'biome',
     baseline: baseline ? { allowed } : { missing: unreadable ? 'unreadable' : 'none' },
-    problems
+    problems,
+    limitations: frameworkLimitations(project),
+    lintTraversal: analyzeLintTraversal(root, detection.workspace.packages),
+    taskReachability:
+      detection.workspace.tool === 'turbo'
+        ? analyzeTaskReachability(root, detection.workspace.packages)
+        : { complete: false, tasks: [], files: [], issues: [] }
   }
 }
 
@@ -456,6 +471,31 @@ export const formatDoctor = (report: DoctorReport): string => {
       `Guards:   ${report.guards.join(', ')}${report.guardsImportsOnly ? ' (imports only: with Oxlint as the linter, the code patterns need ESLint next to it)' : ''}`
     )
   }
+
+  for (const limitation of report.limitations) lines.push(`Coverage: ${limitation}`)
+
+  for (const overlap of report.lintTraversal.overlaps) {
+    const label = (entry: LintTraversalReport['commands'][number]): string =>
+      `${entry.manifest} script "${entry.script}" (${entry.tool})`
+
+    lines.push(
+      `Traversal: ${label(overlap.first)} and ${label(overlap.second)} may both visit ${overlap.directory || 'the repository'}. Verify task execution and engine ignores before removing duplicate work.`
+    )
+  }
+
+  for (const unknown of report.lintTraversal.unknown) lines.push(`Traversal: ${unknown}`)
+
+  if (report.taskReachability.tasks.length > 0) {
+    lines.push(
+      `Tasks:    ${report.taskReachability.tasks.length} declared scripts; reachability is static evidence, not a lint exemption.`
+    )
+
+    for (const file of report.taskReachability.files) {
+      lines.push(`          ${file.path}: ${file.reachability} (${file.consumers.join(', ')})`)
+    }
+  }
+
+  for (const issue of report.taskReachability.issues) lines.push(`Tasks:    ${issue}`)
 
   const { baseline } = report
 

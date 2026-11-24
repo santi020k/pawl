@@ -98,6 +98,7 @@ describe('Oxlint as the linter, with the real Oxlint', { timeout: 60_000 }, () =
     expect(plan.actions.map(action => action.path)).toEqual([
       'pawl.config.ts',
       'biome.json',
+      '.pawl/biome-overrides.json',
       '.oxlintrc.json',
       'package.json'
     ])
@@ -378,7 +379,10 @@ describe('the rules that need type information', { timeout: 120_000 }, () => {
 
   it('are left to Oxlint, not ESLint, only where tsgolint is installed', async () => {
     const options = {
-      root: project({ 'package.json': { name: 'fixture' } }),
+      root: project({
+        'package.json': { name: 'fixture' },
+        'node_modules/typescript-eslint/package.json': { name: 'typescript-eslint', exports: './unavailable.js' }
+      }),
       policy: defaultPolicy(),
       biomeActive: false,
       oxlintActive: true,
@@ -387,7 +391,8 @@ describe('the rules that need type information', { timeout: 120_000 }, () => {
     }
     const without = await eslintPlan(options)
     const covered = await eslintPlan({ ...options, oxlintTypeAware: true })
-    // The fixture has no typescript-eslint, so a rule ESLint would take shows up as one it cannot run.
+    // An unavailable public export isolates this fixture from optional plugins installed by the test runner.
+    // A rule ESLint would take shows up as one it cannot run.
     const wanted = (plan: typeof without): string[] => plan.notEnforced.map(item => item.rule)
 
     expect(wanted(without)).toContain('@typescript-eslint/prefer-optional-chain')

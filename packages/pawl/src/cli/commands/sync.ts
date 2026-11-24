@@ -2,11 +2,21 @@
 
 import { EXIT_OK } from '../../check/result.ts'
 import { formatWritten } from '../../setup/init.ts'
+import { describeActions } from '../../setup/plan.ts'
 import { planSync } from '../../setup/sync.ts'
-import { out } from '../io.ts'
+import { type Flags } from '../args.ts'
+import { endDryRun, out } from '../io.ts'
 
-export const runSync = async (root: string): Promise<number> => {
+export const runSync = async (root: string, flags: Pick<Flags, 'dry-run'> = {}): Promise<number> => {
   const { actions, notes, tools } = await planSync(root)
+
+  if (flags['dry-run']) {
+    for (const line of describeActions(actions)) out(line)
+
+    endDryRun(notes)
+
+    return EXIT_OK
+  }
 
   for (const action of actions) {
     action.apply()

@@ -1,3 +1,5 @@
+import { readdirSync, realpathSync, statSync } from 'node:fs'
+import { isAbsolute, join, relative as relativePath } from 'node:path'
 import { IMPORTS_RULE, importRestrictions, SYNTAX_RULE, syntaxRestrictions } from '../../catalog/guards.ts'
 import { PACKS, type Pack } from '../../catalog/packs.ts'
 import { getRule, isGated, notFor, scopedRule, type Technology } from '../../catalog/rules.ts'
@@ -5,8 +7,17 @@ import { extraGlobals, ownGlobals, RUNTIME_GLOBALS } from '../../catalog/runtime
 import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { findProjectRoot } from '../../policy/load.ts'
 import { loadProject } from '../../policy/project.ts'
+import { testRunnerFiles } from '../../policy/test-runners.ts'
 import { allTechnologies, packageTechnologies, technologies as repoTechnologies } from '../../project/detect.ts'
-import { ALWAYS_IGNORED, allIgnores, toEngineGlob, toEslintIgnores } from '../../project/ignores.ts'
+import {
+  ALWAYS_IGNORED,
+  allIgnores,
+  literalBrackets,
+  makeIgnore,
+  orderedEngineScopes,
+  toEngineGlob,
+  toEslintIgnores
+} from '../../project/ignores.ts'
 import { type Policy, type Runtime } from '../../types.ts'
 import { isRecord } from '../../utils/json.ts'
 import { toList } from '../../utils/list.ts'
@@ -55,14 +66,23 @@ export interface EslintPlan {
   /** Rules left to Biome because it enforces them faster. */
   coveredByBiome: string[]
   /** Rules and packs that are wanted but cannot run, and the plugin each one needs. */
-  notEnforced: Array<{ rule: string; needs: string }>
+  notEnforced: Array<{ rule: string; needs: string; required?: boolean }>
   /** Packs that are switched on. */
   activePacks: string[]
   /** Packs that fit what the project depends on, but whose plugin is not installed. */
   availablePacks: string[]
 }
 
-export interface EslintPlanOptions {
+export interface EslintIntegrationOptions {
+  /** Existing shared/framework configuration. Pawl replays locked rule floors after these blocks. */
+  baseConfig?: readonly unknown[]
+  /** Positive processor-output globs below a non-script host filename, such as `**\/*.vue/**`. */
+  untypedFiles?: readonly string[]
+  /** Explicit file ownership for optional packs, relative to root. */
+  packFiles?: Readonly<Record<string, readonly string[]>>
+}
+
+export interface EslintPlanOptions extends EslintIntegrationOptions {
   root: string
   policy: Policy
   /** Biome is the linter, so ESLint only takes what Biome has no equivalent for. */
@@ -83,6 +103,8 @@ export interface EslintPlanOptions {
    * shared configs the old setup got its plugins from, so the comparison sees the same plugins.
    */
   pluginRoots?: readonly string[]
+  /** Explicit plugin implementations, keyed by the ESLint namespace to register. */
+  plugins?: Readonly<Record<string, unknown>>
   /** Patterns to skip that detection found, such as the target folder of a Rust project. */
   ignores?: readonly string[]
   /**
@@ -109,13 +131,16 @@ export interface PackageScope {
 const within = (files: readonly unknown[], dir: string, dirs: readonly string[] = []): unknown[] =>
   files.flatMap((file): unknown[] => {
     // A list inside `files` means every pattern in it must match, so the folder joins it.
-    if (typeof file !== 'string') return [[`${dir}/**`, ...toList(file as string | readonly string[])]]
+    if (typeof file !== 'string') return [[`${literalBrackets(dir)}/**`, ...toList(file as string | readonly string[])]]
 
     const pattern = file.replace(/^\.?\//, '')
 
-    if (pattern.startsWith(`${dir}/`)) return [pattern]
+    if (pattern.startsWith(`${literalBrackets(dir)}/`)) return [pattern]
+    if (pattern.startsWith(`${dir}/`)) return [`${literalBrackets(dir)}/${pattern.slice(dir.length + 1)}`]
 
-    return dirs.some(other => pattern.startsWith(`${other}/`)) ? [] : [`${dir}/${pattern}`]
+    return dirs.some(other => pattern.startsWith(`${other}/`) || pattern.startsWith(`${literalBrackets(other)}/`))
+      ? []
+      : [`${literalBrackets(dir)}/${pattern}`]
   })
 
 /**
@@ -189,7 +214,10 @@ const scopeTechnologies = (config: FlatConfig[], options: EslintPlanOptions): Fl
       scoped.push({
         name: `${typeof name === 'string' ? name : 'pawl/block'}/${dir}`,
         files: scopedFiles,
-        ...(ignores ? { ignores } : {}),
+        ignores: [
+          ...(Array.isArray(ignores) ? ignores : []),
+          ...dirs.filter(child => child.startsWith(`${dir}/`)).map(child => `${literalBrackets(child)}/**`)
+        ],
         ...(plugins ? { plugins } : {}),
         ...(languageOptions ? { languageOptions } : {}),
         rules
@@ -265,11 +293,19 @@ const loadPacks = async (build: Build): Promise<void> => {
 
     if (!reason) continue
 
-    const loaded = pack.name === 'typescript' ? ts : await importVia(root, pluginRoots, pack.plugin)
+    const supplied = options.plugins?.[pack.prefix]
+    let loaded = ts
+    if (pack.name !== 'typescript')
+      loaded = supplied === undefined ? await importVia(root, pluginRoots, pack.plugin) : suppliedPlugin(supplied)
 
     if (!loaded.module) {
       if (reason === 'suggested' && !loaded.error) availablePacks.push(pack.name)
-      else notEnforced.push({ rule: `The ${pack.title} pack`, needs: needs(pack.plugin, loaded) })
+      else
+        notEnforced.push({
+          rule: `The ${pack.title} pack`,
+          needs: needs(pack.plugin, loaded),
+          ...(entryFor(policy.packs, pack) === undefined ? {} : { required: true })
+        })
 
       continue
     }
@@ -279,7 +315,11 @@ const loadPacks = async (build: Build): Promise<void> => {
     const own = chosen === undefined ? undefined : pluginPreset(loaded.module, chosen, pack.prefix)
 
     if (chosen !== undefined && !own) {
-      notEnforced.push({ rule: `The ${pack.title} pack`, needs: `a preset named "${chosen}" in ${pack.plugin}` })
+      notEnforced.push({
+        rule: `The ${pack.title} pack`,
+        needs: `a preset named "${chosen}" in ${pack.plugin}`,
+        required: true
+      })
 
       continue
     }
@@ -369,7 +409,13 @@ const placeRules = async (build: Build): Promise<void> => {
     if (policy.rules[name] === undefined && PACKS.some(pack => pack.prefix === prefix && pack.withPack === true))
       continue
 
-    if (!plugins.has(prefix)) plugins.set(prefix, await importVia(root, pluginRoots, pluginPackage(prefix)))
+    if (!plugins.has(prefix))
+      plugins.set(
+        prefix,
+        options.plugins?.[prefix] === undefined
+          ? await importVia(root, pluginRoots, pluginPackage(prefix))
+          : suppliedPlugin(options.plugins[prefix])
+      )
 
     const loaded = plugins.get(prefix) as Loaded
 
@@ -460,7 +506,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
       name: 'pawl/typescript',
       files: TS_FILES,
       languageOptions: {
-        parser: tseslint.parser,
+        ...(tseslint.parser ? { parser: tseslint.parser } : {}),
         parserOptions: build.needsTypes ? { projectService: true, tsconfigRootDir: root } : {}
       },
       plugins: { [TS_PREFIX]: tseslint.plugin },
@@ -474,7 +520,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
 }
 
 /** One block per active pack, with the rules the installed plugin has. */
-const packConfigs = ({ covered, packRules, packBlocks, notEnforced }: Build): FlatConfig[] => {
+const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: Build): FlatConfig[] => {
   const config: FlatConfig[] = []
 
   for (const { pack, plugin, fromPlugin, dirs } of packBlocks) {
@@ -494,35 +540,68 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced }: Build): Fl
         !(name.slice(pack.prefix.length + 1) in known)
 
       if (missing) {
-        if (rules[name] !== 'off') notEnforced.push({ rule: name, needs: `a version of ${pack.plugin} that has it` })
+        const value = rules[name]
+        const level: unknown = Array.isArray(value) ? value[0] : value
+
+        if (level !== 'off' && level !== 0)
+          notEnforced.push({
+            rule: name,
+            needs: `a version of ${pack.plugin} that has it`,
+            ...(entryFor(options.policy.packs, pack) !== undefined || options.plugins?.[pack.prefix] !== undefined
+              ? { required: true }
+              : {})
+          })
 
         delete rules[name]
       }
     }
 
+    const explicitFiles = options.packFiles?.[pack.name]?.map(toEngineGlob)
+    const files = explicitFiles ?? pack.files
     if (pack.spread) {
-      // The plugin's own flat config brings its parser and file patterns; pawl adds its levels after.
-      config.push(...(toList(presetOf(pack, plugin) as FlatConfig | readonly FlatConfig[] | undefined) as FlatConfig[]))
+      const preset = toList(presetOf(pack, plugin) as FlatConfig | readonly FlatConfig[] | undefined)
+      config.push(
+        ...preset.map(block => {
+          if (!explicitFiles || Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
+          const original = Array.isArray(block.files) ? block.files : ['**/*']
+          return {
+            ...block,
+            files: original.flatMap(file =>
+              explicitFiles.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])
+            )
+          }
+        })
+      )
       config.push({
         name: `pawl/pack/${pack.name}`,
-        ...(pack.files ? { files: pack.files } : {}),
+        ...(files ? { files } : {}),
         plugins: { [pack.prefix]: plugin },
         rules
       })
     } else {
       const parser = follow(plugin, pack.parser ?? [])
-
-      const files = pack.files ?? SCRIPT_FILES
-
-      config.push({
+      const block: FlatConfig = {
         name: `pawl/pack/${pack.name}`,
-        // A pack for what only some packages depend on runs in those packages.
-        files: dirs ? dirs.flatMap(dir => within(files, dir)) : files,
+        files: files ?? SCRIPT_FILES,
         ...(pack.ignores ? { ignores: pack.ignores } : {}),
         ...(pack.parser && parser ? { languageOptions: { parser } } : {}),
         plugins: { [pack.prefix]: plugin },
         rules
-      })
+      }
+      if (dirs) {
+        for (const dir of dirs)
+          config.push({
+            ...block,
+            name: dirs.length === 1 ? `pawl/pack/${pack.name}` : `pawl/pack/${pack.name}/${dir}`,
+            files: within(files ?? SCRIPT_FILES, dir),
+            ignores: [
+              ...(pack.ignores ?? []),
+              ...Object.keys(options.packages ?? {})
+                .filter(child => child.startsWith(`${dir}/`))
+                .map(child => `${literalBrackets(child)}/**`)
+            ]
+          })
+      } else config.push(block)
     }
   }
 
@@ -558,7 +637,10 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
 
       if (prefix) {
         if (!loadedPlugins.has(prefix)) {
-          const loaded = await importVia(root, pluginRoots, pluginPackage(prefix))
+          const loaded =
+            options.plugins?.[prefix] === undefined
+              ? await importVia(root, pluginRoots, pluginPackage(prefix))
+              : suppliedPlugin(options.plugins[prefix])
 
           if (!loaded.module) {
             notEnforced.push({ rule: name, needs: needs(pluginPackage(prefix), loaded) })
@@ -583,35 +665,315 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
       }
     }
 
-    const files = override.files.map(toEngineGlob)
-
-    if (Object.keys(rules).length > 0) {
-      config.push({
-        name: `pawl/override/${index}`,
-        files,
-        ...(Object.keys(used).length > 0 ? { plugins: used } : {}),
-        rules
-      })
-    }
-
-    if (tseslint && Object.keys(twins).length > 0) {
-      // A file must match both the override and the TypeScript patterns.
-      config.push({
-        name: `pawl/override/${index}/typescript`,
-        files: files.map(glob => [glob, ...TS_FILES]),
-        plugins: { [TS_PREFIX]: tseslint.plugin },
-        rules: twins
-      })
+    for (const [part, { files, excluded }] of orderedEngineScopes(override.files).entries()) {
+      const suffix = part === 0 ? '' : `/${part}`
+      const ignores = excluded.length > 0 ? { ignores: excluded } : {}
+      if (Object.keys(rules).length > 0) {
+        config.push({
+          name: `pawl/override/${index}${suffix}`,
+          files,
+          ...ignores,
+          ...(Object.keys(used).length > 0 ? { plugins: used } : {}),
+          rules
+        })
+      }
+      if (tseslint && Object.keys(twins).length > 0) {
+        config.push({
+          name: `pawl/override/${index}${suffix}/typescript`,
+          files: files.map(glob => [glob, ...TS_FILES]),
+          ...ignores,
+          plugins: { [TS_PREFIX]: tseslint.plugin },
+          rules: twins
+        })
+      }
     }
   }
 
   return config
 }
 
+/** Explicit aliases must provide real rule implementations, not just a matching namespace. */
+const suppliedPlugin = (value: unknown): Loaded =>
+  isRecord(value) ? { module: value } : { error: 'the supplied plugin must be an object' }
+
+const validateSuppliedRules = (config: FlatConfig[], options: EslintPlanOptions, plan: EslintPlan): void => {
+  const requestedPacks = new Set(
+    PACKS.filter(pack => entryFor(options.policy.packs, pack) !== undefined).map(pack => pack.prefix)
+  )
+  const requestedRules = new Set([
+    ...Object.keys(options.policy.rules),
+    ...options.policy.overrides.flatMap(override => Object.keys(override.rules))
+  ])
+  for (const block of config) {
+    if (!isRecord(block.rules)) continue
+
+    for (const [name, value] of Object.entries(block.rules)) {
+      const prefix = splitRule(name)
+      const supplied = prefix ? options.plugins?.[prefix] : undefined
+      const registered = prefix && isRecord(block.plugins) ? block.plugins[prefix] : undefined
+      const plugin = supplied ?? registered
+      const level: unknown = Array.isArray(value) ? value[0] : value
+
+      if (
+        !prefix ||
+        (supplied === undefined && !requestedPacks.has(prefix) && !requestedRules.has(name)) ||
+        level === 'off' ||
+        level === 0
+      )
+        continue
+
+      const rules = isRecord(plugin) && isRecord(plugin.rules) ? plugin.rules : {}
+      const rule = rules[name.slice(prefix.length + 1)]
+
+      if (isRecord(rule) && typeof rule.create === 'function') continue
+
+      plan.notEnforced.push({ rule: name, needs: `a ${prefix} plugin implementing ${name}`, required: true })
+      delete block.rules[name]
+    }
+  }
+
+  for (const missing of plan.notEnforced) {
+    if (requestedRules.has(missing.rule)) missing.required = true
+  }
+}
+
+const configBlocks = (values: readonly unknown[]): FlatConfig[] =>
+  values.map(value => {
+    if (!isRecord(value)) throw new Error('baseConfig must contain ESLint flat config objects.')
+    return value
+  })
+
+const PROCESSOR_FILES = ['**/?*.astro/**', '**/?*.md/**', '**/?*.mdx/**']
+
+/** Only a path below a non-script host filename may opt out of project-aware linting. */
+const processorPattern = (pattern: string): { files: string; host: string } => {
+  const parts = pattern.split('/')
+  const invalid = (): never => {
+    throw new Error(
+      `untypedFiles pattern "${pattern}" must descend below a non-script processor host filename (for example **/*.vue/**). Physical, negative, alternative and traversal patterns are not supported.`
+    )
+  }
+
+  if (!/^[\w.*?/-]+$/.test(pattern) || parts.some(part => part === '' || part === '.' || part === '..')) invalid()
+
+  const host = parts.findIndex((part, index) => index < parts.length - 1 && /^.+\.[a-z][a-z0-9-]*$/i.test(part))
+  if (host < 0) invalid()
+  const segment = parts[host] ?? ''
+  const extension = segment.slice(segment.lastIndexOf('.') + 1)
+  if (/^(?:[cm]?[jt]sx?)$/i.test(extension)) invalid()
+
+  // An extension alone is a directory such as .astro, not a processor host filename.
+  parts[host] = segment.replace(/^\*+\./, '?*.')
+  return { files: parts.join('/'), host: parts.slice(0, host + 1).join('/') }
+}
+
+/** Reject real host-shaped directories, including ignored or empty ones that could gain physical source later. */
+const processorFiles = (root: string, extra: readonly string[]): string[] => {
+  const patterns = [...PROCESSOR_FILES, ...extra].map(processorPattern)
+  const matchesHost = patterns.map(({ host }) => makeIgnore([host]))
+  const visited = new Set<string>()
+  let scanned = 0
+  const realRoot = realpathSync(root)
+  const walk = (dir: string, relative: string, depth = 0): void => {
+    if (depth > 64 || scanned++ >= 10_000)
+      throw new Error(
+        'Cannot verify processor output scopes within the directory scan limit. Narrow the project root before enabling this integration.'
+      )
+    const real = realpathSync(dir)
+    const inside = relativePath(realRoot, real)
+    if (inside === '..' || inside.startsWith('../') || inside.startsWith('..\\') || isAbsolute(inside))
+      throw new Error(
+        `Cannot verify processor output scopes through external directory link "${relative}". Keep the lint project inside its explicit root.`
+      )
+    if (visited.has(real))
+      throw new Error(`Cannot verify processor output scopes through directory cycle "${relative}".`)
+    visited.add(real)
+
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (ALWAYS_IGNORED.includes(entry.name)) continue
+      const path = join(dir, entry.name)
+      if (!entry.isDirectory() && !(entry.isSymbolicLink() && statSync(path).isDirectory())) continue
+      const child = relative === '' ? entry.name : `${relative}/${entry.name}`
+      if (matchesHost.some(matches => matches(child)))
+        throw new Error(
+          `Processor output scope collides with physical directory "${child}". Rename the directory or remove the ambiguous untypedFiles scope; physical source must retain type-aware rules.`
+        )
+      walk(path, child, depth + 1)
+    }
+    visited.delete(real)
+  }
+
+  walk(root, '')
+  return patterns.map(({ files }) => toEngineGlob(files))
+}
+
+const needsTypeInformation = (name: string, plugins: Readonly<Record<string, unknown>>): boolean => {
+  if (getRule(name)?.typeAware) return true
+
+  const prefix = splitRule(name)
+  const plugin = prefix ? plugins[prefix] : undefined
+  const rule =
+    prefix && isRecord(plugin) && isRecord(plugin.rules) ? plugin.rules[name.slice(prefix.length + 1)] : undefined
+  const meta = isRecord(rule) && isRecord(rule.meta) ? rule.meta : undefined
+
+  return isRecord(meta?.docs) && meta.docs.requiresTypeChecking === true
+}
+
+/** Keep the host parser, but never attach a TypeScript project to processor fragments. */
+const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan: EslintPlan): FlatConfig[] => {
+  const virtual = processorFiles(options.root, options.untypedFiles ?? [])
+  const all = [...config, ...configBlocks(options.baseConfig ?? [])]
+  const plugins: Record<string, unknown> = Object.assign(
+    {},
+    ...all.flatMap(block => (isRecord(block.plugins) ? [block.plugins] : [])),
+    options.plugins
+  )
+  const typeRules = Object.fromEntries(
+    all.flatMap(block =>
+      isRecord(block.rules)
+        ? Object.keys(block.rules)
+            .filter(name => needsTypeInformation(name, plugins))
+            .map(name => [name, 'off'])
+        : []
+    )
+  )
+  const result = all.flatMap((block): FlatConfig[] => {
+    const language = isRecord(block.languageOptions) ? block.languageOptions : undefined
+    const parser = isRecord(language?.parserOptions) ? language.parserOptions : undefined
+    const typed =
+      parser?.projectService ||
+      parser?.project ||
+      (isRecord(block.rules) && Object.keys(block.rules).some(name => needsTypeInformation(name, plugins)))
+    if (!typed) return [block]
+    const files = Array.isArray(block.files) ? block.files : ['**/*']
+    return [
+      { ...block, ignores: [...(Array.isArray(block.ignores) ? block.ignores : []), ...virtual] },
+      {
+        ...block,
+        name: `${typeof block.name === 'string' ? block.name : 'pawl/shared'}/untyped`,
+        files: files.flatMap(file => virtual.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])),
+        languageOptions: { ...language, parserOptions: { ...parser, project: null, projectService: false } },
+        rules: isRecord(block.rules)
+          ? Object.fromEntries(Object.entries(block.rules).filter(([name]) => !needsTypeInformation(name, plugins)))
+          : {}
+      }
+    ]
+  })
+
+  if (Object.keys(typeRules).length > 0)
+    result.push({
+      name: 'pawl/processor-fragments',
+      files: virtual,
+      languageOptions: { parserOptions: { project: null, projectService: false } },
+      rules: typeRules
+    })
+
+  // A local shared-config exception must not replay a locked key after the policy.
+  // Rule-only blocks preserve the host parser, processor, resolver and virtual-module settings.
+  const physical = options.technologies?.includes('astro') ? [...SCRIPT_FILES, '**/*.astro'] : SCRIPT_FILES
+  const rules: Rules = {}
+  const typedRules: Rules = {}
+  const levels = effectiveRules(options.policy, {
+    typescript: options.typescript,
+    technologies: options.technologies ?? []
+  })
+  for (const name of options.policy.locked) {
+    if (notFor(name, 'eslint')) continue
+    const level = levels.get(name)
+    if (!level || level === 'off') continue
+    // Without shared config, retain normal delegation for non-framework projects.
+    if (
+      !options.baseConfig &&
+      !options.technologies?.includes('astro') &&
+      !all.some(block => isRecord(block.rules) && name in block.rules)
+    )
+      continue
+    const eslintName = scopedRule(name, 'eslint') ?? name
+    const prefix = splitRule(eslintName)
+    const plugin = prefix ? plugins[prefix] : undefined
+    if (
+      prefix &&
+      (!isRecord(plugin) || !isRecord(plugin.rules) || !isRecord(plugin.rules[eslintName.slice(prefix.length + 1)]))
+    ) {
+      plan.notEnforced.push({ rule: name, needs: `a ${prefix} implementation for the locked rule`, required: true })
+      continue
+    }
+    const given = options.policy.options[name] ?? getRule(name)?.options?.eslint
+    const target = needsTypeInformation(eslintName, plugins) ? typedRules : rules
+    target[eslintName] = given ? [level, ...given] : level
+  }
+  const used = (values: Rules): Record<string, unknown> =>
+    Object.fromEntries(
+      Object.keys(values).flatMap(name => {
+        const prefix = splitRule(name)
+        return prefix && plugins[prefix] ? [[prefix, plugins[prefix]]] : []
+      })
+    )
+  if (Object.keys(rules).length > 0) result.push({ name: 'pawl/locked', files: physical, plugins: used(rules), rules })
+  if (Object.keys(typedRules).length > 0)
+    result.push({
+      name: 'pawl/locked/typescript',
+      files: TS_FILES,
+      ignores: virtual,
+      plugins: used(typedRules),
+      rules: typedRules
+    })
+  return result
+}
+
+const scopeRunnerRules = (config: FlatConfig[], policy: Policy): FlatConfig[] =>
+  config.flatMap(block => {
+    if (!isRecord(block.rules)) return [block]
+    const kept = { ...block.rules }
+    const scoped: FlatConfig[] = []
+    for (const [name, value] of Object.entries(block.rules)) {
+      const patterns = testRunnerFiles(policy, name)
+      if (!patterns) continue
+      delete kept[name]
+      const files = Array.isArray(block.files) ? block.files : SCRIPT_FILES
+      scoped.push({
+        ...block,
+        name: `${typeof block.name === 'string' ? block.name : 'pawl/shared'}/runner/${name}`,
+        files: files.flatMap(file =>
+          patterns.map(pattern => [...(Array.isArray(file) ? file : [file]), toEngineGlob(pattern)])
+        ),
+        rules: { [name]: value }
+      })
+    }
+    return [{ ...block, rules: kept }, ...scoped]
+  })
+
+const validatePackFiles = (options: EslintPlanOptions): void => {
+  for (const [name, files] of Object.entries(options.packFiles ?? {})) {
+    if (!PACKS.some(pack => pack.name === name)) throw new Error(`Unknown packFiles pack: ${name}.`)
+    if (files.length === 0 || files.some(file => typeof file !== 'string' || file.length === 0))
+      throw new Error(`packFiles.${name} must contain nonempty file patterns.`)
+  }
+}
+
 /** Work out the ESLint configuration for a policy, and what it cannot cover. */
-export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan> => {
+export const eslintPlan = async (given: EslintPlanOptions): Promise<EslintPlan> => {
+  const sharedPlugins: Record<string, unknown> = {}
+  for (const block of configBlocks(given.baseConfig ?? [])) {
+    if (!isRecord(block.plugins)) continue
+    for (const [prefix, plugin] of Object.entries(block.plugins)) {
+      if (sharedPlugins[prefix] !== undefined && sharedPlugins[prefix] !== plugin)
+        throw new Error(
+          `Shared ESLint config supplies multiple implementations for ${prefix}; choose one explicit integration.`
+        )
+      sharedPlugins[prefix] = plugin
+    }
+  }
+  const options: EslintPlanOptions = { ...given, plugins: { ...sharedPlugins, ...given.plugins } }
+  for (const [prefix, plugin] of Object.entries(options.plugins ?? {})) {
+    if (!isRecord(plugin)) throw new Error(`The supplied ${prefix} plugin must be an object.`)
+  }
+  validatePackFiles(options)
   const { root, biomeActive, typescript } = options
-  const ts: Loaded = typescript ? await importVia(root, options.pluginRoots ?? [], 'typescript-eslint') : {}
+  const loadedTs: Loaded = typescript ? await importVia(root, options.pluginRoots ?? [], 'typescript-eslint') : {}
+  const suppliedTs = options.plugins?.[TS_PREFIX]
+  const ts: Loaded =
+    typescript && suppliedTs !== undefined ? { module: { ...loadedTs.module, plugin: suppliedTs } } : loadedTs
   const build: Build = {
     options,
     covered: name =>
@@ -638,26 +1000,43 @@ export const eslintPlan = async (options: EslintPlanOptions): Promise<EslintPlan
 
   // The rules for a technology only some packages use move to those packages, before the overrides.
   const blocks = scopeTechnologies([...(await baseConfigs(build)), ...packConfigs(build)], options)
-  const config = [...blocks, ...(await overrideConfigs(build))]
+  const config = [...blocks, ...(await overrideConfigs(build))].map(block => ({
+    ...block,
+    ...(isRecord(block.rules) ? { rules: { ...block.rules } } : {})
+  }))
   const { coveredByBiome, notEnforced, activePacks, availablePacks } = build
 
-  return { config, coveredByBiome, notEnforced, activePacks, availablePacks }
+  const plan = { config, coveredByBiome, notEnforced, activePacks, availablePacks }
+
+  plan.config = scopeRunnerRules(integrateConfig(config, options, plan), options.policy)
+  validateSuppliedRules(plan.config, options, plan)
+
+  return plan
 }
 
-export interface EslintOptions {
+export interface EslintOptions extends EslintIntegrationOptions {
   /**
    * Project root. Pass `import.meta.dirname` from eslint.config.js, so the root does not depend on
    * where an editor starts ESLint. Without it, pawl looks up from the working directory for the
    * nearest pawl config, then the nearest ESLint config, then the nearest package.json.
    */
   root?: string
+  /** Additional shared-config folders from which public plugin exports can resolve. */
+  pluginRoots?: readonly string[]
+  /** Actual plugin objects registered under explicit ESLint namespaces. */
+  plugins?: Readonly<Record<string, unknown>>
 }
 
 /** The plan for a project as it stands on disk. */
-export const eslintPlanFor = async (root: string, policy?: Policy): Promise<EslintPlan> => {
+export const eslintPlanFor = async (
+  root: string,
+  policy?: Policy,
+  integration: Omit<EslintOptions, 'root'> = {}
+): Promise<EslintPlan> => {
   const { policy: resolved, detection, tools } = await loadProject(root, policy)
 
   return eslintPlan({
+    ...integration,
     root,
     policy: resolved,
     biomeActive: tools.linter === 'biome',
@@ -694,5 +1073,14 @@ export const eslintPlanFor = async (root: string, policy?: Policy): Promise<Esli
  * export default eslint({ root: import.meta.dirname })
  * ```
  */
-export const eslint = async ({ root }: EslintOptions = {}): Promise<FlatConfig[]> =>
-  (await eslintPlanFor(root ?? findProjectRoot(process.cwd()))).config
+export const eslint = async ({ root, ...integration }: EslintOptions = {}): Promise<FlatConfig[]> => {
+  const plan = await eslintPlanFor(root ?? findProjectRoot(process.cwd()), undefined, integration)
+  const required = plan.notEnforced.filter(item => item.required)
+
+  if (required.length > 0)
+    throw new Error(
+      `Pawl cannot enforce requested ESLint rules: ${required.map(item => `${item.rule} needs ${item.needs}`).join('; ')}.`
+    )
+
+  return plan.config
+}

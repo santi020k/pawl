@@ -380,3 +380,20 @@ export const makeIgnore = (patterns: readonly string[]): ((file: string) => bool
     return ignored
   }
 }
+
+/** Ordered policy scopes as positive engine blocks with later exclusions; later positives re-include. */
+export const orderedEngineScopes = (patterns: readonly string[]): Array<{ files: string[]; excluded: string[] }> => {
+  const groups = new Map<string, { files: string[]; excluded: string[] }>()
+  for (const [index, pattern] of patterns.entries()) {
+    if (pattern.startsWith('!')) continue
+    const excluded = patterns
+      .slice(index + 1)
+      .filter(next => next.startsWith('!'))
+      .map(next => toEngineGlob(next.slice(1)))
+    const key = JSON.stringify(excluded)
+    const group = groups.get(key) ?? { files: [], excluded }
+    group.files.push(toEngineGlob(pattern))
+    groups.set(key, group)
+  }
+  return [...groups.values()]
+}

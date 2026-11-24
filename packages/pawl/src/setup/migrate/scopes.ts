@@ -83,7 +83,8 @@ const pluginContext = (configs: readonly Record<string, unknown>[]): EslintConfi
 export const readMigrationScopes = async (
   path: string,
   legacy: string | undefined,
-  core: CoreRules
+  core: CoreRules,
+  parentScoped: readonly string[] = []
 ): Promise<MigrationScopes> => {
   if (legacy)
     return refuse(`legacy configuration ${legacy} must first be converted to flat config with @eslint/migrate-config`)
@@ -125,7 +126,7 @@ export const readMigrationScopes = async (
 
       if (!previous || rank(resolved.level) > rank(previous.level)) rules.set(name, resolved)
 
-      if (files) names.add(policyName(name))
+      if (files || parentScoped.includes(policyName(name))) names.add(policyName(name))
     }
 
     blocks.push({ files, rules: ownRules, config: context })

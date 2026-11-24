@@ -1,6 +1,7 @@
 import { getRule } from '../catalog/rules.ts'
 import { type Finding } from '../types.ts'
 import { plural } from '../utils/text.ts'
+import { CHECK_REPORT_VERSION } from './report-contract.ts'
 import { type CheckResult, isBlocked, tooManyWarnings } from './result.ts'
 
 export type OutputFormat = 'pretty' | 'agent' | 'json'
@@ -149,7 +150,8 @@ export const formatAgent = (result: CheckResult): string => {
 }
 
 /** The whole result as one JSON document, for CI and other tools. */
-export const formatJson = (result: CheckResult): string => JSON.stringify(result, null, 2)
+export const formatJson = (result: CheckResult): string =>
+  JSON.stringify({ ...result, reportVersion: CHECK_REPORT_VERSION }, null, 2)
 
 export const format = (result: CheckResult, kind: OutputFormat, options: FormatOptions = {}): string => {
   if (kind === 'agent') return formatAgent(result)

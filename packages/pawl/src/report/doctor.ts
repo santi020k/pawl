@@ -526,30 +526,35 @@ export const doctorRows = (report: DoctorReport): DoctorRow[] => {
     )
   }
 
-  for (const limitation of report.limitations) lines.push(`Coverage: ${limitation}`)
+  for (const limitation of report.limitations) add('tools', 'Coverage', limitation)
 
   for (const overlap of report.lintTraversal.overlaps) {
     const label = (entry: LintTraversalReport['commands'][number]): string =>
       `${entry.manifest} script "${entry.script}" (${entry.tool})`
 
-    lines.push(
-      `Traversal: ${label(overlap.first)} and ${label(overlap.second)} may both visit ${overlap.directory || 'the repository'}. Verify task execution and engine ignores before removing duplicate work.`
+    add(
+      'project',
+      'Traversal',
+      `${label(overlap.first)} and ${label(overlap.second)} may both visit ${overlap.directory || 'the repository'}. Verify task execution and engine ignores before removing duplicate work.`,
+      'warn'
     )
   }
 
-  for (const unknown of report.lintTraversal.unknown) lines.push(`Traversal: ${unknown}`)
+  for (const unknown of report.lintTraversal.unknown) add('project', 'Traversal', unknown)
 
   if (report.taskReachability.tasks.length > 0) {
-    lines.push(
-      `Tasks:    ${report.taskReachability.tasks.length} declared scripts; reachability is static evidence, not a lint exemption.`
+    add(
+      'project',
+      'Tasks',
+      `${report.taskReachability.tasks.length} declared scripts; reachability is static evidence, not a lint exemption.`
     )
 
     for (const file of report.taskReachability.files) {
-      lines.push(`          ${file.path}: ${file.reachability} (${file.consumers.join(', ')})`)
+      add('project', '', `${file.path}: ${file.reachability} (${file.consumers.join(', ')})`)
     }
   }
 
-  for (const issue of report.taskReachability.issues) lines.push(`Tasks:    ${issue}`)
+  for (const issue of report.taskReachability.issues) add('project', 'Tasks', issue, 'warn')
 
   const { baseline } = report
   const baselineState = (): DoctorState => {
@@ -575,7 +580,7 @@ export const formatDoctor = (report: DoctorReport): string => {
   const lines = [
     `pawl ${report.version}`,
     ...doctorRows(report).map(row =>
-      row.label ? `${`${row.label}:`.padEnd(10)}${row.value}` : `${' '.repeat(10)}${row.value}`
+      row.label ? `${`${row.label}: `.padEnd(10)}${row.value}` : `${' '.repeat(10)}${row.value}`
     )
   ]
 

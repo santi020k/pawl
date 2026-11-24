@@ -162,6 +162,9 @@ describe('the rows of the doctor', () => {
       suggestedPacks: [],
       guards: [],
       guardsImportsOnly: false,
+      limitations: [],
+      lintTraversal: { commands: [], overlaps: [], unknown: [] },
+      taskReachability: { complete: false, tasks: [], files: [], issues: [] },
       baseline: { missing: 'none' },
       problems: []
     }

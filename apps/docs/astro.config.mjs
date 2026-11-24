@@ -101,17 +101,9 @@ export default defineConfig({
           label: 'Adoption and integration',
           collapsed: true,
           items: [
-            { label: 'Strict adoption', slug: 'guide/strict-adoption' },
-            { label: 'Shared ESLint configs', slug: 'guide/shared-eslint' },
-            { label: 'Astro coverage', slug: 'guide/framework-coverage' },
-            { label: 'Generated scopes', slug: 'guide/generated-scopes' },
-            { label: 'Import-sort ownership', slug: 'guide/formatter-ownership' },
-            { label: 'Test runners', slug: 'guide/test-runners' },
-            { label: 'ESLint caching', slug: 'guide/eslint-cache' },
-            { label: 'Lint task ownership', slug: 'guide/lint-ownership' },
-            { label: 'Task reachability', slug: 'guide/task-reachability' },
-            { label: 'Reviewed exceptions', slug: 'guide/reviewed-exceptions' },
-            { label: 'JSON report contract', slug: 'guide/report-contract' }
+            { label: 'Existing repos', slug: 'guide/existing-repos' },
+            { label: 'Existing ESLint setups', slug: 'guide/existing-eslint' },
+            { label: 'Speed and CI tasks', slug: 'guide/speed' }
           ]
         },
         {
@@ -120,7 +112,8 @@ export default defineConfig({
             { label: 'CLI', slug: 'reference/cli' },
             { label: 'Configuration', slug: 'reference/config' },
             { label: 'Rules', slug: 'reference/rules' },
-            { label: 'API', slug: 'reference/api' }
+            { label: 'API', slug: 'reference/api' },
+            { label: 'JSON report', slug: 'reference/report' }
           ]
         },
         { label: 'Changelog', slug: 'changelog' }

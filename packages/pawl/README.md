@@ -369,5 +369,5 @@ focused/skipped-test rules or locked floors.
 
 `pawl check --eslint-cache` is an explicit opt-in requiring a deterministic-input
 declaration; full input hashing can cost more than the work it saves. See the
-[adoption and integration guides](https://pawl.santi020k.com/guide/strict-adoption/)
+[adoption and integration guides](https://pawl.santi020k.com/guide/existing-repos/#adopt-without-a-baseline)
 for contracts, limitations and examples.

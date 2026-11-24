@@ -4,7 +4,7 @@ title: Speed and CI tasks
 description: "Make checks faster without losing coverage: cache ESLint with declared inputs, give each lint task one owner, and see which cached tasks a file reaches."
 ---
 
-Ways to make checks faster that keep every file checked by every engine it needs. Each one is opt-in or advisory: pawl never skips a file to save time.
+Ways to make checks faster that keep every file checked by every engine it needs. Each one is opt-in or advisory: pawl never skips a file to save time. For what the engines cost, see the [benchmarks](/guide/benchmarks/).
 
 ## Cache ESLint checks
 

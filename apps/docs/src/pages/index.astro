@@ -473,6 +473,20 @@ const facts = [
 
     <QualityWorkflow />
 
+    <section class="band" aria-labelledby="in-use-title">
+      <Container>
+        <div class="band-head">
+          <p class="kicker">In use</p>
+          <h2 id="in-use-title">Checking real repos today.</h2>
+          <p>
+            Pawl checks its own code, Quality and Astro Doctor. After Astro Doctor moved to pawl, its local lint step went from 21.3 s
+            to 10.2 s, mostly because the same files were no longer checked twice.
+          </p>
+          <ButtonLink href="/guide/in-use/" variant="inline" showArrow>What changed in each repo</ButtonLink>
+        </div>
+      </Container>
+    </section>
+
     <section class="band cta" data-theme="dark" aria-labelledby="cta-title">
       <Backdrop variant="grid" tone="brand" intensity="subtle" class="cta__backdrop">
         <Container size="md">

@@ -95,7 +95,8 @@ export default defineConfig({
             { label: 'With Quality', slug: 'guide/quality' },
             { label: 'Monorepos', slug: 'guide/monorepos' },
             { label: 'Rust, Swift and Kotlin', slug: 'guide/languages' },
-            { label: 'Troubleshooting', slug: 'guide/troubleshooting' }
+            { label: 'Troubleshooting', slug: 'guide/troubleshooting' },
+            { label: 'Pawl in use', slug: 'guide/in-use' }
           ]
         },
         {

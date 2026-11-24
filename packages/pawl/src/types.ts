@@ -213,6 +213,8 @@ export interface SetupIssue {
   code:
     | 'biome-config-missing'
     | 'biome-config-stale'
+    | 'biome-config-nested'
+    | 'biome-overrides-conflict'
     | 'biome-config-foreign'
     | 'biome-missing'
     | 'eslint-missing'

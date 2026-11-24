@@ -243,7 +243,7 @@ An optional pack runs through ESLint next to Biome, or with ESLint as the only l
 | `profile` (time budgets)         | Yes                      | Not planned                                                                                  |
 | `snapshot` and `diff`            | Yes                      | Not planned                                                                                  |
 | `config-types`                   | Yes                      | Not needed                                                                                   |
-| `migrate`                        | From its own v2          | Yes, from any ESLint flat config                                                             |
+| `migrate`                        | From its own v2          | From ESLint flat configs; stops when a scope cannot be preserved                             |
 | Agent files                      | `generate-skill`         | `AGENTS.md` block and a Claude Code hook                                                     |
 | Output for agents                | No                       | Yes, `--format agent`                                                                        |
 | ESLint MCP scaffold              | Yes                      | Not planned                                                                                  |

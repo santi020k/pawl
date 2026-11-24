@@ -5,14 +5,15 @@ import { BIOME_PRESET, type BiomeContext, biomeProjectConfig } from '../engines/
 import {
   biomeContextFor,
   checkBiomeConfig,
-  checkBiomePackages,
   checkRuleFiles,
+  inlineOverridesConflict,
+  nestedBiomeConfigs,
   syncBiomeGlobals
 } from '../engines/biome/state.ts'
 import { checkOxlintConfig, mergeOxlintConfig, oxlintConfig, oxlintContextFor } from '../engines/oxlint/config.ts'
 import { checkPrettierConfig, prettierConfig } from '../engines/prettier/config.ts'
 import { OXLINT_CONFIG_FILE } from '../project/config-files.ts'
-import { type Detection, packageTechnologies } from '../project/detect.ts'
+import { type Detection } from '../project/detect.ts'
 import { type Toolset } from '../project/toolset.ts'
 import { type Policy } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
@@ -58,6 +59,15 @@ export const planBiomeConfig = (
   const expected = biomeProjectConfig(policy, context, state.preset ?? BIOME_PRESET)
 
   if (state.status === 'stale') {
+    // Inline override arrays have no ownership marker; replacing or reordering them can lose custom behavior.
+    if (inlineOverridesConflict(value, expected)) {
+      notes.push(
+        `${file} has inline overrides whose ownership cannot be established. Preserve a backup and reconcile them with the root policy before syncing; pawl left the file unchanged.`
+      )
+
+      return undefined
+    }
+
     return {
       path: file,
       kind: 'update',
@@ -86,13 +96,8 @@ export const planBiomeConfig = (
 }
 
 /** Write the files of pawl's own Biome rules that are missing or out of date. */
-export const planRuleFiles = (
-  root: string,
-  policy: Policy,
-  context: BiomeContext,
-  detection: Detection
-): SetupAction[] =>
-  checkRuleFiles(root, policy, context, Object.keys(packageTechnologies(detection))).flatMap(state =>
+export const planRuleFiles = (root: string, policy: Policy, context: BiomeContext): SetupAction[] =>
+  checkRuleFiles(root, policy, context).flatMap(state =>
     state.status === 'ok'
       ? []
       : [
@@ -105,46 +110,15 @@ export const planRuleFiles = (
         ]
   )
 
-/** In a monorepo, give each package that needs it a biome.json with its own technology's rules. */
-export const planBiomePackages = (
-  root: string,
-  detection: Detection,
-  notes: string[],
-  preset?: string
-): SetupAction[] => {
-  const rootFile = detection.tools.biome ?? 'biome.json'
-  const actions: SetupAction[] = []
-
-  for (const state of checkBiomePackages(root, packageTechnologies(detection), rootFile, preset)) {
-    const path = join(root, state.file)
-    const rules = (packageTechnologies(detection)[state.dir] ?? []).join(', ')
-
-    if (state.status === 'ok') continue
-
-    if (state.status === 'missing') {
-      actions.push({
-        path: state.file,
-        kind: 'create',
-        summary: `${rules} rules for this package only`,
-        apply: () => writeJson(path, state.expected)
-      })
-    } else if (state.status === 'stale' && state.current) {
-      const current = state.current
-
-      actions.push({
-        path: state.file,
-        kind: 'update',
-        summary: `add the ${rules} rules`,
-        apply: () => writeJson(path, { ...current, extends: mergeExtends(current.extends, state.expected.extends) })
-      })
-    } else {
-      notes.push(
-        `${state.file} has comments or could not be read, so pawl left it alone. It should extend ${JSON.stringify(state.expected.extends)}.`
-      )
-    }
+/** Nested configs change the base of inherited policy globs; leave them intact for explicit review. */
+export const planBiomePackages = (root: string, notes: string[], gitignore = true): SetupAction[] => {
+  for (const file of nestedBiomeConfigs(root, gitignore)) {
+    notes.push(
+      `${file} is a nested Biome config. Review its settings, preserve a backup outside Biome's config filenames, and move its rules into the root policy before running check or fix.`
+    )
   }
 
-  return actions
+  return []
 }
 
 /** Bring the Prettier config in line with the standard's style. Used by `init` and `sync`. */
@@ -242,11 +216,9 @@ export const planEngineConfigs = (
 
     if (config) actions.push(config)
 
-    const { preset } = checkBiomeConfig(root, policy, context)
-
     actions.push(
-      ...planBiomePackages(root, detection, notes, preset),
-      ...planRuleFiles(root, policy, context, detection)
+      ...planBiomePackages(root, notes, policy.gitignore && policy.defaultIgnores && detection.git),
+      ...planRuleFiles(root, policy, context)
     )
   }
 

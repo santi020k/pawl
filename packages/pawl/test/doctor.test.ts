@@ -260,7 +260,7 @@ describe('pawl doctor', () => {
 
     const report = await doctor(root)
     const result = await check({ root })
-    const stale = 'apps/web/biome.json is missing, so the rules for what that package uses are not applied there.'
+    const stale = 'biome.json is out of date with the policy.'
 
     expect(result.setup).toContainEqual({ code: 'biome-config-stale', message: stale, fix: 'Run "pawl sync".' })
     expect(report.problems).toContain(`${stale} Run "pawl sync".`)

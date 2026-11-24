@@ -1,11 +1,27 @@
 # @santi020k/pawl
 
+## 0.4.0
+
+### Minor Changes
+
+- Preserve supported ESLint flat-config file scopes during migration, including ordered rule levels and options from shared configs. Test and workspace exceptions remain scoped and apply to future files. The migration report lists the preserved scopes.
+
+  Migration now stops before writing when a scope cannot be represented safely. Convert legacy ESLint configurations to flat config with `@eslint/migrate-config` and review the result before running `pawl migrate`.
+
+  Scoped ESLint linter options, including `noInlineConfig`, require manual migration and are rejected before writing so inline comments cannot silently weaken the original rules.
+
+- Compile workspace framework rules into root-scoped Biome overrides so exact policy ignores and rule overrides retain their meaning. Existing nested workspace configurations now block checks and fixes until explicitly reviewed and migrated; originals are never silently modified or removed. See the upgrade guide for preserving customized settings and backups.
+
+### Patch Changes
+
+- Harden the prepared 0.4.0 workspace scope release: escape literal bracketed directories, retain template import safety when global engine-scoped rules are configured, and refuse ambiguous inline override replacement. Preserve original configurations and require explicit reconciliation before checks or fixes run.
+
 ## 0.3.0
 
 ### Minor Changes
 
 - [`8c7ab24`](https://github.com/santi020k/pawl/commit/8c7ab24b15b09ac421d23f784f012b79233adce7) Thanks [@santi020k](https://github.com/santi020k)! - The Swift and Kotlin checks, run against the real SwiftLint, SwiftFormat, swift-format and ktlint.
-  
+
   - ktlint's report is read after the log lines ktlint prints before it. A project where ktlint had something to fix used to stop with "ktlint exited with code 1".
   - SwiftFormat's findings are read when the project sits behind a link, as a temporary folder does on macOS. They used to be dropped, and the check stopped as failed.
   - `pawl fix` formats Kotlin with `ktlint --format` and then lints, so what is left is reported once, in the words `pawl check` uses. Before, a finding could appear twice, with "(cannot be auto-corrected)" added.
@@ -26,7 +42,7 @@
 ### Minor Changes
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - The API adds `loadProject`, which loads the policy, detects the project and works out its tools in one call, and `explainRule`, which returns what `pawl explain` prints for a rule.
-  
+
   Breaking: `usesReact` and `BIOME_REACT_PRESET` are removed. Use `technologies(detection).includes('react')` and `biomeTechPreset('react')`.
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - The policy takes `biomeOptions`: rule options in Biome's own shape, by the same names as `rules`, at the top level and in `overrides`. They replace the options the standard gives a rule, and reach `biome:group/name` rules too. Until now only ESLint and Oxlint took options from the policy.
@@ -40,15 +56,15 @@
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - The Zod guard also refuses `z.union()` of string `z.literal()` values in place of `z.enum()`, and a new opt-in guard, `zod-meta`, refuses `.describe()` in place of Zod 4's `.meta()`: `pawl add zod-meta`. It is not on by itself because Zod 3, and the tool schemas of the AI SDK, write `.describe()`. The Testing Library guard also refuses queries taken from `render()` in place of `screen`, and a new guard, `testing-library-find-by`, warns about `waitFor()` around a `getBy` or `queryBy` query. They need no plugin and run in Biome, Oxlint's imports aside, and in ESLint. The matching `eslint-plugin-zod` and `eslint-plugin-testing-library` rules are off in the packs, so nothing is reported twice.
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - In a policy's `ignore` and in the `files` of an override, `[` and `]` are the characters themselves, so `src/app/[slug]` names that route folder in every engine. Before, Biome refused the whole config, and ESLint and Oxlint read the brackets as a character class.
-  
+
   Breaking: a policy that used a class there, such as `**/*.min.[jc]s`, has to list the names now, as `**/*.min.js` and `**/*.min.cs`: `pawl doctor` names such a pattern when its brackets match no file, and `pawl migrate` lists out the classes of the ignore patterns it copies from ESLint.
-  
+
   A `.gitignore` line with a leading slash, such as `/build`, skips only that path at the root, as git reads it; pawl's own checks and ESLint used to skip every `build` folder. Character classes in `.gitignore` lines, such as `*.py[cod]` and `[[:digit:]]`, are read as git reads them, and a line git cannot match anything with, such as one with a `[` that does not close, matches nothing. Braces in those patterns, as in `**/*.{gen,auto}.ts`, now work the same in every engine: pawl lists them out, where before Biome read them as a glob and ESLint as the characters themselves.
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - A new Markdown check, `pawl/markdown-no-invalid-label-refs`, finds a reference with only whitespace between its second brackets, such as `[text][ ]`, which CommonMark does not read as a reference. It is an error by default, like the rule of the same name in `@eslint/markdown`, and skips code blocks, code spans, HTML comments and front matter. The rule is off in the `markdown` pack, so nothing is reported twice.
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`3e131e1`](https://github.com/santi020k/pawl/commit/3e131e1e277bef680e40ad57f594ba3dad857741) Thanks [@santi020k](https://github.com/santi020k)! - `pawl migrate --extends <policy>` moves a repo onto a company policy: the new `pawl.config.ts` extends it, what your config has stricter than it is carried over, and a rule your config had looser stays at the policy's level and is listed in the report.
-  
+
   `migrate` also writes much less for a project that lints through a shared config. It finds the plugins that config brings, so their rules are compared instead of all carried over; it drops default ignores repeated for each workspace, such as `packages/a/**/dist`; and it reads the ignores of an `eslint.config.ts`.
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - An override sets the level of pawl's own Docker and Markdown checks for the files it names, as it does for the rules an engine runs. Those checks used to read only the top-level `rules`, so `pawl/markdown-no-duplicate-headings` could not be switched off for a changelog alone.
@@ -60,7 +76,7 @@
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - Pawl checks the values of a policy, in every layer, as it already checked the names of its options. A level that is not `off`, `warn` or `error`, a string where a list belongs, an override without `files`, an unknown runtime or a pack name pawl does not have now stops the run with exit code 2, and the message names the place and what it takes: `"rules.no-console" is "warning". It must be "off", "warn" or "error".` Until now such a value passed in silence or failed later inside an engine. A policy that relied on a wrong value being ignored has to be corrected.
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`3bc653b`](https://github.com/santi020k/pawl/commit/3bc653b08bd9e870680955660be8e540389a38e6) Thanks [@santi020k](https://github.com/santi020k)! - Rust, Swift and Kotlin, and monorepos that mix stacks.
-  
+
   - Detection finds Cargo crates and workspaces, Swift packages, Xcode projects, and Gradle or Maven builds that use Kotlin, anywhere a few folders deep. `pawl doctor` lists each one and says whether pawl checks it, `init` says how to turn them on, and `detect.exclude` takes `rust`, `swift` and `kotlin`.
   - Biome, Oxlint, ESLint and pawl's own checks skip what those tools write: `target` next to each Rust or Maven project, `Cargo.lock`, `Package.resolved`, Xcode's bundles and asset catalogs, `Pods`, `.build`, `.swiftpm`, `.gradle` and others. They are part of `defaultIgnores`.
   - `languages` in the policy runs each language's own tools in its projects: Clippy and rustfmt, SwiftLint and SwiftFormat or swift-format, ktlint. Findings join the same report and baseline, with the tool's rule names (`clippy:needless_return`, `swiftlint:force_cast`), and `rules` and `overrides` set their levels. `pawl fix` runs their fixes. A missing tool is the new `language-tool-missing` setup problem, exit code 2.
@@ -70,11 +86,11 @@
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - The ratchet on disable comments counts Oxlint's own, `oxlint-disable`, `oxlint-disable-line` and `oxlint-disable-next-line`, which got past it until now. It also reads the stylesheets, JSON and GraphQL files Biome lints, and the YAML and TOML files an ESLint pack lints, where a `biome-ignore` or `eslint-disable` comment switched a check off unseen. A repo that already has such comments sees them once as new: run `pawl baseline` after upgrading to record them.
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`c216738`](https://github.com/santi020k/pawl/commit/c216738b4c8aca30d361e2e3af5855a59754c0f8) Thanks [@santi020k](https://github.com/santi020k)! - The setup API has one shape for every command. `planInit`, `planAdd`, the new `planSync` and `planMigrate` return plans of `SetupAction`s, and `applyPlan` writes any of them. `pawl sync` itself is built on `planSync`.
-  
+
   Breaking: `applyInit` is now `applyPlan`, the `InitAction` type is now `SetupAction`, `planAdd` returns a `SetupPlan` (it no longer carries init's `mode`, `engines` and `formatter`), and `planPrettierConfig` is no longer exported: use `planSync`.
 
 - [#8](https://github.com/santi020k/pawl/pull/8) [`3e131e1`](https://github.com/santi020k/pawl/commit/3e131e1e277bef680e40ad57f594ba3dad857741) Thanks [@santi020k](https://github.com/santi020k)! - The `typescript` pack now starts from typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets instead of `recommended`. Where ESLint lints TypeScript, promises nobody awaits, `any` that reaches typed code and assertions that change nothing are now errors. Rules the catalog holds back because Biome's version is unstable keep the level their ESLint preset gives them, unless the policy sets one. To go back to a rule's old level, set it in `rules`.
-  
+
   The default ignores now also cover `.build`, `.swiftpm`, `.pnpm-store`, `next-env.d.ts`, `worker-configuration.d.ts`, `cloudflare-env.d.ts` and `CHANGELOG.md`. With Oxlint, run `pawl sync` after upgrading: `.oxlintrc.json` carries the list, and `pawl check --ci` stops on a config that is out of date.
 
 ### Patch Changes

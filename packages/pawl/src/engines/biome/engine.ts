@@ -1,4 +1,3 @@
-import { packageTechnologies } from '../../project/detect.ts'
 import { PACKAGE_NAME } from '../../version.ts'
 import { type Engine } from '../engine.ts'
 import { BIOME_PRESET, BIOME_VERSION } from './config.ts'
@@ -6,9 +5,9 @@ import { biomeInstalled, runBiome } from './run.ts'
 import {
   biomeContextFor,
   checkBiomeConfig,
-  checkBiomePackages,
   checkRuleFiles,
   extendsPackage,
+  nestedBiomeConfigs,
   presetInstalled
 } from './state.ts'
 
@@ -29,20 +28,18 @@ export const biome: Engine = {
   inspect: ({ root, policy, detection, tools }) => {
     const context = biomeContextFor(root, policy, detection, tools)
     const config = checkBiomeConfig(root, policy, context)
-    const perPackage = packageTechnologies(detection)
+    const nested = nestedBiomeConfigs(root, policy.gitignore && policy.defaultIgnores && detection.git)
     const issues = config.issue ? [config.issue] : []
 
-    for (const state of checkBiomePackages(root, perPackage, config.file, config.preset)) {
-      if (state.status === 'ok') continue
-
+    for (const file of nested) {
       issues.push({
-        code: 'biome-config-stale',
-        message: `${stale(state.file, state.status === 'missing')}, so the rules for what that package uses are not applied there.`,
-        fix: 'Run "pawl sync".'
+        code: 'biome-config-nested',
+        message: `${file} is a nested Biome config that can change root policy scopes.`,
+        fix: 'Review its settings, preserve a backup outside Biome config filenames, and move its rules into the root policy. Run "pawl sync" after the explicit migration.'
       })
     }
 
-    for (const state of checkRuleFiles(root, policy, context, Object.keys(perPackage))) {
+    for (const state of checkRuleFiles(root, policy, context)) {
       if (state.status === 'ok') continue
 
       issues.push({
@@ -66,7 +63,11 @@ export const biome: Engine = {
     return {
       ...(config.file ? { config: config.file } : {}),
       status: config.status,
-      runnable: loadable && config.status !== 'missing',
+      runnable:
+        loadable &&
+        config.status !== 'missing' &&
+        config.issue?.code !== 'biome-overrides-conflict' &&
+        nested.length === 0,
       issues
     }
   },

@@ -35,6 +35,8 @@ export const BLOCKING: readonly SetupIssue['code'][] = [
   'tsgolint-missing',
   'oxlint-config-missing',
   'biome-config-missing',
+  'biome-config-nested',
+  'biome-overrides-conflict',
   'since-unresolved',
   'baseline-unreadable',
   'pawl-missing',

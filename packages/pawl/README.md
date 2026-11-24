@@ -39,13 +39,15 @@ npx @santi020k/pawl migrate
 
 `migrate` reads your `eslint.config.js` the way ESLint resolves it, compares it with the pawl standard, and writes the difference:
 
-- `pawl.config.ts` with the rule levels and options that differ, the packs for the plugins you use, the style from your formatting rules or Prettier config, and your ignores.
+- `pawl.config.ts` with the rule levels and options that differ, ordered overrides for supported file scopes, the packs for the plugins you use, the style from your formatting rules or Prettier config, and your ignores.
 - `eslint.config.js` as one line, `export default eslint({ root: import.meta.dirname })`. The old file is kept as `eslint.config.before-pawl.js`.
 - `.pawl/migration.md`, a full account: what was kept, what the formatter replaces, what the standard adds.
 
 Then it runs `init`, so the tools are installed and the baseline is recorded. `--dry-run` shows the plan and changes nothing. `--keep-config` leaves the ESLint config file alone.
 
-A legacy `.eslintrc` works too, as long as the project has ESLint 8 or 9: pawl reads it, writes a new `eslint.config.js`, and leaves the old file for you to delete. ESLint 10 no longer reads `.eslintrc`, so there convert it with `npx @eslint/migrate-config` first.
+Flat-config file scopes keep their order and apply to future files, including scopes imported from shared configs. Migration stops before writing when a scope cannot be preserved, such as local ignores, AND-pattern arrays or scoped formatting rules. The report lists the preserved scopes for review. See the [migration guide](https://pawl.santi020k.com/guide/migrate/) for the supported forms and limitations.
+
+Convert a legacy `.eslintrc` with `npx @eslint/migrate-config <config-file>` first and review the flat config. Migration no longer flattens legacy configs from samples, which could lose inherited overrides.
 
 ## Daily use
 
@@ -185,11 +187,7 @@ The standard has 200 rules, named with ESLint's names. They started from `@santi
 
 Pawl detects pnpm, npm and yarn workspaces, Turborepo and Nx. It runs once from the root and covers every package. In a Turborepo, `init` also adds `check` and `fix` to `turbo.json` as root tasks, uncached, so `turbo run check` runs pawl with the rest. Under Nx it makes the root a project with `check` and `fix` as uncached targets, so `nx run-many -t check` does the same.
 
-A rule for a technology runs only in the packages that use it, under every linter. With Biome, `init` gives such a package its own small `biome.json`:
-
-```json
-{ "root": false, "extends": ["../../biome.json", "@santi020k/pawl/biome/react"] }
-```
+A rule for a technology runs only in the packages that use it, under every linter. With Biome, `init` keeps package-specific domains and rules in the root `biome.json`, scoped to each package. Root-relative policy ignores and overrides therefore retain their exact meaning. For example, React rules apply inside `apps/web/**` without changing the Node API package.
 
 With Oxlint, `.oxlintrc.json` has an override for the package, with the rules and the plugins they need. With ESLint, the flat config has a block for it, and a pack only some packages depend on, such as `react-hooks`, runs in those packages only. So React rules apply in the React app and not in the Vue app next to it. `pawl check` reports a package that starts using a new technology until `pawl sync` has been run.
 
@@ -296,7 +294,7 @@ A guard is a set of checks for one library that needs no plugin. It switches on 
 - With Oxlint as the only linter, the code patterns do not run. `pawl doctor` says so.
 - Your own `no-restricted-imports` and `no-restricted-syntax` options in the policy are merged with the guards.
 - Set a guard's level with `rules: { 'pawl/ai-keys': 'warn' }`, or `'off'`. `'no-restricted-imports': 'off'` turns every import guard off.
-- In a monorepo, a package with a Biome config of its own gets a copy of the rule files, because Biome looks for them next to that config.
+- In a monorepo, package rules share the root Biome configuration and its rule files. Existing nested configs require explicit migration; see the upgrade guide.
 
 ## Dockerfiles and Compose files
 

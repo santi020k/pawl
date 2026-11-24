@@ -7,5 +7,19 @@
   },
   "javascript": {
     "globals": ["HTMLRewriter", "WebSocketPair"]
+  },
+  "overrides": [
+    {
+      "includes": ["apps/docs/**"],
+      "linter": {
+        "domains": {
+          "astro": "recommended"
+        },
+        "rules": {}
+      }
+    }
+  ],
+  "html": {
+    "experimentalFullSupportEnabled": true
   }
 }

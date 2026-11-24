@@ -21,7 +21,7 @@ interface Resolved {
 
 export type RuleMap = Map<string, Resolved>
 
-interface EslintConfig {
+export interface EslintConfig {
   rules?: Record<string, unknown>
   plugins?: Record<string, { rules?: Record<string, { meta?: { type?: string } }> }>
 }
@@ -36,7 +36,7 @@ const LEVELS: readonly Level[] = ['off', 'warn', 'error']
 
 export const rank = (level: Level): number => LEVELS.indexOf(level)
 
-const toLevel = (value: unknown): Level => {
+export const toLevel = (value: unknown): Level => {
   const severity = Array.isArray(value) ? (value[0] as unknown) : value
 
   if (severity === 2 || severity === 'error') return 'error'
@@ -125,7 +125,7 @@ export const splitName = (name: string): { prefix: string; short: string } => {
 export type CoreRules = Map<string, { meta?: { type?: string } }> | undefined
 
 /** Whether a rule only arranges code, which is the formatter's job once pawl is in place. */
-const isFormatting = (name: string, config: EslintConfig, core: CoreRules): boolean => {
+export const isFormatting = (name: string, config: EslintConfig, core: CoreRules): boolean => {
   const { prefix, short } = splitName(name)
 
   if (FORMAT_PREFIXES.test(prefix)) return true

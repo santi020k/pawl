@@ -10,7 +10,7 @@ import { ESLINT_CONFIG_FILES, firstExisting } from '../../project/config-files.t
 import { allTechnologies, type Detection, detect } from '../../project/detect.ts'
 import { type Level, type Policy, type PolicyInput } from '../../types.ts'
 import { writeText } from '../../utils/fs.ts'
-import { sameJson } from '../../utils/json.ts'
+import { isRecord, sameJson } from '../../utils/json.ts'
 import { plural } from '../../utils/text.ts'
 import { PACKAGE_NAME } from '../../version.ts'
 import { type SetupAction } from '../plan.ts'
@@ -34,6 +34,7 @@ import {
   splitName
 } from './read.ts'
 import { reportFile } from './report.ts'
+import { readMigrationScopes } from './scopes.ts'
 import { readEditorconfig, readPrettier, styleFrom } from './style.ts'
 
 const TS_TWIN = '@typescript-eslint/'
@@ -409,6 +410,7 @@ export const planMigrate = async ({
 }: MigrateOptions): Promise<MigratePlan> => {
   const source = findSource(root)
   const eslint = await loadEslint(root, source)
+  const scopes = await readMigrationScopes(source.path, source.legacy, eslint.core)
   const detection = detect(root)
   const context: RuleContext = {
     typescript: detection.typescript,
@@ -417,6 +419,15 @@ export const planMigrate = async ({
   }
   const old = await resolveSide(new eslint.Reader({ cwd: root }), pickSamples(root, detection.typescript), eslint.core)
 
+  // A future-only scope still needs its plugin and pack, even with no sample in today's tree.
+  for (const [name, rule] of scopes.rules) {
+    if (!scopes.names.has(canonicalName(name))) continue
+
+    const previous = old.rules.get(name)
+
+    if (!previous || rank(rule.level) > rank(previous.level)) old.rules.set(name, rule)
+  }
+
   if (old.samples.length === 0) throw new Error(`${source.name} does not apply to any file pawl could find.`)
 
   const notes: string[] = []
@@ -424,6 +435,11 @@ export const planMigrate = async ({
   const base: PolicyInput = parent === undefined ? {} : { extends: parent }
   const policyPackage = policyPackageOf(parent, policyPath)
   const basePolicy = await resolvePolicy(base, policyPath)
+
+  if (scopes.names.size > 0 && basePolicy.overrides.length > 0)
+    throw new Error(
+      'Cannot preserve ESLint file scopes while extending a policy with file overrides. Migrate those scopes manually; no files were written.'
+    )
   const migration: Migration = {
     root,
     detection,
@@ -491,6 +507,79 @@ export const planMigrate = async ({
 
   if (Object.keys(options).length > 0)
     policy.options = Object.fromEntries(Object.entries(options).sort(([a], [b]) => a.localeCompare(b)))
+
+  if (scopes.names.size > 0) {
+    const globalRules = { ...policy.rules }
+    const globalOptions = { ...policy.options }
+
+    for (const name of scopes.names) {
+      // Scoped-only rules must not escape through either the standard or an inferred pack.
+      const floor = parent === undefined ? 'off' : (effective.get(name) ?? standard.rules.get(name)?.level ?? 'off')
+
+      globalRules[name] = floor
+      delete globalOptions[name]
+    }
+
+    for (let index = changed.length - 1; index >= 0; index--) {
+      const change = changed[index]
+
+      if (change && scopes.names.has(change.rule)) changed.splice(index, 1)
+    }
+
+    policy.rules = globalRules
+    policy.options = globalOptions
+    // ESLint keeps earlier options when a later rule only changes severity. An empty option list
+    // cannot clear arguments supplied by a preset; refuse rather than silently inheriting them.
+    const generated = await planFor(migration, { ...policy, packs }, migration.pluginRoots)
+    const presetOptions = new Set(
+      generated.config.flatMap(config => {
+        if (!isRecord(config.rules)) return []
+
+        return Object.entries(config.rules).flatMap(([name, value]) =>
+          Array.isArray(value) && value.length > 1 ? [canonicalName(name)] : []
+        )
+      })
+    )
+
+    for (const override of scopes.overrides) {
+      for (const [name, values] of Object.entries(override.options ?? {})) {
+        if (values.length === 0 && presetOptions.has(name))
+          throw new Error(
+            `Cannot preserve ESLint file scopes: ${name} would inherit options from a pawl preset. Set explicit options in the source config before migrating; no files were written.`
+          )
+      }
+    }
+
+    policy.overrides = scopes.overrides.map(override => ({
+      ...override,
+      rules: Object.fromEntries(
+        Object.entries(override.rules ?? {}).map(([name, level]) => {
+          const floor = globalRules[name] ?? 'off'
+
+          if (parent !== undefined && rank(level) < rank(floor)) {
+            if (!policyKept.some(change => change.rule === name && change.kept === level))
+              policyKept.push({ rule: name, standard: floor, kept: level })
+
+            return [name, floor]
+          }
+
+          return [name, level]
+        })
+      )
+    }))
+
+    for (const override of policy.overrides) {
+      for (const [name, values] of Object.entries(override.options ?? {})) {
+        if (values.length > 0 && getRule(name)?.biome !== undefined && !biomeOptions.includes(name))
+          biomeOptions.push(name)
+      }
+    }
+
+    biomeOptions.sort()
+    notes.push(
+      `Preserved ${plural(policy.overrides.length, 'ordered rule override')} using the original file patterns, including future files. Their global fallback is off unless the parent policy requires a stricter level.`
+    )
+  }
 
   const formatting = on(old.formatting).sort()
   const summary = {

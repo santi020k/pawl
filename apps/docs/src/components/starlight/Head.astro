@@ -54,30 +54,30 @@ const crumbs = [
   { name: title, url }
 ]
 
-const jsonLd = notFound ?
-  undefined :
-  serializeJsonLd(
-    composeJsonLd(
-      articleSchema(
-        {
-          type: 'TechArticle',
-          id: `${url.href}#article`,
-          name: title,
-          headline: title,
-          description,
-          url,
-          image,
-          inLanguage: 'en',
-          dateModified: route.lastUpdated,
-          author,
-          publisher: author,
-          isPartOf: website
-        },
-        { about: softwareReference }
-      ),
-      breadcrumbSchema(crumbs, { '@id': `${url.href}#breadcrumb` })
+const jsonLd = notFound
+  ? undefined
+  : serializeJsonLd(
+      composeJsonLd(
+        articleSchema(
+          {
+            type: 'TechArticle',
+            id: `${url.href}#article`,
+            name: title,
+            headline: title,
+            description,
+            url,
+            image,
+            inLanguage: 'en',
+            dateModified: route.lastUpdated,
+            author,
+            publisher: author,
+            isPartOf: website
+          },
+          { about: softwareReference }
+        ),
+        breadcrumbSchema(crumbs, { '@id': `${url.href}#breadcrumb` })
+      )
     )
-  )
 ---
 
 <StarlightMetadataHead />

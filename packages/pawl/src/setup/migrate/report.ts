@@ -48,6 +48,21 @@ export const reportFile = (plan: Omit<MigratePlan, 'actions'>, backup: string | 
           ''
         ]
       : []),
+    ...(plan.policy.overrides?.length
+      ? [
+          '## Ordered rule scopes',
+          '',
+          'These entries are in `overrides` in the policy, in their original order. Later matching entries win. The patterns also apply to files added after migration.',
+          '',
+          '| Files | Rule levels | Rules with options |',
+          '| --- | --- | --- |',
+          ...plan.policy.overrides.map(
+            override =>
+              `| ${override.files.map(file => `\`${file}\``).join(', ')} | ${Object.keys(override.rules ?? {}).length} | ${Object.keys(override.options ?? {}).length} |`
+          ),
+          ''
+        ]
+      : []),
     '## Options Biome does not take',
     '',
     'The policy carries the options of these rules for ESLint and Oxlint. Where Biome is the linter, it enforces them with its own options.',
@@ -71,6 +86,7 @@ export const reportFile = (plan: Omit<MigratePlan, 'actions'>, backup: string | 
     '## Added by the standard',
     '',
     list(plan.added),
+    ...(plan.notes.length > 0 ? ['', '## Migration notes', '', ...plan.notes.map(note => `- ${note}`)] : []),
     ''
   ]
 
@@ -94,6 +110,7 @@ export const describeMigration = (plan: MigratePlan): string[] => {
     [plan.importSorting.length, 'import ordering rules, now done by import sorting'],
     [plan.added.length, 'rules the standard adds (their existing findings go to the baseline)']
   ]
+  if (plan.policy.overrides?.length) rows.push([plan.policy.overrides.length, 'ordered rule scopes kept in overrides'])
   const width = Math.max(...rows.map(([count]) => String(count).length))
   const style = Object.entries(plan.policy.style ?? {}).map(([key, value]) => `${key}: ${String(value)}`)
 

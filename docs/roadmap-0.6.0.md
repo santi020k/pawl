@@ -11,21 +11,29 @@ The work planned on `release/v0.6.0`. The branch starts from `release/v0.5.0` as
 ## Landed
 
 - [x] Findings in CI where people read them (`0.6.0/ci-annotations`): `--format github` puts each new finding on its line in the pull request as a GitHub Actions annotation, and `--format sarif` prints SARIF 2.1.0 for GitHub code scanning. The workflow `init --workflow` writes uses `--format github`.
+- [x] `pawl check` picks `--format github` on its own in a GitHub Actions job (`0.6.0/github-format-default`), after a coding agent's `agent` and before `pretty`.
+- [x] The flat presets of Vue, Svelte, YAML, JSONC, TOML, Storybook, Astro 3 and HTML work again (`fix/spread-pack-plugins`, based on `main` so it can ship as 0.5.1 first).
+- [x] Floors that hold (`0.6.0/peer-ranges`): ESLint `>=9.35.0`, `typescript-eslint` `>=8.15.0`, four plugin floors raised and nine plugins that took any version given one, each run against its plugin.
+- [x] Guard the baseline (`0.6.0/baseline-guard`): a hook before each tool for Claude Code, Codex and Copilot, and `pawl/no-baseline-growth` with `--since`. A person accepts growth with a `Pawl-Baseline: accept` commit trailer.
+- [x] The rest of the test ratchet (`0.6.0/flaky-test-ratchet`): retries, raised timeouts and fixed sleeps in tests.
+- [x] `pawl upgrade` (`0.6.0/upgrade-command`).
+- [x] The public API as a generated report, `packages/pawl/api.md` (`0.6.0/api-snapshot`), and the plugin's skill generated from the same guidance as the one `init` writes (`0.6.0/skill-single-source`).
+- [x] A weekly engine canary and a Windows job that does not block yet (`0.6.0/ci-canary-windows`).
+- [x] Docs: a benchmarks page from `scripts/bench.ts`, the adoption pages folded into three, the report contract under Reference, and a Pawl in use page (`0.6.0/benchmarks`, `0.6.0/docs-adoption-pages`, `0.6.0/docs-case-studies`).
 
 ## Candidates
 
 None is committed to this release until someone starts it. Sizes are relative: S is a contained change in one layer, M touches several layers.
 
-- [ ] Guard the baseline from coding agents (S). A pre-tool hook that asks before an agent edits `.pawl/baseline.json`, the policy or the engine configs, or runs `pawl baseline`, and `check --ci --since <base>` failing when the baseline gained entries against the base branch. Open question: how a person marks a baseline change as intended, for example after an upgrade adds findings: a pull request label, a commit trailer, or a CODEOWNERS entry for `.pawl/` that `init` writes.
-- [ ] Approved and retired AI models in the policy (M). `ai: { models: [...] }`, lockable by a shared policy, and a catalog of retired model IDs per provider; a guard flags a model string in an AI SDK call that is retired or not on the list.
-- [ ] `pawl upgrade` (S to M): install the tool versions `doctor` expects, run `sync`, and say what changed.
 - [ ] More git hook managers (S to M): a lint-staged entry, an edit to lefthook's YAML that keeps comments, and a local hook for `.pre-commit-config.yaml`.
-- [ ] More coding agents (S each): Windsurf and Devin (the Claude Code hook format), Aider (`read: [AGENTS.md]` and `lint-cmd`), each with the stop hook where the agent has a stop event.
-- [ ] The rest of the test ratchet: retries and raised timeouts that hide a flaky test, and fixed sleeps in tests.
+- [ ] More coding agents (S each): Windsurf and Devin (the Claude Code hook format), Aider (`read: [AGENTS.md]` and `lint-cmd`), each with the stop hook and the guard where the agent has those events.
 - [ ] `pawl fix --baseline` with a coding agent: fix findings the baseline still allows, check again and shrink the baseline.
-- [ ] Oxfmt as a formatter (M to L), with the policy's style written into its config.
-- [ ] `pawl lsp` (M to L): new findings as errors and baselined ones as hints in every editor, from one long-running process.
-- [ ] Decide whether `pawl check` picks `--format github` on its own under GitHub Actions, as it picks `agent` for coding agents.
+
+## Deferred
+
+- Approved and retired AI models in the policy (M): the catalog of retired model IDs needs updating every release; worth it once a policy package asks for it.
+- Oxfmt as a formatter (M to L), with the policy's style written into its config.
+- `pawl lsp` (M to L): new findings as errors and baselined ones as hints in every editor, from one long-running process.
 
 ## Closing the release
 

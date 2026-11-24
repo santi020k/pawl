@@ -1,6 +1,16 @@
+// cspell:ignore Asuspicious Aformat Aengine Aout Abiome
 import { describe, expect, it } from 'vitest'
-import { codeFrame, formatAgent, formatEditor, formatPretty, type RichOptions } from '../src/check/output.ts'
+import { formatGithub, formatSarif } from '../src/check/ci-output.ts'
+import {
+  codeFrame,
+  formatAgent,
+  format as formatAs,
+  formatEditor,
+  formatPretty,
+  type RichOptions
+} from '../src/check/output.ts'
 import { type CheckResult, exitCode } from '../src/check/result.ts'
+import { workspaceBase } from '../src/cli/commands/check.ts'
 import { type Finding } from '../src/types.ts'
 import { createStyle, stripAnsi, symbols } from '../src/utils/terminal.ts'
 
@@ -189,6 +199,153 @@ describe('editor output', () => {
       'src/a.ts:3:7: warning: First line. Second line. [biome:suspicious/noExplicitAny]',
       'src/a.ts:3:7: warning: Unexpected any. [biome:suspicious/noExplicitAny]'
     ])
+  })
+})
+
+describe('GitHub annotations', () => {
+  it('puts each finding on its line, with its rule as the title and its fix under the message', () => {
+    expect(formatGithub(result([any, format])).split('\n')).toEqual([
+      '::warning file=src/a.ts,line=3,col=7,title=biome%3Asuspicious/noExplicitAny::Unexpected any.%0AUse a specific type, or unknown and narrow it.',
+      '::error file=src/a.ts,line=1,col=1,title=biome%3Aformat::File is not formatted.%0ARun "pawl fix".'
+    ])
+    expect(formatGithub(result([]))).toBe('')
+  })
+
+  it('escapes what would end a value or the message, and names files from the root of the repository', () => {
+    const odd: Finding = { ...any, file: 'a,b%.ts', line: 0, column: 0, message: '100% sure:\n  not any' }
+
+    expect(formatGithub(result([odd]), { base: 'packages/web/' })).toBe(
+      '::warning file=packages/web/a%2Cb%25.ts,line=1,col=1,title=biome%3Asuspicious/noExplicitAny::100%25 sure: not any%0AUse a specific type, or unknown and narrow it.'
+    )
+    expect(
+      formatGithub(result([], { setup: [{ code: 'engine-failed', message: 'Biome failed:\r\nout of memory' }] }))
+    ).toBe('::error title=pawl/setup%3Aengine-failed::Biome failed:%0D%0Aout of memory')
+  })
+
+  it('shows setup problems and the warning limit on the run, as errors when CI fails on them', () => {
+    const drifted = result([any, any], {
+      setup: [{ code: 'biome-config-stale', message: 'biome.json is out of date.', fix: 'Run "pawl sync".' }],
+      maxWarnings: 1
+    })
+    const lines = formatGithub(drifted).split('\n')
+
+    expect(lines.slice(0, 2)).toEqual([
+      '::warning title=pawl/setup%3Abiome-config-stale::biome.json is out of date.%0ARun "pawl sync".',
+      '::error title=pawl/max-warnings::The limit is 1 warning, so the warnings fail the check.'
+    ])
+    expect(formatGithub(drifted, { ci: true }).split('\n')[0]).toMatch(
+      /^::error title=pawl\/setup%3Abiome-config-stale::/
+    )
+  })
+
+  it('folds the annotations into a group and follows them with the plain report for the log', () => {
+    const text = formatAs(result([format]), 'github')
+
+    expect(text.startsWith('::group::Annotations\n::error file=src/a.ts,')).toBe(true)
+    expect(text).toContain('\n::endgroup::\n')
+    expect(text).toContain(formatPretty(result([format])))
+    expect(formatAs(result([]), 'github')).toBe(formatPretty(result([])))
+  })
+})
+
+describe('SARIF', () => {
+  const parse = (text: string) => JSON.parse(text)
+
+  it('reports each new finding as a result of the rule that found it, from the root of the repository', () => {
+    const sarif = parse(formatSarif(result([any, format, { ...any, line: 9 }]), { base: 'apps/web' }))
+    const [run] = sarif.runs
+
+    expect(sarif).toMatchObject({ version: '2.1.0', $schema: 'https://json.schemastore.org/sarif-2.1.0.json' })
+    expect(run.tool.driver).toMatchObject({ name: 'pawl', informationUri: 'https://pawl.santi020k.com' })
+    expect(run.tool.driver.rules).toEqual([
+      {
+        id: 'biome:suspicious/noExplicitAny',
+        shortDescription: { text: 'No explicit any.' },
+        help: { text: 'Use a specific type, or unknown and narrow it.' },
+        helpUri: 'https://pawl.santi020k.com/reference/rules/',
+        properties: { tags: ['typescript', 'guardrail'] }
+      },
+      {
+        id: 'biome:format',
+        shortDescription: { text: 'The file is not formatted to the standard.' },
+        help: { text: 'Run "pawl fix".' },
+        helpUri: 'https://pawl.santi020k.com/reference/rules/',
+        properties: { tags: ['pawl'] }
+      }
+    ])
+    expect(run.results.map((each: { ruleIndex: number }) => each.ruleIndex)).toEqual([0, 1, 0])
+    expect(run.results[0]).toEqual({
+      ruleId: 'biome:suspicious/noExplicitAny',
+      ruleIndex: 0,
+      level: 'warning',
+      message: { text: 'Unexpected any. Use a specific type, or unknown and narrow it.' },
+      locations: [
+        {
+          physicalLocation: {
+            artifactLocation: { uri: 'apps/web/src/a.ts', uriBaseId: '%SRCROOT%' },
+            region: { startLine: 3, startColumn: 7 }
+          }
+        }
+      ]
+    })
+    expect(run.results[1].level).toBe('error')
+    expect(run.invocations).toEqual([{ executionSuccessful: true }])
+  })
+
+  it('names an engine rule outside the catalog by itself, and keeps what the baseline allowed', () => {
+    const own: Finding = {
+      ...any,
+      rule: 'eslint:no-restricted-syntax',
+      engine: 'eslint',
+      engineRule: 'no-restricted-syntax',
+      overBaseline: { allowed: 1, found: 2 }
+    }
+    const [run] = parse(formatSarif(result([own]))).runs
+
+    expect(run.tool.driver.rules).toEqual([
+      { id: 'eslint:no-restricted-syntax', shortDescription: { text: 'eslint:no-restricted-syntax' } }
+    ])
+    expect(run.results[0].properties).toEqual({ overBaseline: { allowed: 1, found: 2 } })
+    expect(run.results[0].message.text).toBe('Unexpected any.')
+  })
+
+  it('reports setup problems and the warning limit as notifications, and a check that did not complete', () => {
+    const blocked = result([any, any], {
+      setup: [{ code: 'biome-missing', message: 'Biome is not installed.', fix: 'Install @biomejs/biome.' }],
+      maxWarnings: 0
+    })
+    const [run] = parse(formatSarif(blocked)).runs
+
+    expect(run.invocations).toEqual([
+      {
+        executionSuccessful: false,
+        toolExecutionNotifications: [
+          {
+            level: 'error',
+            message: { text: 'Biome is not installed. Install @biomejs/biome.' },
+            descriptor: { id: 'pawl/setup:biome-missing' }
+          },
+          {
+            level: 'error',
+            message: { text: 'The limit is 0 warnings, so the warnings fail the check.' },
+            descriptor: { id: 'pawl/max-warnings' }
+          }
+        ]
+      }
+    ])
+    expect(parse(formatSarif(result([]))).runs[0].results).toEqual([])
+    expect(formatAs(result([]), 'sarif')).toBe(formatSarif(result([])))
+  })
+})
+
+describe('the folder pawl runs in, under GitHub Actions', () => {
+  it('is the path from the checked-out repository, and empty at its root or outside it', () => {
+    const actions = { GITHUB_WORKSPACE: '/work/repo' }
+
+    expect(workspaceBase('/work/repo/packages/web', actions)).toBe('packages/web')
+    expect(workspaceBase('/work/repo', actions)).toBe('')
+    expect(workspaceBase('/elsewhere', actions)).toBe('')
+    expect(workspaceBase('/work/repo', {})).toBe('')
   })
 })
 

@@ -327,6 +327,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(workflow).toContain('pnpm install --frozen-lockfile')
     // Every action is pinned to a commit, and the doctor report is kept even when the check fails.
     expect(workflow.match(/uses: \S+/g)?.every(line => /@[0-9a-f]{40}$/.test(line))).toBe(true)
+    expect(workflow).toContain('run: npx --no pawl check --ci --format github\n')
     expect(workflow).toContain('run: npx --no pawl doctor --format json > pawl-doctor.json')
     expect(workflow).toContain('path: pawl-doctor.json')
     expect(workflow.match(/if: always\(\)/g)).toHaveLength(2)
@@ -717,7 +718,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'fix', '--format', 'nope')).toEqual({
         code: 2,
         stdout: '',
-        stderr: 'pawl: Unknown format "nope". Use pretty, agent, editor or json.\n'
+        stderr: 'pawl: Unknown format "nope". Use pretty, agent, editor, github, sarif or json.\n'
       })
       expect(run(root, 'fix', '--max-warnings', 'none').code).toBe(2)
       expect(readFileSync(join(root, 'src/a.js'), 'utf8')).toBe(unformatted)

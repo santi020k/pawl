@@ -58,7 +58,7 @@ A pull request that touches thousands of files is checked too. When the list is 
 
 ### GitHub Actions
 
-`init --workflow` writes `.github/workflows/pawl.yml`. It runs the check, then `pawl doctor --format json` and uploads its report as the `pawl-doctor` artifact, so the tool versions and any drift are on record even when the check fails. Every action is pinned to a commit. For an npm project it looks like this:
+`init --workflow` writes `.github/workflows/pawl.yml`. It runs the check with [annotations](#findings-on-the-pull-request), then `pawl doctor --format json` and uploads its report as the `pawl-doctor` artifact, so the tool versions and any drift are on record even when the check fails. Every action is pinned to a commit. For an npm project it looks like this:
 
 ```yaml title=".github/workflows/pawl.yml"
 name: pawl
@@ -80,7 +80,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx --no pawl check --ci
+      - run: npx --no pawl check --ci --format github
       - name: Check the setup and the tool versions
         if: always()
         run: npx --no pawl doctor --format json > pawl-doctor.json
@@ -95,7 +95,42 @@ jobs:
 
 The doctor step fails the job when it finds a problem, such as a Biome other than the pinned one or a tool older than pawl supports.
 
-For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for Bun it adds `oven-sh/setup-bun`. If the workflow file already exists, `init` leaves it alone.
+For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for Bun it adds `oven-sh/setup-bun`. If the workflow file already exists, `init` leaves it alone. To get the annotations in a workflow written by an earlier version, add `--format github` to its check.
+
+### Findings on the pull request
+
+```sh
+pawl check --ci --format github
+```
+
+`--format github` prints a GitHub Actions annotation for each new finding, with its file, line, rule and fix, so it shows on that line in the pull request's changed files. Setup problems and the warning limit show on the run. The annotations sit in a group the log folds away, and the plain report follows, so the log reads as it always did. GitHub turns at most 10 errors and 10 warnings of a step into annotations; the log keeps every finding. Findings the baseline allows get none.
+
+When pawl runs in a folder below the root of the repository, the annotations name files from the root, as GitHub reads them, using the `GITHUB_WORKSPACE` folder the job checked out.
+
+### Code scanning with SARIF
+
+```sh
+pawl check --ci --format sarif > pawl.sarif
+```
+
+`--format sarif` prints the new findings as [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html), the format GitHub code scanning and other code-scanning tools read. Each finding is a result with its rule, level and location, and each rule from pawl's catalog carries its summary and how to fix it. Setup problems are notifications of the run, and a run that could not complete says so. Upload the file even when the check fails, since it exits with 1 whenever it finds a new error:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+
+steps:
+  # ...checkout, setup and install as above
+  - run: npx --no pawl check --ci --format sarif > pawl.sarif
+  - uses: github/codeql-action/upload-sarif@v4
+    if: always()
+    with:
+      sarif_file: pawl.sarif
+      category: pawl
+```
+
+Pin the action to a commit, as the workflow `init` writes does. On GitHub, code scanning is free for public repositories; a private one needs GitHub Code Security. Annotations need neither.
 
 ## Before each commit
 

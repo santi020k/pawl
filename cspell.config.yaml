@@ -27,6 +27,7 @@ words:
   - detekt
   - distroless
   - Dockerfiles
+  - endgroup
   - errorformat
   - esbuild
   - extglob
@@ -82,6 +83,7 @@ words:
   - setext
   - Slidev
   - spinbutton
+  - SRCROOT
   - stylesheet
   - swiftformat
   - swiftlint

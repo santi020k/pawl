@@ -24,7 +24,13 @@ export const packagePatterns = (patterns: readonly string[], dir: string): strin
         if (folder === folders.length) suffixes = part === parts.length ? [] : [parts.slice(part).join('/')]
         else if (token === undefined || name === undefined) suffixes = []
         else if (token === '**') suffixes = [...visit(part + 1, folder), ...visit(part, folder + 1)]
-        else suffixes = matchesGlob(name, token) ? visit(part + 1, folder + 1) : []
+        else {
+          // Node's path glob reader does not recognize Biome's backslash-escaped brackets.
+          // Use single-character classes only for this comparison; emitted globs keep Biome escaping.
+          const nodePattern = token.replaceAll('\\[', '[[]').replaceAll('\\]', '[]]')
+
+          suffixes = matchesGlob(name, nodePattern) ? visit(part + 1, folder + 1) : []
+        }
 
         const result = [...new Set(suffixes)]
 

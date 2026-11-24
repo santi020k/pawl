@@ -61,6 +61,53 @@ describe('root policy scopes in mixed workspaces', () => {
   })
 
   it.each([
+    { files: ['apps/[web]/*.jsx'], allowed: ['[web]/view.jsx', '[web]/excluded.jsx'] },
+    { files: ['apps/\\[web\\]/*.jsx'], allowed: ['[web]/view.jsx', '[web]/excluded.jsx'] },
+    { files: ['apps/[web]/*.jsx', '!apps/[web]/excluded.jsx'], allowed: ['[web]/view.jsx'] },
+    { files: ['apps/*[web]/*.jsx'], allowed: ['[web]/view.jsx', '[web]/excluded.jsx', 'prefix[web]/view.jsx'] },
+    { files: ['apps/[web*]/*.jsx'], allowed: ['[web]/view.jsx', '[web]/excluded.jsx', '[web-two]/view.jsx'] },
+    {
+      files: ['apps/{[web],[web-two]}/*.jsx', '!apps/[web]/excluded.jsx'],
+      allowed: ['[web]/view.jsx', '[web-two]/view.jsx']
+    },
+    { files: ['apps/**/[web]/*.jsx'], allowed: ['[web]/view.jsx', '[web]/excluded.jsx'] }
+  ])('preserves literal brackets while projecting $files', async ({ files, allowed }) => {
+    const component = 'export const View = () => <div dangerouslySetInnerHTML={{ __html: "hello" }} />\n'
+    const folders = ['[web]', '[web-two]', 'prefix[web]', 'web', 'w']
+    const paths = [...folders.map(folder => `${folder}/view.jsx`), '[web]/excluded.jsx']
+    const root = project({
+      'package.json': { name: 'literal-scopes', private: true, workspaces: ['apps/*'] },
+      'pawl.config.json': {
+        engine: 'biome',
+        rules: { 'react/no-danger': 'error' },
+        overrides: [{ files, rules: { 'react/no-danger': 'off' } }]
+      },
+      ...Object.fromEntries(
+        folders.map(folder => [
+          `apps/${folder}/package.json`,
+          { name: `fixture-${folder}`, dependencies: { react: '^19.0.0' } }
+        ])
+      ),
+      ...Object.fromEntries(paths.map(path => [`apps/${path}`, component]))
+    })
+    link(root)
+    applyPlan(await planSync(root))
+    const result = await check({ root })
+    expect(result.setup).toEqual([])
+    expect(
+      result.findings
+        .filter(finding => finding.rule === 'react/no-danger')
+        .map(finding => finding.file)
+        .sort()
+    ).toEqual(
+      paths
+        .filter(path => !allowed.includes(path))
+        .map(path => `apps/${path}`)
+        .sort()
+    )
+  })
+
+  it.each([
     [
       'vue',
       '<script setup lang="ts">\nimport { Status } from "./types"\ndefineProps<{ status: Status }>()\n</script>\n<template>{{ Status.Active }}</template>\n'

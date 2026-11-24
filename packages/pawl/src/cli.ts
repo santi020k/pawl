@@ -10,6 +10,7 @@ import { runExplain } from './cli/commands/explain.ts'
 import { runInit } from './cli/commands/init.ts'
 import { runMigrate } from './cli/commands/migrate.ts'
 import { runSync } from './cli/commands/sync.ts'
+import { runUpgrade } from './cli/commands/upgrade.ts'
 import { out } from './cli/io.ts'
 import { CancelledError } from './cli/prompt.ts'
 import { VERSION } from './version.ts'
@@ -30,6 +31,7 @@ const COMMANDS: Readonly<Record<string, (invocation: Invocation) => Promise<numb
   check: ({ root, args, flags }) => runCheck(root, args, flags, false),
   fix: ({ root, args, flags }) => runCheck(root, args, flags, true),
   sync: ({ root, flags }) => runSync(root, flags),
+  upgrade: ({ root, flags }) => runUpgrade(root, flags),
   add: ({ root, args, flags }) => runAdd(root, args, flags),
   migrate: ({ root, flags }) => runMigrate(root, flags),
   baseline: ({ root }) => runBaseline(root),

@@ -1,7 +1,7 @@
 ---
 
 title: CLI
-description: "Every pawl command and option: init, check, fix, sync, add, migrate, baseline, explain and doctor, with their flags, the output for people, coding agents and editors, and exit codes."
+description: "Every pawl command and option: init, check, fix, sync, upgrade, add, migrate, baseline, explain and doctor, with their flags, the output for people, coding agents and editors, and exit codes."
 head: [{ tag: title, content: "CLI reference: every pawl command and option | pawl" }]
 ---
 
@@ -11,6 +11,7 @@ head: [{ tag: title, content: "CLI reference: every pawl command and option | pa
 | `pawl check [files]`  | Lint, check formatting and apply the ratchet                   |
 | `pawl fix [files]`    | Apply safe fixes and format                                    |
 | `pawl sync`           | Rewrite engine config files from the policy                    |
+| `pawl upgrade`        | Install the tool versions this pawl works with, then sync      |
 | `pawl add <pack...>`  | Switch on optional packs and install their ESLint plugins      |
 | `pawl migrate`        | Turn an existing ESLint config into a pawl policy, then set up |
 | `pawl baseline`       | Accept the current findings as the baseline                    |
@@ -90,6 +91,15 @@ In a terminal, when no option says what to set up, `init` asks: how to set up th
 
 `--format json` prints the whole report as one document: the project, the policy, the tools, each tool's installed version against the versions pawl works with, the packs the files call for, and the problems. See [Troubleshooting](/guide/troubleshooting/#pawl-doctor).
 
+## Options for upgrade
+
+| Option         | Meaning                                               |
+| -------------- | ----------------------------------------------------- |
+| `--dry-run`    | Show the tools it would install and change nothing    |
+| `--no-install` | Do not run the package manager; only sync the configs |
+
+`pawl upgrade` installs every tool that is installed and outside the versions this pawl works with, as `pawl doctor` reports them: Biome and Oxlint at the exact version pawl pins, and ESLint, Prettier, `typescript-eslint`, `oxlint-tsgolint` and the plugins of the packs the policy names at their newest version, which is inside every range pawl declares. It uses the project's package manager, and runs `pawl sync` once the new versions are in place. A tool that is not installed is left to `pawl add` or `pawl init`, and Node to you.
+
 ## Other options
 
 | Option            | Meaning             |
@@ -98,7 +108,7 @@ In a terminal, when no option says what to set up, `init` asks: how to set up th
 | `-h`, `--help`    | Show the help       |
 | `-v`, `--version` | Show the version    |
 
-`--dry-run` also works with `add`, `migrate` and `sync`, `--yes` with `migrate`, and `--no-install` with `add`.
+`--dry-run` also works with `add`, `migrate`, `sync` and `upgrade`, `--yes` with `migrate`, and `--no-install` with `add` and `upgrade`.
 
 ## Options for migrate
 

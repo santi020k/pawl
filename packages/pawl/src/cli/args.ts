@@ -27,6 +27,7 @@ const COMMAND_ROWS: readonly HelpRow[] = [
   row('check [files]', 'Lint, check formatting and apply the ratchet'),
   row('fix [files]', 'Apply safe fixes and format'),
   row('sync', 'Rewrite engine config files from the policy'),
+  row('upgrade', 'Install the tool versions this pawl works with, then sync'),
   row('add <pack...>', 'Switch on optional packs and install their ESLint plugins'),
   row('migrate', 'Turn an existing ESLint config into a pawl policy, then set up'),
   row('baseline', 'Accept the current findings as the baseline'),
@@ -67,7 +68,7 @@ const SECTIONS: readonly HelpSection[] = [
       row('--formatter <name>', 'The formatter: biome or prettier'),
       row('--packs <a,b>', 'Optional packs to switch on'),
       row('--yes', 'Accept the plan without asking (also for migrate)'),
-      row('--dry-run', 'Show the plan and change nothing (also for add, migrate and sync)'),
+      row('--dry-run', 'Show the plan and change nothing (also for add, migrate, sync and upgrade)'),
       row('--workflow', 'Add a GitHub Actions workflow'),
       row(
         '--agents',
@@ -79,7 +80,15 @@ const SECTIONS: readonly HelpSection[] = [
       row('--hooks', 'Add a pre-commit hook that checks changed files'),
       row('--no-baseline', 'Do not record existing findings; check keeps reporting them'),
       row('--no-editor', 'Skip editor settings and tasks'),
-      row('--no-install', 'Do not run the package manager (also for add)')
+      row('--no-install', 'Do not run the package manager (also for add and upgrade)')
+    ]
+  },
+  {
+    title: 'Options for upgrade',
+    commands: ['upgrade'],
+    rows: [
+      row('--dry-run', 'Show the tools it would install and change nothing'),
+      row('--no-install', 'Do not run the package manager; only sync the config files')
     ]
   },
   {
@@ -129,7 +138,8 @@ const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
   add: ['pawl add react', 'pawl add react unicorn --dry-run'],
   migrate: ['pawl migrate --dry-run', 'pawl migrate --extends @acme/pawl-policy'],
   explain: ['pawl explain no-console', 'pawl explain biome:suspicious/noDebugger'],
-  doctor: ['pawl doctor', 'pawl doctor --format json']
+  doctor: ['pawl doctor', 'pawl doctor --format json'],
+  upgrade: ['pawl upgrade --dry-run', 'pawl upgrade']
 }
 
 /** The names of the commands, as typed after `pawl`. */

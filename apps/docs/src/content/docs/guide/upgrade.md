@@ -17,7 +17,7 @@ Read the release's notes in the [changelog](/changelog/) first. Until 1.0, a min
 
    With pnpm it is `pnpm add -D`, with yarn `yarn add -D` and with Bun `bun add -d`.
 
-2. Run `pawl doctor`. A release can move the Biome version pawl pins, or the range it takes for ESLint, Oxlint, Prettier or a pack's plugin. The doctor names each tool that does not match and the version to install:
+2. Run `pawl upgrade`. It installs each tool that the new release no longer takes, Biome and Oxlint at the exact version pawl pins and the others at their newest, then runs `pawl sync`, so steps 2 and 3 below are one command. `pawl upgrade --dry-run` shows what it would install. To do it by hand instead, run `pawl doctor`. A release can move the Biome version pawl pins, or the range it takes for ESLint, Oxlint, Prettier or a pack's plugin. The doctor names each tool that does not match and the version to install:
 
    ```txt wrap
    Problem: @biomejs/biome 2.5.0 is not a version pawl works with (2.6.8). Install @biomejs/biome@2.6.8.

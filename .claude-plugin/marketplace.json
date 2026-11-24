@@ -1,0 +1,15 @@
+{
+  "name": "pawl",
+  "owner": {
+    "name": "Santiago Molina",
+    "url": "https://santi020k.com"
+  },
+  "plugins": [
+    {
+      "name": "pawl",
+      "source": "./plugins/pawl",
+      "description": "Check, fix, explain, and configure Pawl guardrails in your project."
+    }
+  ],
+  "description": "Pawl workflows for coding agents: setup, checks, fixes, and diagnosis."
+}

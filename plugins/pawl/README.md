@@ -1,0 +1,70 @@
+# Pawl agent plugin
+
+One shared skill for Codex and Claude Code: set up Pawl, check changed files, fix findings, explain rules, and diagnose the toolchain. The plugin uses the project's installed Pawl CLI. It adds no MCP server, dependency, or automatic hook.
+
+Requires a coding agent with shell access and a project with Node.js 22.18 or newer. Installing the plugin does not install Pawl or its engines in your project. Ask the agent to set up Pawl if it is not installed yet.
+
+## Install from a local checkout
+
+Use a checkout containing `plugins/pawl` and both marketplace files. These commands install into your agent's user configuration; run them only when you want to enable the plugin. Replace `/absolute/path/to/pawl` with the repository root, not this plugin directory.
+
+### Codex
+
+On Codex versions with the `plugin` CLI commands:
+
+```sh
+codex plugin marketplace add /absolute/path/to/pawl
+codex plugin add pawl@pawl
+```
+
+Restart or open a new session. In the desktop app, you can also find the Pawl marketplace in the Plugins Directory after registering it and restarting the app. If your CLI lacks `plugin`, update Codex or use the standalone skill below.
+
+Invoke `$pawl`, for example: “Use $pawl to check my changes and fix the findings.” The skill can also be selected automatically when your request concerns Pawl.
+
+### Claude Code
+
+```sh
+claude plugin marketplace add /absolute/path/to/pawl
+claude plugin install pawl@pawl
+```
+
+Open a new session and invoke `/pawl:pawl`, for example: “/pawl:pawl explain why my check fails.”
+
+For a single session without installing the marketplace:
+
+```sh
+claude --plugin-dir /absolute/path/to/pawl/plugins/pawl
+```
+
+### Standalone skill
+
+If you prefer a skill without a plugin, copy `skills/pawl` from this directory into your project's `.agents/skills/pawl` for Codex, or `.claude/skills/pawl` for Claude Code. Check for an existing skill before copying; do not overwrite it. Install either the standalone skill or the plugin to avoid duplicate discovery.
+
+## What the skill does
+
+- Uses the project's package manager and installed CLI.
+- Previews setup and migration before applying changes within your request.
+- Runs scoped checks, applies safe fixes, and checks again.
+- Treats exit code 2 as a setup failure, even if no findings were printed.
+- Preserves your policy and baseline instead of weakening them to make checks pass.
+
+For optional edit hooks and repository instructions, use Pawl's existing `init --agents` workflow. Installing this plugin does not enable that option or duplicate existing hooks. See the [coding agents guide](https://pawl.santi020k.com/guide/agents/).
+
+## Packaging and validation
+
+Public publication to the Claude and Codex stores is planned for the Pawl v1.0.0 launch. Pawl v0.5.0 includes local installation only. The [v1 plugin launch plan](../../CONTRIBUTING.md#plugin-stores-at-v1) tracks submission, approval and public installation verification.
+
+Both manifests load the same `skills/pawl/SKILL.md`; no build or generated copy is needed. This plugin is distributed from the repository, separately from the npm package. Its version starts at `0.1.0`; update both plugin manifests together when the plugin changes. The CLI keeps its own version and release process.
+
+From the repository root:
+
+```sh
+claude plugin validate ./plugins/pawl --strict
+claude plugin validate ./.claude-plugin/marketplace.json --strict
+```
+
+Also verify that Codex discovers the local marketplace and its shared skill before distributing changes. Installing from a GitHub marketplace or a public plugin directory requires publishing the repository changes or submitting the plugin first; local availability does not mean it has been published there.
+
+Format references: [OpenAI plugins](https://developers.openai.com/plugins/build/plugins), [Claude Code plugins](https://code.claude.com/docs/en/plugins/create).
+
+By [Santiago Molina](https://santi020k.com). MIT licensed.

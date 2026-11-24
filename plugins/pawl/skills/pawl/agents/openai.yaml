@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pawl"
+  short_description: "Check and fix code with Pawl guardrails"
+  default_prompt: "Use $pawl to check my changes and fix the findings."

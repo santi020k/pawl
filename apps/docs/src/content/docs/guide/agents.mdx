@@ -11,6 +11,14 @@ export const agentRun = sessions.find(session => session.id === 'agent')
 
 Pawl was built for code that an agent writes and a person reviews. Two things make that work: output the agent can act on, and a ratchet the agent cannot argue its way past.
 
+## Optional Codex and Claude Code plugin
+
+The [Pawl agent plugin](https://github.com/santi020k/pawl/tree/main/plugins/pawl) packages one shared skill for Codex and Claude Code. It guides setup and migration previews, scoped checks and fixes, rule explanations, and setup diagnosis using the project's installed CLI.
+
+The plugin is optional: the CLI and `init --agents` integrations work without it. It adds no automatic hooks or MCP server. Installing it does not install Pawl or its engines in your project. Use a checkout containing `plugins/pawl` and follow its README for local installation; public plugin directory availability is separate from the npm release.
+
+Once installed, invoke `$pawl` in Codex or `/pawl:pawl` in Claude Code. For example, ask it to check your changes and fix the findings. Keep automatic hooks opt-in through `init --agents`; installing the plugin alongside existing hooks does not add another copy.
+
 ## Output for agents
 
 ```sh

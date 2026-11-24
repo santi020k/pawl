@@ -55,6 +55,19 @@ Work for the next version can start before the current one is out: create its `r
 
 The workflow publishes only what is missing, so a failed run is fixed with "Re-run failed jobs" on that same run, which keeps the release commit. Do not merge anything else into `main` until the release run is green; the workflow refuses to release a later commit that carries new changesets. A published version or tag is never replaced: fix a bad release with a new version. To roll back, deprecate the version with `npm deprecate` and release a fix.
 
+### Plugin stores at v1
+
+Publish the Pawl agent plugin to the Claude and Codex stores as part of the Pawl v1.0.0 launch. The v0.5.0 release includes the shared skill, platform manifests and local marketplace installation; store submission and publication are deferred to v1.
+
+When preparing v1:
+
+- Validate both plugin manifests and test installation and the shared skill in both clients against the v1 CLI.
+- Prepare the store listings, icon, installation instructions and required submission metadata from the reviewed release artifacts. Keep both plugin manifests on the same plugin version; the plugin version is independent of the CLI version.
+- Recheck each store's current submission requirements and complete its submission and approval process as part of the launch. Record the submission status and any approval still pending in the release pull request.
+- Verify that both public listings are available and that users can install and use them. Add the verified listing links to the plugin README and coding agents guide. A submitted or approved listing is not proof that it is publicly available.
+
+Track this work in the v1 release pull request. Do not report store publication complete until both listings and installation flows have been verified. See [the plugin README](plugins/pawl/README.md) for the package and local validation commands.
+
 ### First release and setup
 
 npm trusted publishing cannot create a package, so a new package gets a placeholder first: version `0.0.0`, published by hand, with only a `package.json` (its name and `repository`) and a README that says to install a real version. Do this right before the release pull request merges, because npm drops a trusted publisher that has not published within 2 days of being added:

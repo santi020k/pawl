@@ -82,6 +82,7 @@ export const runInit = async (
     root,
     mode,
     migrated,
+    baseline: flags['no-baseline'] !== true,
     editor: flags['no-editor'] !== true,
     workflow: flags.workflow === true,
     agents: flags.agents === true,

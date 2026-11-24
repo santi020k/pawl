@@ -31,6 +31,8 @@ export type InitMode = 'auto' | 'keep' | 'biome'
 export interface InitOptions {
   root: string
   mode?: InitMode
+  /** Record existing findings after setup. On by default; false leaves every finding for check. */
+  baseline?: boolean
   /** Write editor settings. On by default. */
   editor?: boolean
   /** Add a GitHub Actions workflow. */
@@ -58,6 +60,8 @@ export interface InitOptions {
 
 export interface InitPlan extends SetupPlan {
   mode: InitMode
+  /** Whether setup should record existing findings. Existing baseline files are always preserved. */
+  baseline: boolean
   /** The linters that will run, the main one first. */
   engines: EngineName[]
   formatter: FormatterName
@@ -220,6 +224,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   const {
     root,
     mode = 'auto',
+    baseline = true,
     editor = true,
     workflow = false,
     agents = false,
@@ -243,6 +248,12 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     packs: [...new Set([...loaded.packs, ...named])]
   }
   const notes: string[] = []
+
+  if (existsSync(join(root, BASELINE_FILE)))
+    notes.push(`Existing ${BASELINE_FILE} is unchanged and still applies to checks.`)
+  else if (baseline) notes.push(`After setup, record existing findings in ${BASELINE_FILE}.`)
+  else notes.push('No baseline will be recorded. Existing findings remain visible to "pawl check".')
+
   const actions: (SetupAction | undefined)[] = [
     planPolicyFile(root, pinned, notes),
     ...planEngineConfigs(root, policy, detection, choice, notes, {
@@ -289,6 +300,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   return {
     detection,
     mode,
+    baseline,
     engines: [...(linter === 'eslint' ? [] : [linter]), ...(choice.eslint ? (['eslint'] as const) : [])],
     formatter,
     actions: actions.filter((action): action is SetupAction => action !== undefined),
@@ -318,10 +330,10 @@ export const formatWritten = async (root: string, paths: readonly string[]): Pro
 /**
  * Record the baseline so existing findings do not fail the first check.
  * Needs pawl installed in the project, because the engine configs point at it.
- * Returns the number of findings recorded, or undefined when a baseline already exists.
+ * Returns the number recorded, or undefined when disabled or a baseline already exists.
  */
 export const recordBaseline = async (root: string, plan: InitPlan): Promise<number | undefined> => {
-  if (existsSync(join(root, BASELINE_FILE))) return undefined
+  if (plan.baseline === false || existsSync(join(root, BASELINE_FILE))) return undefined
 
   const result = await check({ root, updateBaseline: true, policy: plan.policy })
   const failure = result.setup.find(issue => BLOCKING.includes(issue.code))

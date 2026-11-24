@@ -206,7 +206,7 @@ interface Levels {
 
 /**
  * The rule levels the policy carries over: the ones that differ from the standard. With a policy to
- * extend (`onto`), a level the old config had looser than that policy is not carried: it is listed.
+ * extend (`onto`), locked floors are retained and listed; unlocked source levels take precedence.
  */
 const compareLevels = (
   old: Side,
@@ -223,10 +223,10 @@ const compareLevels = (
   let same = 0
   /** Carry a level that differs, unless there is a policy to extend and the old level is looser than its level. */
   const keep = (rule: string, standardLevel: Level, kept: Level): void => {
-    if (onto) {
+    if (onto?.locked.includes(canonicalName(rule))) {
       const name = canonicalName(rule)
       // The floor of a locked rule, as pawl works it out when it merges the policies.
-      const floor = onto.locked.includes(name) ? (onto.rules[name] ?? defaultLevel(name, onto.strict)) : standardLevel
+      const floor = onto.rules[name] ?? defaultLevel(name, onto.strict)
 
       if (rank(kept) < rank(floor)) {
         policyKept.push({ rule, standard: floor, kept })
@@ -410,7 +410,16 @@ export const planMigrate = async ({
 }: MigrateOptions): Promise<MigratePlan> => {
   const source = findSource(root)
   const eslint = await loadEslint(root, source)
-  const scopes = await readMigrationScopes(source.path, source.legacy, eslint.core)
+  const policyPath = join(root, 'pawl.config.ts')
+  const base: PolicyInput = parent === undefined ? {} : { extends: parent }
+  const policyPackage = policyPackageOf(parent, policyPath)
+  const basePolicy = await resolvePolicy(base, policyPath)
+  const parentScoped = basePolicy.overrides.flatMap(override => [
+    ...Object.keys(override.rules),
+    ...Object.keys(override.options),
+    ...Object.keys(override.biomeOptions)
+  ])
+  const scopes = await readMigrationScopes(source.path, source.legacy, eslint.core, parentScoped)
   const detection = detect(root)
   const context: RuleContext = {
     typescript: detection.typescript,
@@ -431,15 +440,7 @@ export const planMigrate = async ({
   if (old.samples.length === 0) throw new Error(`${source.name} does not apply to any file pawl could find.`)
 
   const notes: string[] = []
-  const policyPath = join(root, 'pawl.config.ts')
-  const base: PolicyInput = parent === undefined ? {} : { extends: parent }
-  const policyPackage = policyPackageOf(parent, policyPath)
-  const basePolicy = await resolvePolicy(base, policyPath)
 
-  if (scopes.names.size > 0 && basePolicy.overrides.length > 0)
-    throw new Error(
-      'Cannot preserve ESLint file scopes while extending a policy with file overrides. Migrate those scopes manually; no files were written.'
-    )
   const migration: Migration = {
     root,
     detection,
@@ -526,6 +527,12 @@ export const planMigrate = async ({
       if (change && scopes.names.has(change.rule)) changed.splice(index, 1)
     }
 
+    // Sampled comparisons do not describe ordered scoped replay. Recompute retained floors below.
+    for (let index = policyKept.length - 1; index >= 0; index--) {
+      const change = policyKept[index]
+      if (change && scopes.names.has(change.rule)) policyKept.splice(index, 1)
+    }
+
     policy.rules = globalRules
     policy.options = globalOptions
     // ESLint keeps earlier options when a later rule only changes severity. An empty option list
@@ -550,13 +557,15 @@ export const planMigrate = async ({
       }
     }
 
+    // Replay explicit source scopes after inherited scopes. Only locked rules are floors:
+    // unlocked parent exceptions remain wherever the source does not name the rule.
     policy.overrides = scopes.overrides.map(override => ({
       ...override,
       rules: Object.fromEntries(
         Object.entries(override.rules ?? {}).map(([name, level]) => {
           const floor = globalRules[name] ?? 'off'
 
-          if (parent !== undefined && rank(level) < rank(floor)) {
+          if (basePolicy.locked.includes(name) && rank(level) < rank(floor)) {
             if (!policyKept.some(change => change.rule === name && change.kept === level))
               policyKept.push({ rule: name, standard: floor, kept: level })
 

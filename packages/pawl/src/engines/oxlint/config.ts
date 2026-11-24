@@ -4,9 +4,16 @@ import { IMPORTS_RULE, importRestrictions } from '../../catalog/guards.ts'
 import { getRule, isGated, isLanguageRule, scopedRule, type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, oxlintEnv } from '../../catalog/runtimes.ts'
 import { effectiveRules, overrideRules, type RuleContext } from '../../policy/levels.ts'
+import { testRunnerFiles } from '../../policy/test-runners.ts'
 import { OXLINT_CONFIG_FILE } from '../../project/config-files.ts'
 import { type Detection, packageTechnologies, technologies as repoTechnologies } from '../../project/detect.ts'
-import { ALWAYS_IGNORED, configIgnores, toEngineGlob } from '../../project/ignores.ts'
+import {
+  ALWAYS_IGNORED,
+  configIgnores,
+  literalBrackets,
+  orderedEngineScopes,
+  toEngineGlob
+} from '../../project/ignores.ts'
 import { type Level, type Policy, type Runtime, type SetupIssue } from '../../types.ts'
 import { ancestors } from '../../utils/fs.ts'
 import { isRecord, readJson, readJsonc, sameJson, sortKeys } from '../../utils/json.ts'
@@ -99,19 +106,23 @@ export const oxlintContextFor = (
   detection: Detection,
   root?: string,
   adding: readonly string[] = []
-): OxlintContext => ({
-  typescript: true,
-  technologies: repoTechnologies(detection),
-  packages: packageTechnologies(detection),
-  dependencies: detection.dependencies,
-  runtimes: detection.runtimes,
-  ignores: detection.ignores,
-  typeAware:
-    adding.includes(TYPE_AWARE_PACKAGE) ||
-    (root === undefined
-      ? detection.dependencies.includes(TYPE_AWARE_PACKAGE)
-      : rootDeclaresTsgolint(root) || tsgolintInstalled(root))
-})
+): OxlintContext => {
+  const packages = packageTechnologies(detection)
+
+  return {
+    typescript: true,
+    technologies: repoTechnologies(detection),
+    packages: Object.fromEntries(detection.workspace.packages.map(dir => [dir, packages[dir] ?? []])),
+    dependencies: detection.dependencies,
+    runtimes: detection.runtimes,
+    ignores: detection.ignores,
+    typeAware:
+      adding.includes(TYPE_AWARE_PACKAGE) ||
+      (root === undefined
+        ? detection.dependencies.includes(TYPE_AWARE_PACKAGE)
+        : rootDeclaresTsgolint(root) || tsgolintInstalled(root))
+  }
+}
 
 /** Oxlint's name for a rule of the standard, or undefined when Oxlint does not have it. */
 const oxlintRule = (name: string, typeAware = false): string | undefined =>
@@ -211,9 +222,19 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
     )
     const scoped = toRules(levels, baseOptions, used)
     const extra = [...used].filter(plugin => !plugins.has(plugin)).sort()
+    const excludeFiles = Object.keys(context?.packages ?? {})
+      .filter(candidate => candidate.startsWith(`${dir}/`))
+      .map(candidate => `${literalBrackets(candidate)}/**`)
 
     return Object.keys(scoped).length > 0
-      ? [{ files: [`${dir}/**`], ...(extra.length > 0 ? { plugins: extra } : {}), rules: sortKeys(scoped) }]
+      ? [
+          {
+            files: [`${literalBrackets(dir)}/**`],
+            ...(excludeFiles.length > 0 ? { excludeFiles } : {}),
+            ...(extra.length > 0 ? { plugins: extra } : {}),
+            rules: sortKeys(scoped)
+          }
+        ]
       : []
   })
   // The policy's own overrides may name a rule for any technology in the repo.
@@ -224,14 +245,29 @@ export const oxlintConfig = (policy: Policy, context?: OxlintContext): Record<st
     )
 
     return Object.keys(overridden).length > 0
-      ? [{ files: override.files.map(toEngineGlob), rules: sortKeys(overridden) }]
+      ? orderedEngineScopes(override.files).map(({ files, excluded }) => ({
+          files,
+          ...(excluded.length > 0 ? { excludeFiles: excluded } : {}),
+          rules: sortKeys(overridden)
+        }))
       : []
+  })
+  const runnerRules = new Set([
+    ...effectiveRules(policy).keys(),
+    ...policy.overrides.flatMap(override => [...Object.keys(override.rules), ...Object.keys(override.options)])
+  ])
+  const runnerOverrides = [...runnerRules].flatMap(name => {
+    const files = testRunnerFiles(policy, name)
+    const rule = oxlintRule(name, context?.typeAware)
+
+    return files && rule ? [{ files: ['**/*'], excludeFiles: files.map(toEngineGlob), rules: { [rule]: 'off' } }] : []
   })
   const overrides = [
     ...standardOverrides(everyTechnology(context)),
     ...(Object.keys(typeAware).length > 0 ? [{ files: TYPESCRIPT_FILES, rules: sortKeys(typeAware) }] : []),
     ...forPackages,
-    ...own
+    ...own,
+    ...runnerOverrides
   ]
   const runtimes = context?.runtimes ?? ['node', 'browser']
   const globals = extraGlobals(runtimes)

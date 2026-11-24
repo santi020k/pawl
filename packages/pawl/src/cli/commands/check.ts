@@ -17,6 +17,7 @@ export const runCheck = async (root: string, files: string[], flags: Flags, fix:
   const result = await check({
     root,
     fix,
+    eslintCache: flags['eslint-cache'] === true,
     changed: flags.changed === true,
     ...(files.length > 0 ? { files } : {}),
     ...(since === undefined ? {} : { since }),

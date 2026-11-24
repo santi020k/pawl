@@ -75,7 +75,7 @@ export const importVia = async (root: string, others: readonly string[], specifi
   for (const other of others) {
     const found = await importFromProject(other, specifier)
 
-    if (found.module) return found
+    if (found.module || found.error) return found
   }
 
   return loaded

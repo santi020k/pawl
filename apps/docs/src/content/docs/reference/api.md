@@ -32,7 +32,7 @@ export default eslint({ root: import.meta.dirname })
 | Area      | Exports                                                                                                                                              |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Check     | `check`, `exitCode`, `EXIT_OK`, `EXIT_FINDINGS`, `EXIT_SETUP`                                                                                        |
-| Project   | `loadProject`, `toolset`, `findProjectRoot`                                                                                                          |
+| Project   | `loadProject`, `toolset`, `findProjectRoot`, `analyzeLintTraversal`, `analyzeTaskReachability`                                                       |
 | Setup     | `planInit`, `planAdd`, `planSync`, `applyPlan`, `recordBaseline`, `formatWritten`                                                                    |
 | Migrate   | `planMigrate`, `describeMigration`, `MIGRATION_REPORT`                                                                                               |
 | Detect    | `detect`, `describe`, `technologies`, `allTechnologies`, `packageTechnologies`, `needsEslint`, `filePacks`, `DETECTABLE`                             |
@@ -41,7 +41,7 @@ export default eslint({ root: import.meta.dirname })
 | Packs     | `PACKS`, `getPack`, `suggestedPacks`                                                                                                                 |
 | Ignores   | `ALWAYS_IGNORED`, `DEFAULT_IGNORES`                                                                                                                  |
 | Baseline  | `createBaseline`, `readBaseline`, `applyBaseline`, `scanSuppressions`, `BASELINE_FILE`                                                               |
-| Output    | `format`, `formatPretty`, `formatAgent`, `formatJson`                                                                                                |
+| Output    | `format`, `formatPretty`, `formatAgent`, `formatJson`, `CHECK_REPORT_VERSION`, `readCheckReport`                                                     |
 | Biome     | `biomeConfig`, `biomeProjectConfig`, `biomePackageConfig`, `biomeTechConfig`, `biomeTechPreset`, `checkBiomeConfig`, `BIOME_PRESET`, `BIOME_VERSION` |
 | ESLint    | `eslint`, `eslintPlan`, `eslintPlanFor`                                                                                                              |
 | Oxlint    | `oxlintConfig`, `oxlintCovers`, `checkOxlintConfig`, `OXLINT_RULES`, `OXLINT_VERSION`                                                                |
@@ -62,7 +62,7 @@ applyPlan(plan)
 
 ## Types
 
-`Policy`, `PolicyInput`, `StyleOptions`, `Level`, `Finding`, `SetupIssue`, `LockViolation`, `EngineChoice`, `EngineName`, `FormatterChoice`, `FormatterName`, `CheckOptions`, `CheckResult`, `Project`, `Baseline`, `BaselineResult`, `Suppression`, `Detection`, `DetectOptions`, `Detectable`, `FileFormat`, `Framework`, `Runtime`, `Override`, `OverrideInput`, `DoctorReport`, `Compatibility`, `JsonSchema`, `OxlintContext`, `PackageManager`, `WorkspaceTool`, `SetupAction`, `SetupPlan`, `SyncPlan`, `InitOptions`, `InitPlan`, `InitMode`, `MigrateOptions`, `MigratePlan`, `RuleChange`, `OutputFormat`, `Pack`, `RuleDef`, `RuleTag`, `RuleContext`, `Technology`, `Toolset`, `BiomeContext`, `EslintOptions`, `EslintPlan`, `EslintPlanOptions`, `FlatConfig`, `PackageScope`, `Language`, `LanguageInfo`, `LanguageProject`, `LanguageEngine`, `LanguagesInput`, `LanguageTools`, `LanguageCheckOptions`, `LanguageCheckResult`.
+`Policy`, `PolicyInput`, `TestRunner`, `StyleOptions`, `Level`, `Finding`, `SetupIssue`, `LockViolation`, `EngineChoice`, `EngineName`, `FormatterChoice`, `FormatterName`, `CheckOptions`, `CheckResult`, `CheckReport`, `CheckReportRead`, `ReadCheckReportOptions`, `Project`, `Baseline`, `BaselineResult`, `Suppression`, `Detection`, `DetectOptions`, `Detectable`, `FileFormat`, `Framework`, `Runtime`, `Override`, `OverrideInput`, `DoctorReport`, `Compatibility`, `JsonSchema`, `OxlintContext`, `PackageManager`, `WorkspaceTool`, `SetupAction`, `SetupPlan`, `SyncPlan`, `InitOptions`, `InitPlan`, `InitMode`, `MigrateOptions`, `MigratePlan`, `RuleChange`, `OutputFormat`, `Pack`, `RuleDef`, `RuleTag`, `RuleContext`, `Technology`, `Toolset`, `BiomeContext`, `EslintIntegrationOptions`, `EslintOptions`, `EslintPlan`, `EslintPlanOptions`, `FlatConfig`, `PackageScope`, `Language`, `LanguageInfo`, `LanguageProject`, `LanguageEngine`, `LanguagesInput`, `LanguageTools`, `LanguageCheckOptions`, `LanguageCheckResult`.
 
 ## Biome presets
 
@@ -75,3 +75,19 @@ A project's `biome.json` extends the standard through the package's Biome entry 
 The policy's JSON schema is `@santi020k/pawl/schema.json`.
 
 Technology presets live under `@santi020k/pawl/biome/<technology>`: `react`, `next`, `react-native`, `qwik`, `solid`, `vue`, `svelte`, `astro`, `tailwind`, `tanstack-query`, `drizzle`, `playwright` and `turbo`. See [Monorepos](/guide/monorepos/) for how `init` uses them.
+
+## Integration options
+
+`eslint(options)` and `eslintPlanFor(root, policy?, integration?)` accept public
+plugin roots, explicit plugin bindings, shared base configuration, untyped processor
+files and pack scopes. See [Shared ESLint configs](/guide/shared-eslint/) for the
+composition order and locked-floor guarantees.
+
+`planInit({ root, baseline: false })` omits automatic baseline creation.
+`check({ root, eslintCache: true })` opts into the declared deterministic cache
+contract; see [ESLint caching](/guide/eslint-cache/).
+
+`formatJson` adds `reportVersion: 1` without moving existing result fields. Use
+`readCheckReport(stdout, status, { ci })` at a subprocess boundary and treat
+invalid output or operational failure as failure. See the
+[JSON report contract](/guide/report-contract/).

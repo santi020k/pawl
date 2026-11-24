@@ -166,7 +166,11 @@ export const RULES: readonly RuleDef[] = [
   rule('core', 'no-shadow', 'suspicious/noShadow', 'off', 'No shadowing a variable from an outer scope.', {
     strict: 'warn'
   }),
-  rule('core', 'no-await-in-loop', 'performance/noAwaitInLoops', 'off', 'No await inside loops.', { strict: 'warn' }),
+  rule('core', 'no-await-in-loop', 'performance/noAwaitInLoops', 'off', 'No await inside loops.', {
+    strict: 'warn',
+    advice:
+      'Parallelize only independent operations. Keep browser interactions, ordered writes, polling and dependent pagination serial; document a narrow policy exception and test the required order.'
+  }),
   rule('core', 'require-await', 'suspicious/useAwait', 'off', 'No async functions without await.', {
     strict: 'warn',
     aliases: ['@typescript-eslint/require-await']

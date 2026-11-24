@@ -331,7 +331,11 @@ describe('migrating a project that lints through a shared config', { timeout: 60
     expect(Object.keys(plan.policy.rules ?? {}).filter(name => name.startsWith('unicorn/'))).toEqual(['unicorn/rule-3'])
     expect(plan.same).toBeGreaterThanOrEqual(23)
     // Once the shared config is gone the project has to bring the plugin itself.
-    expect(plan.notEnforced).toContainEqual({ rule: 'The Unicorn pack', needs: 'eslint-plugin-unicorn' })
+    expect(plan.notEnforced).toContainEqual({
+      rule: 'The Unicorn pack',
+      needs: 'eslint-plugin-unicorn',
+      required: true
+    })
 
     const init = await planInit({ root, packs: plan.packs })
 
@@ -409,7 +413,9 @@ describe('migrating onto a company policy', { timeout: 60_000 }, () => {
     // Looser than the policy, so the policy's level stays, and the report says so.
     expect(plan.policy.rules).not.toHaveProperty('no-var')
     expect(plan.policyKept).toContainEqual({ rule: 'no-var', standard: 'error', kept: 'off' })
-    expect(plan.changed.filter(change => RANK[change.kept] < RANK[change.standard])).toEqual([])
+    expect(plan.changed.filter(change => RANK[change.kept] < RANK[change.standard])).toEqual([
+      { rule: 'unicorn/rule-3', standard: 'error', kept: 'warn' }
+    ])
     expect(describeMigration(plan).join('\n')).toContain("looser in the old config, now at the policy's level")
 
     applyPlan(plan)

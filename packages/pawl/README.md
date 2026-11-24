@@ -43,7 +43,7 @@ npx @santi020k/pawl migrate
 - `eslint.config.js` as one line, `export default eslint({ root: import.meta.dirname })`. The old file is kept as `eslint.config.before-pawl.js`.
 - `.pawl/migration.md`, a full account: what was kept, what the formatter replaces, what the standard adds.
 
-Then it runs `init`, so the tools are installed and the baseline is recorded. `--dry-run` shows the plan and changes nothing. `--keep-config` leaves the ESLint config file alone.
+Then it runs `init`, so the tools are installed and the baseline is recorded unless `--no-baseline` is supplied. `--dry-run` shows the plan and changes nothing. `--keep-config` leaves the ESLint config file alone.
 
 Flat-config file scopes keep their order and apply to future files, including scopes imported from shared configs. Migration stops before writing when a scope cannot be preserved, such as local ignores, AND-pattern arrays or scoped formatting rules. The report lists the preserved scopes for review. See the [migration guide](https://pawl.santi020k.com/guide/migrate/) for the supported forms and limitations.
 
@@ -94,7 +94,7 @@ One JSON object per line, errors first, and nothing at all when there is nothing
 }
 ```
 
-`--format json` prints the whole result as one document.
+`--format json` prints the whole result with `reportVersion: 1`. The public `readCheckReport` helper validates captured output against the actual process status; malformed output and setup failures never count as clean checks.
 
 ## The policy
 
@@ -338,3 +338,23 @@ Everything the CLI does is exported: `check`, `doctor`, `planInit`, `applyPlan`,
 ## License
 
 MIT
+
+## Strict adoption and integrations
+
+Use `pawl init --yes --no-baseline` to adopt without accepting existing findings.
+Existing baseline files remain unchanged and still apply; review them separately.
+`pawl sync --dry-run` previews configuration and ownership metadata writes.
+
+Pawl tracks newly generated Biome override ownership and backs up eligible updates.
+Unknown or edited scopes are preserved until manually reconciled. Import-sort
+conflicts between Biome and ESLint block fixes before writing.
+
+Public ESLint helpers accept plugin roots, explicit plugin namespace bindings,
+shared base configuration and processor-safe integration options. The policy's
+`testRunners` field scopes runner-specific checks without narrowing universal
+focused/skipped-test rules or locked floors.
+
+`pawl check --eslint-cache` is an explicit opt-in requiring a deterministic-input
+declaration; full input hashing can cost more than the work it saves. See the
+[adoption and integration guides](https://pawl.santi020k.com/guide/strict-adoption/)
+for contracts, limitations and examples.

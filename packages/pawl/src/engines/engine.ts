@@ -10,6 +10,8 @@ import { readJson } from '../utils/json.ts'
 /** What every engine run takes. */
 export interface RunOptions {
   root: string
+  /** Use the explicitly declared deterministic ESLint cache contract. Never used while fixing. */
+  eslintCache?: boolean
   /** Files to check, relative to the root. Omit to check the whole project. */
   files?: readonly string[]
   /** Apply safe fixes and formatting. */
@@ -164,10 +166,17 @@ export const runProgram = (
         clearTimeout(timer)
         notStarted(cause)
       })
-      child.on('close', code => {
+      child.on('close', (code, signal) => {
         clearTimeout(timer)
+
+        if (code === null) {
+          reject(new EngineError(`The process was terminated${signal ? ` by ${signal}` : ''}.`, { command }))
+
+          return
+        }
+
         resolvePromise({
-          code: code ?? 1,
+          code,
           stdout: Buffer.concat(stdout).toString('utf8'),
           stderr: Buffer.concat(stderr).toString('utf8'),
           command

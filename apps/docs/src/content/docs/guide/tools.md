@@ -7,6 +7,8 @@ head: [{ tag: title, content: "Choosing tools: Biome, Oxlint, ESLint or Prettier
 
 Pawl has no dependencies. Every tool is an optional peer, and `init` installs the ones you pick.
 
+The choices below cover JavaScript and TypeScript. For Rust, Swift and Kotlin, [enable native-language checks](/guide/languages/) explicitly: those languages use their own installed tools and project configuration, with Pawl's shared policy levels, baseline and report.
+
 | Job    | Choices                 | Default on auto |
 | ------ | ----------------------- | --------------- |
 | Lint   | Biome, Oxlint or ESLint | Biome           |

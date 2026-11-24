@@ -1,0 +1,58 @@
+{
+  "date": "2026-11-24",
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+    "cores": 2,
+    "os": "linux 6.18.44-fc-v819"
+  },
+  "node": "22.23.5",
+  "versions": {
+    "pawl": "0.5.0",
+    "biome": "2.6.8",
+    "oxlint": "1.94.0",
+    "eslint": "10.15.0"
+  },
+  "corpus": {
+    "description": "pawl's own source and tests",
+    "files": 159,
+    "lines": 35933
+  },
+  "runs": 10,
+  "results": [
+    {
+      "id": "biome-alone",
+      "label": "Biome alone, with the config pawl writes",
+      "medianMs": 476,
+      "minMs": 448,
+      "maxMs": 527
+    },
+    {
+      "id": "pawl-biome",
+      "label": "pawl check, Biome",
+      "medianMs": 668,
+      "minMs": 607,
+      "maxMs": 717
+    },
+    {
+      "id": "pawl-oxlint",
+      "label": "pawl check, Oxlint (Biome formats)",
+      "medianMs": 1035,
+      "minMs": 942,
+      "maxMs": 1152
+    },
+    {
+      "id": "pawl-eslint",
+      "label": "pawl check, ESLint (Biome formats)",
+      "medianMs": 15030,
+      "minMs": 14121,
+      "maxMs": 16188
+    },
+    {
+      "id": "hook",
+      "label": "pawl fix --hook, one edited file",
+      "medianMs": 301,
+      "minMs": 296,
+      "maxMs": 329
+    }
+  ]
+}

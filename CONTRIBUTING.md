@@ -41,6 +41,10 @@ Run `pnpm changeset` for any user-visible change to `@santi020k/pawl`. Choose pa
 
 Use a Conventional Commit title, keep changes focused and add tests for behavior changes. After changing a rule, the style or the Biome version, regenerate the presets and the rules page; `pnpm ok` fails if they are out of date.
 
+## Benchmarks
+
+The [benchmarks page](https://pawl.santi020k.com/guide/benchmarks/) reads `apps/docs/src/data/benchmarks.json`, which `node scripts/bench.ts --write` measures after a build. Run it again when a change could move the numbers, such as a new scan or an engine upgrade, and before a release, on a quiet machine. Do not edit the numbers by hand; `scripts/bench.test.ts` checks that the file has every case.
+
 ## Releases
 
 `@santi020k/pawl` and `@santi020k/pawl-policy` share one version. A release is a pull request from a `release/v<version>` branch into `main`; nothing else changes a version, and CI refuses a version change on any other branch.

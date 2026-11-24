@@ -266,6 +266,67 @@ describe('GitHub annotations', () => {
     expect(text).toContain(formatPretty(result([format])))
     expect(formatAs(result([]), 'github')).toBe(formatPretty(result([])))
   })
+
+  it('neutralizes workflow commands in appended human output while preserving intended annotations', () => {
+    const crafted = [
+      { ...any, file: 'src/a.ts', message: '::error::injected' },
+      { ...any, file: 'src/b.ts', message: 'note ##[error]injected' },
+      { ...any, file: 'src/c.ts', message: 'ok\n::endgroup::\n::error::injected' },
+      { ...any, file: 'src/d.ts', message: 'ok\r::warning::injected' },
+      { ...any, file: 'src/e.ts', message: '::::error::quad' },
+      { ...any, file: 'src/f.ts', message: '###[warning]triple' },
+      { ...any, file: 'src/g.ts', message: '\u0085::error::injected' },
+      { ...any, file: '::error::file.ts', message: 'bad name' }
+    ]
+    const output = formatAs(result(crafted, { commands: ['echo ##[error]cmd'] }), 'github', {
+      color: true,
+      verbose: true
+    })
+    const marker = '::endgroup::\n'
+    const endgroup = output.indexOf(marker)
+
+    expect(endgroup).toBeGreaterThan(0)
+
+    const header = output.slice(0, endgroup + marker.length)
+    const appended = output.slice(endgroup + marker.length)
+
+    expect(header.startsWith('::group::Annotations\n')).toBe(true)
+    expect(header).toContain('::warning file=src/a.ts,')
+    expect(header).toContain(
+      '::warning file=src/c.ts,line=3,col=7,title=biome%3Asuspicious/noExplicitAny::ok ::endgroup:: ::error::injected%0AUse a specific type, or unknown and narrow it.'
+    )
+    expect(appended).not.toContain('::')
+    expect(appended).not.toContain('##[')
+    expect(stripAnsi(appended)).not.toContain('::')
+    expect(stripAnsi(appended)).not.toContain('##[')
+
+    const cleanOnly = formatAs(result([], { commands: ['echo ::error::cmd && echo ##[warning]cmd'] }), 'github', {
+      verbose: true
+    })
+
+    expect(cleanOnly).not.toContain('::')
+    expect(cleanOnly).not.toContain('##[')
+  })
+
+  it('preserves dot directories and parent prefixes while stripping redundant leading ./ and / separators', () => {
+    expect(formatGithub(result([any]), { base: '.config' })).toContain('file=.config/src/a.ts,')
+    expect(formatGithub(result([any]), { base: './.config/' })).toContain('file=.config/src/a.ts,')
+    expect(formatGithub(result([any]), { base: '.github/scripts' })).toContain('file=.github/scripts/src/a.ts,')
+    expect(formatGithub(result([any]), { base: '.' })).toContain('file=src/a.ts,')
+    expect(formatGithub(result([any]), { base: './' })).toContain('file=src/a.ts,')
+    expect(formatGithub(result([any]), { base: './/' })).toContain('file=src/a.ts,')
+    expect(formatGithub(result([any]), { base: '..' })).toContain('file=../src/a.ts,')
+    expect(formatGithub(result([{ ...any, file: './/src/a.ts' }]), { base: './/packages/app' })).toContain(
+      'file=packages/app/src/a.ts,'
+    )
+    expect(formatGithub(result([{ ...any, file: './//evil.com/a.ts' }]))).toContain('file=evil.com/a.ts,')
+    expect(formatGithub(result([{ ...any, file: './/.' }]))).toBe(
+      '::warning line=3,col=7,title=biome%3Asuspicious/noExplicitAny::Unexpected any.%0AUse a specific type, or unknown and narrow it.'
+    )
+    expect(formatGithub(result([{ ...any, file: '' }]))).toBe(
+      '::warning line=3,col=7,title=biome%3Asuspicious/noExplicitAny::Unexpected any.%0AUse a specific type, or unknown and narrow it.'
+    )
+  })
 })
 
 describe('SARIF', () => {
@@ -355,6 +416,59 @@ describe('SARIF', () => {
     ])
     expect(parse(formatSarif(result([]))).runs[0].results).toEqual([])
     expect(formatAs(result([]), 'sarif')).toBe(formatSarif(result([])))
+  })
+
+  it('encodes SARIF artifactLocation URI segments while preserving separators, backslashes, and dot directories', () => {
+    const special = [
+      { ...any, file: 'src/a#b?.ts' },
+      { ...any, file: 'app/[...slug]/100% ok/café/日本語.ts' },
+      { ...any, file: 'src/a\\b.ts' },
+      { ...any, file: 'src/bad\uD800file.ts' },
+      { ...any, file: 'foo:1.ts' },
+      { ...any, file: './//evil.com/a.ts' },
+      { ...any, file: './/.' }
+    ]
+    const [run] = parse(formatSarif(result(special), { base: '.config' })).runs
+    const uris = [
+      run.results[0].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[1].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[2].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[3].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[4].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[5].locations[0].physicalLocation.artifactLocation.uri
+    ]
+
+    expect(uris).toEqual([
+      '.config/src/a%23b%3F.ts',
+      '.config/app/%5B...slug%5D/100%25%20ok/caf%C3%A9/%E6%97%A5%E6%9C%AC%E8%AA%9E.ts',
+      '.config/src/a%5Cb.ts',
+      '.config/src/bad%EF%BF%BDfile.ts',
+      '.config/foo%3A1.ts',
+      '.config/evil.com/a.ts'
+    ])
+
+    const resolved0 = new URL(uris[0] as string, 'file:///repo/')
+    const resolved1 = new URL(uris[1] as string, 'file:///repo/')
+    const resolved2 = new URL(uris[2] as string, 'file:///repo/')
+
+    expect(resolved0.hash).toBe('')
+    expect(resolved0.search).toBe('')
+    expect(decodeURIComponent(resolved0.pathname)).toBe('/repo/.config/src/a#b?.ts')
+    expect(decodeURIComponent(resolved1.pathname)).toBe('/repo/.config/app/[...slug]/100% ok/café/日本語.ts')
+    expect(decodeURIComponent(resolved2.pathname)).toBe('/repo/.config/src/a\\b.ts')
+    expect(run.results[6].locations).toBeUndefined()
+
+    const [rootSlashRun] = parse(
+      formatSarif(
+        result([
+          { ...any, file: '/src/a.ts' },
+          { ...any, file: './//evil.com/a.ts' }
+        ])
+      )
+    ).runs
+
+    expect(rootSlashRun.results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('src/a.ts')
+    expect(rootSlashRun.results[1].locations[0].physicalLocation.artifactLocation.uri).toBe('evil.com/a.ts')
   })
 })
 

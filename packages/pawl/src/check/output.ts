@@ -1,7 +1,7 @@
 import { type Finding, type SetupIssue } from '../types.ts'
 import { type Style, type Symbols, truncate } from '../utils/terminal.ts'
 import { andList, plural } from '../utils/text.ts'
-import { type CiOutputOptions, formatGithub, formatSarif } from './ci-output.ts'
+import { type CiOutputOptions, formatGithub, formatSarif, neutralizeGithubCommands } from './ci-output.ts'
 import { adviceFor, engineLabel, oneLine, scopedLabel } from './finding-text.ts'
 import { CHECK_REPORT_VERSION } from './report-contract.ts'
 import { BLOCKING, type CheckResult, exitCode, isBlocked, tooManyWarnings } from './result.ts'
@@ -430,7 +430,7 @@ export const format = (result: CheckResult, kind: OutputFormat, options: FormatO
     // The annotations go in a group the log folds away, and the plain report follows for the log.
     const annotations = formatGithub(result, options)
     const { rich: _rich, ...plain } = options
-    const report = formatPretty(result, plain)
+    const report = neutralizeGithubCommands(formatPretty(result, plain))
 
     return annotations ? `::group::Annotations\n${annotations}\n::endgroup::\n${report}` : report
   }

@@ -12,7 +12,7 @@ const run = (root: string, ...args: string[]) => {
   const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'src/cli.ts'), ...args], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, CI: '', NO_COLOR: '1' }
+    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' }
   })
 
   return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }

@@ -399,7 +399,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         cwd: root,
         encoding: 'utf8',
         // A person's run in a pipe, even when the tests run under a coding agent.
-        env: { ...process.env, CI: '', NO_COLOR: '1', PAWL_AGENT: '0', PAWL_FORMAT: '' }
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', PAWL_AGENT: '0', PAWL_FORMAT: '' }
       })
 
       return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
@@ -738,7 +738,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       const inCi = (value: string): number | null =>
         spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'check'], {
           cwd: root,
-          env: { ...process.env, CI: value, NO_COLOR: '1' }
+          env: { ...process.env, CI: value, GITHUB_ACTIONS: '', NO_COLOR: '1' }
         }).status
 
       for (const value of ['true', '1', 'True']) expect(inCi(value), value).toBe(2)
@@ -831,7 +831,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), ...args], {
           cwd: root,
           encoding: 'utf8',
-          env: { ...env, CI: '', NO_COLOR: '1', ...extra }
+          env: { ...env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', ...extra }
         })
 
         return { code: result.status ?? -1, stdout: result.stdout }

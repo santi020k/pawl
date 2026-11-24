@@ -210,7 +210,7 @@ describe('a file the real Prettier cannot parse', { timeout: 60_000 }, () => {
     const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'explain', 'prettier:parse'], {
       cwd: fixture(),
       encoding: 'utf8',
-      env: { ...process.env, CI: '', NO_COLOR: '1' }
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' }
     })
 
     expect(result.status).toBe(0)

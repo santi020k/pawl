@@ -10,7 +10,7 @@ import {
   type RichOptions
 } from '../src/check/output.ts'
 import { type CheckResult, exitCode } from '../src/check/result.ts'
-import { workspaceBase } from '../src/cli/commands/check.ts'
+import { defaultFormat, workspaceBase } from '../src/cli/commands/check.ts'
 import { type Finding } from '../src/types.ts'
 import { createStyle, stripAnsi, symbols } from '../src/utils/terminal.ts'
 
@@ -366,6 +366,17 @@ describe('the folder pawl runs in, under GitHub Actions', () => {
     expect(workspaceBase('/work/repo', actions)).toBe('')
     expect(workspaceBase('/elsewhere', actions)).toBe('')
     expect(workspaceBase('/work/repo', {})).toBe('')
+  })
+})
+
+describe('the format when none is asked for', () => {
+  it('is github in a GitHub Actions job, agent for a coding agent anywhere, and pretty elsewhere', () => {
+    expect(defaultFormat(undefined, { GITHUB_ACTIONS: 'true' })).toBe('github')
+    expect(defaultFormat('Claude Code', { GITHUB_ACTIONS: 'true' })).toBe('agent')
+    expect(defaultFormat('Claude Code', {})).toBe('agent')
+    expect(defaultFormat(undefined, {})).toBe('pretty')
+    expect(defaultFormat(undefined, { GITHUB_ACTIONS: '' })).toBe('pretty')
+    expect(defaultFormat(undefined, { GITHUB_ACTIONS: 'false' })).toBe('pretty')
   })
 })
 

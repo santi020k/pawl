@@ -1,10 +1,24 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync } from 'node:fs'
+// cspell:ignore mkfifo
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync
+} from 'node:fs'
 import { findPackageJSON } from 'node:module'
 import { basename, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { EngineError, runNode } from '../src/engines/engine.ts'
-import { eslintCacheFingerprint, prepareEslintCache } from '../src/engines/eslint/cache.ts'
+import { EngineError, findOnPath, runNode } from '../src/engines/engine.ts'
+import { eslintCacheFingerprint, hashRegularFile, prepareEslintCache } from '../src/engines/eslint/cache.ts'
 import { runEslint } from '../src/engines/eslint/run.ts'
 import { isRecord } from '../src/utils/json.ts'
 import { PACKAGE_ROOT, project, write } from './helpers.ts'
@@ -76,6 +90,124 @@ describe('the deterministic ESLint cache contract', () => {
       write(root, { '.pawl/eslint-cache.json': invalid })
       expect(() => prepareEslintCache(root)).toThrow(EngineError)
     }
+  })
+
+  it('streams regular files in chunks with exact length framing across chunk boundaries', () => {
+    const chunk = Buffer.allocUnsafe(64 * 1024)
+    const root = project()
+
+    for (const size of [0, 1, 64 * 1024 - 1, 64 * 1024, 64 * 1024 + 1, 256 * 1024 + 17]) {
+      const content = Buffer.alloc(size, (size % 251) + 1)
+      const file = join(root, `file-${size}.bin`)
+
+      writeFileSync(file, content)
+
+      const stat = statSync(file)
+      const expected = createHash('sha256')
+      const modeTag = Buffer.from(`file:${stat.mode}`)
+
+      expected.update(`${modeTag.length}:`).update(modeTag).update(`${size}:`).update(content)
+
+      const actual = createHash('sha256')
+      const readBytes = hashRegularFile(file, actual, chunk, Number.MAX_SAFE_INTEGER)
+
+      expect(readBytes).toBe(size)
+      expect(actual.digest('hex')).toBe(expected.digest('hex'))
+    }
+  })
+
+  it('fails if an input file grows or shrinks while hashing, and refuses symlinks or FIFOs without hanging', () => {
+    const root = project()
+    const chunk = Buffer.allocUnsafe(64 * 1024)
+
+    const growing = join(root, 'grow.bin')
+
+    writeFileSync(growing, Buffer.alloc(64 * 1024, 0x41))
+    expect(() =>
+      hashRegularFile(growing, createHash('sha256'), chunk, Number.MAX_SAFE_INTEGER, () => {
+        writeFileSync(growing, Buffer.alloc(64 * 1024 + 64, 0x41))
+      })
+    ).toThrow('changed while hashing')
+
+    const shrinking = join(root, 'shrink.bin')
+
+    writeFileSync(shrinking, Buffer.alloc(128 * 1024, 0x42))
+    let calls = 0
+
+    expect(() =>
+      hashRegularFile(shrinking, createHash('sha256'), chunk, Number.MAX_SAFE_INTEGER, () => {
+        if (++calls === 1) truncateSync(shrinking, 64 * 1024)
+      })
+    ).toThrow('changed while hashing')
+
+    const target = join(root, 'target.txt')
+    const link = join(root, 'link.txt')
+
+    writeFileSync(target, 'hello')
+    symlinkSync(target, link)
+    expect(() => hashRegularFile(link, createHash('sha256'), chunk, Number.MAX_SAFE_INTEGER)).toThrow()
+
+    const fifoTool = process.platform === 'win32' ? undefined : findOnPath('mkfifo')
+
+    if (fifoTool) {
+      const fifo = join(root, 'pipe.fifo')
+
+      execFileSync(fifoTool, [fifo])
+      expect(() => hashRegularFile(fifo, createHash('sha256'), chunk, Number.MAX_SAFE_INTEGER)).toThrow(
+        'not a regular file'
+      )
+    }
+  })
+
+  it('still invalidates shared pnpm-like dependency ancestors when skipping duplicate walks', () => {
+    const store = project()
+    const pkg1 = join(store, '.pnpm/pkg-1@1.0.0/node_modules/pkg-1')
+    const pkg2 = join(store, '.pnpm/pkg-2@1.0.0/node_modules/pkg-2')
+
+    mkdirSync(pkg1, { recursive: true })
+    mkdirSync(pkg2, { recursive: true })
+    writeFileSync(join(pkg1, 'index.js'), 'export const a = 1\n')
+    writeFileSync(join(pkg2, 'index.js'), 'export const b = 2\n')
+    writeFileSync(join(store, '.pnpm/package.json'), '{"name":"store"}\n')
+
+    const root = project({ 'package.json': { name: 'app', private: true } })
+
+    mkdirSync(join(root, 'node_modules'), { recursive: true })
+    symlinkSync(pkg1, join(root, 'node_modules/pkg-1'))
+    symlinkSync(pkg2, join(root, 'node_modules/pkg-2'))
+
+    const before = eslintCacheFingerprint(root, [])
+
+    writeFileSync(join(store, '.pnpm/package.json'), '{"name":"store","version":"2"}\n')
+    expect(eslintCacheFingerprint(root, [])).not.toBe(before)
+  })
+
+  it('rejects dangling cache directory or ownership symlinks and treats symlinked cache.json as a miss', () => {
+    const dirLinkRoot = project({ '.pawl/eslint-cache.json': declaration })
+
+    mkdirSync(join(dirLinkRoot, '.pawl/cache'), { recursive: true })
+    symlinkSync('/nonexistent-cache-dir', join(dirLinkRoot, '.pawl/cache/eslint'))
+    expect(() => prepareEslintCache(dirLinkRoot)).toThrow(EngineError)
+
+    const ownerLinkRoot = project({ '.pawl/eslint-cache.json': declaration })
+
+    mkdirSync(join(ownerLinkRoot, '.pawl/cache/eslint'), { recursive: true })
+    symlinkSync('/nonexistent-owner', join(ownerLinkRoot, '.pawl/cache/eslint/owner.json'))
+    expect(() => prepareEslintCache(ownerLinkRoot)).toThrow(EngineError)
+
+    const cacheLinkRoot = project({
+      '.pawl/eslint-cache.json': declaration,
+      'external-target.json': JSON.stringify({ version: 1, key: 'any', checksum: 'bad', payload: '[]' })
+    })
+    const first = prepareEslintCache(cacheLinkRoot)
+
+    first.dispose()
+    symlinkSync(join(cacheLinkRoot, 'external-target.json'), join(cacheLinkRoot, '.pawl/cache/eslint/cache.json'))
+
+    const second = prepareEslintCache(cacheLinkRoot)
+
+    expect(existsSync(second.flags.at(-1) ?? '')).toBe(false)
+    second.dispose()
   })
 
   it('fingerprints ignored source, policy, config, lockfiles and dependency contents', () => {

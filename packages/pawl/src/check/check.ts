@@ -121,7 +121,7 @@ const gitScope = (root: string, options: CheckOptions, setup: SetupIssue[]): Sco
  * The files and folders a caller named, as project paths. The engines walk a folder themselves;
  * pawl's own checks need its files listed. Naming the root is the same as naming nothing.
  */
-const namedScope = (root: string, named: readonly string[]): Scope | undefined => {
+const namedScope = (root: string, named: readonly string[], repoFiles: () => string[]): Scope | undefined => {
   const targets = [...new Set(named.flatMap(file => projectPath(root, file) ?? []))]
 
   if (targets.includes('.')) return undefined
@@ -130,7 +130,7 @@ const namedScope = (root: string, named: readonly string[]): Scope | undefined =
 
   if (folders.length === 0) return { targets, files: targets }
 
-  const inFolders = listFiles(root).filter(file => folders.some(folder => file.startsWith(`${folder}/`)))
+  const inFolders = repoFiles().filter(file => folders.some(folder => file.startsWith(`${folder}/`)))
 
   return { targets, files: [...new Set([...targets.filter(target => !folders.includes(target)), ...inFolders])] }
 }
@@ -145,7 +145,9 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const ignored = ignoreMatcher(root, policy, detection.ignores)
   // Pawl's own scans also read agent rules files in the folders the default ignores skip.
   const ownIgnored = scanIgnores(root, policy, detection.ignores, scansReadIgnored)
-  const asked = options.files ? namedScope(root, options.files) : gitScope(root, options, setup)
+  let cachedFiles: string[] | undefined
+  const repoFiles = (): string[] => (cachedFiles ??= listFiles(root))
+  const asked = options.files ? namedScope(root, options.files, repoFiles) : gitScope(root, options, setup)
   const scoped = asked && {
     targets: asked.targets.filter(file => !ignored(file)),
     files: asked.files.filter(file => !ownIgnored(file))
@@ -160,17 +162,17 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   if (unreadable) setup.push(unreadable)
 
   setup.push(...lockIssues(policy))
-  if (!idle) {
+  if (!idle && project.tools.biome && project.tools.eslint) {
     const ownership = await formatterOwnership(
       project,
-      (scoped?.files ?? listFiles(root)).filter(file => !ignored(file))
+      (scoped?.files ?? repoFiles()).filter(file => !ignored(file))
     )
     setup.push(...ownership)
     if (ownership.length > 0) idle = true
   }
 
   const findings: Finding[] = []
-  const own = scoped ? { files: scoped.files } : {}
+  const own = scoped ? { files: scoped.files } : { projectFiles: repoFiles() }
   const run: RunOptions = {
     root,
     eslintCache: options.eslintCache === true,
@@ -220,7 +222,9 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
     // The other languages the policy names, each with its own tools.
     // The tools of other languages get only the files past every ignore.
-    const languageFiles = scoped ? { files: scoped.files.filter(file => !ignored(file)) } : {}
+    const languageFiles = scoped
+      ? { files: scoped.files.filter(file => !ignored(file)) }
+      : { projectFiles: repoFiles() }
     const languages = await checkLanguages({
       root,
       policy,
@@ -242,8 +246,9 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   // The policy's ignore list applies at once, even before the engine config is synced. Pawl's own
   // findings follow the ignores of its scans, which read agent rules files the engines skip.
   const kept = findings.filter(finding => !(finding.engine === 'pawl' ? ownIgnored : ignored)(finding.file))
-  const suppressions = idle ? [] : scanSuppressions(root, ignored, scoped?.files)
-  const tests = idle ? [] : scanTests(root, ignored, scoped?.files)
+  const scopedOrRepo = scoped ? scoped.files : repoFiles()
+  const suppressions = idle ? [] : scanSuppressions(root, ignored, scopedOrRepo)
+  const tests = idle ? [] : scanTests(root, ignored, scopedOrRepo)
 
   if (options.updateBaseline) {
     // A check that did not complete knows only some of the findings. Recorded as the baseline,

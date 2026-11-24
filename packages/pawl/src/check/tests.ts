@@ -5,11 +5,12 @@
  * when a file has fewer of the first or more of the second.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from '../project/files.ts'
 import { levelForFile } from '../scans/scan.ts'
 import { type Finding, type Policy } from '../types.ts'
+import { isFile } from '../utils/fs.ts'
 import { plural } from '../utils/text.ts'
 
 export const WEAKER_TESTS = 'pawl/no-weaker-tests'
@@ -83,7 +84,7 @@ export const countTests = (file: string, text: string): TestFile => {
 /** The test files of a project, or of the files given, with their counts. */
 export const scanTests = (root: string, ignored: (file: string) => boolean, files?: readonly string[]): TestFile[] =>
   (files ?? listFiles(root))
-    .filter(file => isTestFile(file) && !ignored(file) && existsSync(join(root, file)))
+    .filter(file => isTestFile(file) && !ignored(file) && isFile(join(root, file)))
     .map(file => countTests(file, readFileSync(join(root, file), 'utf8')))
 
 /** The counts the baseline keeps: only files with something to count, so the file stays short. */
@@ -138,7 +139,7 @@ export const weakerTests = (
   let canTighten = false
 
   for (const test of tests) {
-    const recorded = baseline[test.file]
+    const recorded = Object.hasOwn(baseline, test.file) ? baseline[test.file] : undefined
 
     if (!recorded) continue
 
@@ -181,7 +182,9 @@ export const weakerTests = (
     ([file, counts]) => !present.has(file) && !ignored(file) && counts.assertions > 0
   )
   const lost = gone.reduce((sum, [, counts]) => sum + counts.assertions, 0)
-  const added = tests.filter(test => !baseline[test.file]).reduce((sum, test) => sum + test.assertions, 0)
+  const added = tests
+    .filter(test => !Object.hasOwn(baseline, test.file))
+    .reduce((sum, test) => sum + test.assertions, 0)
 
   if (gone.length > 0 && added >= lost) return { findings, canTighten: true }
 

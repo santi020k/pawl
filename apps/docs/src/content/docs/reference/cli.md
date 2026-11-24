@@ -27,11 +27,13 @@ head: [{ tag: title, content: "CLI reference: every pawl command and option | pa
 | `--ci`               | Also fail when the setup has drifted from the policy                    |
 | `--max-warnings <n>` | Fail when there are more than `n` new warnings                          |
 | `--verbose`          | Show the engine commands that ran                                       |
-| `--hook`             | For a coding agent's post-edit hook: see below                          |
+| `--hook`             | For a coding agent's post-edit and stop hooks: see below                |
 
 `[files]` are files and folders, each relative to the folder pawl runs in or absolute, as lint-staged passes them; a folder stands for every file in it, and a path outside the project is left out. Outside a git repository nothing can say what changed, so `--changed` checks every file. `--since` takes the place of `--changed` and of a list of files; see [Only what a pull request changed](/guide/ci/#only-what-a-pull-request-changed). `--ci` is on automatically when the `CI` environment variable is set, as CI services set it; an empty value, `0` and `false` mean it is not. `--max-warnings` counts only warnings the baseline does not allow, and fails with exit code 1; when the policy sets [`maxWarnings`](/reference/config/#maxwarnings), the lower limit wins.
 
 `--hook` is for a coding agent's post-edit hook. Pawl reads the files the agent edited from the hook's input on stdin, fixes and checks those files only, and prints what is left in the shape that agent reads back. It always exits with 0 unless the check could not run; then it prints the problem to stderr and exits with 1, so the person sees it and the agent does not. It takes no list of files, `--changed`, `--since` or `--format`. See [Hooks that fix each edit](/guide/agents/#hooks-that-fix-each-edit).
+
+In a stop hook, `--hook` checks every file the agent edited in the session, as the post-edit hook recorded them, and sends the agent back while new errors are left: at most three times in a row, and not again when a round changed nothing. See [A check before the agent finishes](/guide/agents/#a-check-before-the-agent-finishes).
 
 ## Output
 
@@ -74,7 +76,7 @@ In a terminal, `pawl` shows the commands, and `pawl <command> --help` or `pawl h
 
 In a terminal, when no option says what to set up, `init` asks: how to set up the tools, then which of the editor, coding agents, a pre-commit hook and a GitHub workflow to add. The editor and coding agents start ticked. With `--yes`, or in CI or under a coding agent, it asks nothing and uses the options. The editor part is VS Code's settings, extension and tasks, and Zed's tasks where the repo has a `.zed` folder; see [Editors](/guide/editors/).
 
-`--agents` adds hooks that fix each edit and hand back what is left, for Claude Code, and for Cursor, Codex and Copilot where the repo uses them; instructions in `AGENTS.md`, with an import in `CLAUDE.md` and an entry in Gemini CLI's settings so those read them too; and a pawl skill. See [Coding agents](/guide/agents/#set-it-up).
+`--agents` adds hooks that fix each edit and hand back what is left, and send the agent back when it stops with errors left, for Claude Code, and for Cursor, Codex and Copilot where the repo uses them; instructions in `AGENTS.md`, with an import in `CLAUDE.md` and an entry in Gemini CLI's settings so those read them too; and a pawl skill. See [Coding agents](/guide/agents/#set-it-up).
 
 ## Options for doctor
 

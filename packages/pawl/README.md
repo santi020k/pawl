@@ -100,7 +100,7 @@ In a terminal, `pawl check` shows each finding with the line of code it points a
 
 `--format editor` prints `src/a.ts:3:7: error: message [rule]` lines, which VS Code's problem matchers, Vim's quickfix list and Emacs's compilation mode read. The tasks `init` writes for VS Code use it. `--format json` prints the whole result as one document.
 
-In a coding agent's post-edit hook, `pawl fix --hook` reads the files the agent edited from the hook's input, fixes and checks only those, and hands what is left back to the agent in the shape its tool reads: Claude Code, Codex and Copilot put it in front of the model, Cursor reads nothing back. `pawl init --agents` writes these hooks. See [Coding agents](https://pawl.santi020k.com/guide/agents/).
+In a coding agent's post-edit hook, `pawl fix --hook` reads the files the agent edited from the hook's input, fixes and checks only those, and hands what is left back to the agent in the shape its tool reads: Claude Code, Codex and Copilot put it in front of the model, Cursor reads nothing back. In the agent's stop hook, `pawl check --hook` checks every file the agent edited in the session and sends it back while new errors are left, Cursor included. `pawl init --agents` writes these hooks, with `npx --no pawl` so a repo that has not installed pawl yet never downloads the unscoped `pawl` package, which is someone else's. See [Coding agents](https://pawl.santi020k.com/guide/agents/).
 
 ## The policy
 

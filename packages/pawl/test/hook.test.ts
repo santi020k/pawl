@@ -1,10 +1,24 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { type CheckResult } from '../src/check/result.ts'
 import { assertHookFlags, type Flags } from '../src/cli/args.ts'
-import { hookFiles, hookMessage, hookReply, hookSetupProblems, readPayload, readStdin } from '../src/cli/hook.ts'
+import {
+  handOffMessage,
+  hookFiles,
+  hookMessage,
+  hookReply,
+  hookSetupProblems,
+  readPayload,
+  readStdin,
+  readStopPayload,
+  STOP_ROUNDS,
+  stopReply,
+  stopVerdict
+} from '../src/cli/hook.ts'
+import { clearSession, editedFiles, readStopState, recordEdits, writeStopState } from '../src/cli/hook-state.ts'
 import { type Finding } from '../src/types.ts'
 import { project } from './helpers.ts'
 
@@ -194,7 +208,7 @@ describe('what the agent reads back', () => {
     const message = hookMessage(result(many), true) ?? ''
 
     expect(message.length).toBeLessThanOrEqual(9000)
-    expect(message).toMatch(/And \d+ more lines: run "npx pawl check --changed --format agent" to see them all\./)
+    expect(message).toMatch(/And \d+ more lines: run "npx --no pawl check --changed --format agent" to see them all\./)
   })
 
   it("answers in each host's shape, and not at all where the host reads nothing", () => {
@@ -224,5 +238,168 @@ describe('the --hook flag', () => {
     expect(() => assertHookFlags({ hook: true, changed: true, format: 'json' } as Flags, ['a.ts'])).toThrow(
       "--hook reads the files from the hook's input and answers in the agent's own shape. Leave out a list of files, --changed or --format."
     )
+  })
+})
+
+describe('the session an edit belongs to', () => {
+  it('names it the way each host does', () => {
+    const edit = { tool_name: 'Write', tool_input: { file_path: 'src/a.ts' } }
+
+    expect(readPayload(payload({ ...edit, hook_event_name: 'PostToolUse', session_id: 'claude-1' })).session).toBe(
+      'claude-1'
+    )
+    expect(
+      readPayload(payload({ toolName: 'edit', toolArgs: { path: 'src/a.ts' }, sessionId: 'copilot-1' })).session
+    ).toBe('copilot-1')
+    expect(
+      readPayload(payload({ hook_event_name: 'afterFileEdit', file_path: 'src/a.ts', conversation_id: 'cursor-1' }))
+        .session
+    ).toBe('cursor-1')
+    expect(readPayload(payload(edit)).session).toBeUndefined()
+  })
+})
+
+describe('reading a stop', () => {
+  it("reads Claude Code's and Codex's Stop, and whether a stop hook already sent the agent back", () => {
+    expect(readStopPayload(payload({ hook_event_name: 'Stop', session_id: 's', stop_hook_active: false }))).toEqual({
+      reply: 'decision',
+      continuing: false,
+      finished: true,
+      session: 's'
+    })
+    expect(
+      readStopPayload(payload({ hook_event_name: 'Stop', session_id: 's', stop_hook_active: true, turn_id: 't' }))
+    ).toMatchObject({ reply: 'decision', continuing: true })
+  })
+
+  it("reads Copilot's agentStop in its own shape and in VS Code's", () => {
+    expect(
+      readStopPayload(payload({ sessionId: 'c', cwd: '/repo', stopReason: 'end_turn', stop_hook_active: false }))
+    ).toEqual({ reply: 'decision', continuing: false, finished: true, session: 'c' })
+    expect(
+      readStopPayload(
+        payload({ hook_event_name: 'Stop', session_id: 'c', stop_reason: 'end_turn', stop_hook_active: true })
+      )
+    ).toMatchObject({ reply: 'decision', continuing: true, session: 'c' })
+  })
+
+  it("reads Cursor's stop: a follow-up message, its loop count, and only a turn that completed", () => {
+    expect(
+      readStopPayload(payload({ hook_event_name: 'stop', status: 'completed', loop_count: 0, conversation_id: 'k' }))
+    ).toEqual({ reply: 'followup', continuing: false, finished: true, session: 'k' })
+    expect(readStopPayload(payload({ hook_event_name: 'stop', status: 'completed', loop_count: 2 }))).toMatchObject({
+      continuing: true
+    })
+    expect(readStopPayload(payload({ hook_event_name: 'stop', status: 'aborted', loop_count: 0 }))).toMatchObject({
+      finished: false
+    })
+  })
+
+  it('is not a stop when the payload is an edit or not JSON', () => {
+    expect(readStopPayload(payload({ hook_event_name: 'PostToolUse', tool_name: 'Write' }))).toBeUndefined()
+    expect(readStopPayload(payload({ toolName: 'edit', toolArgs: {} }))).toBeUndefined()
+    expect(readStopPayload('not json')).toBeUndefined()
+  })
+})
+
+describe('deciding at a stop', () => {
+  const warning: Finding = { ...debuggerFinding, severity: 'warn', rule: 'no-console', message: 'No console.' }
+
+  it('lets the agent finish when no errors are left, even with warnings', () => {
+    expect(stopVerdict(result([]), false, false, undefined)).toEqual({ kind: 'done' })
+    expect(stopVerdict(result([warning]), false, false, undefined)).toEqual({ kind: 'done' })
+  })
+
+  it('sends the agent back with the errors only, and counts the round', () => {
+    const verdict = stopVerdict(result([debuggerFinding, warning]), false, false, undefined)
+
+    expect(verdict).toMatchObject({ kind: 'back', state: { rounds: 1 } })
+    if (verdict.kind !== 'back') return
+    expect(verdict.message.split('\n')[0]).toBe(
+      'You are not done yet: pawl found 1 problem in the files you edited in this session.'
+    )
+    expect(verdict.message).toContain('noDebugger')
+    expect(verdict.message).not.toContain('No console.')
+    expect(verdict.message).toContain('If one needs the user')
+  })
+
+  it('counts warnings too when there are more than the limit allows', () => {
+    const verdict = stopVerdict(result([warning, warning], { maxWarnings: 1 }), false, false, undefined)
+
+    expect(verdict.kind === 'back' && verdict.message).toContain('pawl found 2 problems')
+  })
+
+  it('sends the agent back again while the problems change, up to the round limit', () => {
+    const first = stopVerdict(result([debuggerFinding]), false, false, undefined)
+    const other: Finding = { ...debuggerFinding, file: 'src/b.ts' }
+
+    if (first.kind !== 'back') throw new Error('expected the agent to be sent back')
+
+    const second = stopVerdict(result([other]), false, true, first.state)
+
+    expect(second).toMatchObject({ kind: 'back', state: { rounds: 2 } })
+    expect(stopVerdict(result([other]), false, true, { rounds: STOP_ROUNDS, signature: 'x' })).toEqual({
+      kind: 'hand-off',
+      count: 1
+    })
+  })
+
+  it('hands off when the last round changed nothing, even if the lines moved', () => {
+    const first = stopVerdict(result([debuggerFinding]), false, false, undefined)
+
+    if (first.kind !== 'back') throw new Error('expected the agent to be sent back')
+
+    expect(stopVerdict(result([{ ...debuggerFinding, line: 9 }]), false, true, first.state)).toEqual({
+      kind: 'hand-off',
+      count: 1
+    })
+  })
+
+  it('starts again at the first round when no stop hook sent the agent back', () => {
+    expect(stopVerdict(result([debuggerFinding]), false, false, { rounds: STOP_ROUNDS, signature: 'x' })).toMatchObject(
+      { kind: 'back', state: { rounds: 1 } }
+    )
+  })
+
+  it("answers in each host's shape", () => {
+    expect(JSON.parse(stopReply('fix it', 'decision'))).toEqual({ decision: 'block', reason: 'fix it' })
+    expect(JSON.parse(stopReply('fix it', 'followup'))).toEqual({ followup_message: 'fix it' })
+    expect(handOffMessage(2)).toBe(
+      'pawl: 2 problems left in the files the agent edited. Run "npx --no pawl check --changed" to see them.'
+    )
+  })
+})
+
+describe('what the hooks remember', () => {
+  it('keeps the edits of each project and session apart, each file once, until the session is cleared', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pawl-hook-state-'))
+
+    recordEdits('/repo', 's1', ['src/a.ts', 'src/b.ts'], dir)
+    recordEdits('/repo', 's1', ['src/a.ts'], dir)
+    recordEdits('/repo', 's2', ['src/c.ts'], dir)
+    recordEdits('/other', 's1', ['src/d.ts'], dir)
+    writeStopState('/repo', 's1', { rounds: 2, signature: 'abc' }, dir)
+
+    expect(editedFiles('/repo', 's1', dir)).toEqual(['src/a.ts', 'src/b.ts'])
+    expect(editedFiles('/repo', 's2', dir)).toEqual(['src/c.ts'])
+    expect(readStopState('/repo', 's1', dir)).toEqual({ rounds: 2, signature: 'abc' })
+    expect(readStopState('/repo', 's2', dir)).toBeUndefined()
+
+    clearSession('/repo', 's1', dir)
+
+    expect(editedFiles('/repo', 's1', dir)).toEqual([])
+    expect(readStopState('/repo', 's1', dir)).toBeUndefined()
+    expect(editedFiles('/other', 's1', dir)).toEqual(['src/d.ts'])
+  })
+
+  it('forgets nothing it cannot write, and never throws', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'pawl-hook-state-')), 'a-file')
+
+    writeFileSync(file, '')
+    // A file where the folder should be: every write fails, and every read finds nothing.
+    expect(() => recordEdits('/repo', 's', ['src/a.ts'], file)).not.toThrow()
+    expect(() => writeStopState('/repo', 's', { rounds: 1, signature: 'x' }, file)).not.toThrow()
+    expect(editedFiles('/repo', 's', file)).toEqual([])
+    expect(() => clearSession('/repo', 's', file)).not.toThrow()
   })
 })

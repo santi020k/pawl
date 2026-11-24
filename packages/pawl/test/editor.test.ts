@@ -29,8 +29,8 @@ describe('editor tasks', () => {
     expect(paths).toContain('.vscode/tasks.json')
     expect(paths).not.toContain('.zed/tasks.json')
     expect(tasks.map(task => [task.label, task.command])).toEqual([
-      ['pawl: check', 'npx pawl check --format editor'],
-      ['pawl: fix', 'npx pawl fix --format editor']
+      ['pawl: check', 'npx --no pawl check --format editor'],
+      ['pawl: fix', 'npx --no pawl fix --format editor']
     ])
 
     const pattern = new RegExp(tasks[0]?.problemMatcher.pattern.regexp ?? '')
@@ -63,6 +63,18 @@ describe('editor tasks', () => {
     expect(apply(root).paths).not.toContain('.vscode/tasks.json')
   })
 
+  it('swaps the command of a pawl task an earlier version wrote, and leaves the rest of the task', () => {
+    const old = { label: 'pawl: check', type: 'shell', command: 'npx pawl check --format editor', group: 'test' }
+    const root = project({ '.vscode/tasks.json': { version: '2.0.0', tasks: [old] } })
+
+    apply(root)
+
+    expect(tasksOf(root, '.vscode/tasks.json')).toMatchObject({
+      tasks: [{ ...old, command: 'npx --no pawl check --format editor' }, { label: 'pawl: fix' }]
+    })
+    expect(apply(root).paths).not.toContain('.vscode/tasks.json')
+  })
+
   it('leaves a tasks file with comments alone, and says what to add', () => {
     const root = project({ '.vscode/tasks.json': '// mine\n{ "version": "2.0.0", "tasks": [] }\n' })
     const { paths, notes } = apply(root)
@@ -79,8 +91,8 @@ describe('editor tasks', () => {
 
     expect(paths).toContain('.zed/tasks.json')
     expect(tasksOf(root, '.zed/tasks.json')).toEqual([
-      { label: 'pawl: check', command: 'npx pawl check', use_new_terminal: false, reveal: 'always', save: 'all' },
-      { label: 'pawl: fix', command: 'npx pawl fix', use_new_terminal: false, reveal: 'always', save: 'all' }
+      { label: 'pawl: check', command: 'npx --no pawl check', use_new_terminal: false, reveal: 'always', save: 'all' },
+      { label: 'pawl: fix', command: 'npx --no pawl fix', use_new_terminal: false, reveal: 'always', save: 'all' }
     ])
   })
 })

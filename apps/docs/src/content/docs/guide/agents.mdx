@@ -55,7 +55,7 @@ npx @santi020k/pawl init --agents
 After every edit an agent makes, its hook runs:
 
 ```sh
-npx pawl fix --hook
+npx --no pawl fix --hook
 ```
 
 Pawl reads the files the agent just edited from the hook's input, applies the safe fixes and formatting to those files and no others, and checks them. What is left goes back to the agent in the shape its tool reads, as `--format agent` lines under a line that says what pawl did. With nothing left, the hook prints nothing.
@@ -64,14 +64,24 @@ Here is a session with Claude Code, replayed from a real run. The agent's first 
 
 <AgentReplay />
 
-| Agent                                  | File                      | Written when the repo has                                                  | What the agent hears                                          |
-| -------------------------------------- | ------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Claude Code                            | `.claude/settings.json`   | Always                                                                     | What is left, next to the result of its edit                  |
-| Codex                                  | `.codex/hooks.json`       | A `.codex` folder                                                          | What is left, as developer context                            |
-| GitHub Copilot, the CLI and the agent  | `.github/hooks/pawl.json` | `.github/copilot-instructions.md`, `.github/instructions` or `.github/hooks` | What is left, after the result of its edit                    |
-| Cursor                                 | `.cursor/hooks.json`      | A `.cursor` folder                                                         | Nothing: Cursor does not read a hook's output back            |
+### A check before the agent finishes
 
-The hook goes in next to any hooks you already have. This is the one for Claude Code:
+An agent can read what the edit hook says and still finish with errors left. So when the agent stops, a second hook runs:
+
+```sh
+npx --no pawl check --hook
+```
+
+It checks every file the agent edited in the session, as the edit hook recorded them, and not the rest of your working tree. While new errors are left, it sends the agent back with the list as its next instruction. Warnings do not, unless there are more than the limit allows. Pawl sends the agent back at most three times in a row, and not again when a round changed nothing: an agent that cannot fix a problem would go round in circles. Then the agent stops, and you get one line that says how many problems are left. Once the agent is done, pawl forgets the session's edits, so the next turn starts clean.
+
+| Agent                                  | File                      | Written when the repo has                                                    | After an edit, the agent hears               | When it stops                               |
+| -------------------------------------- | ------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------- |
+| Claude Code                            | `.claude/settings.json`   | Always                                                                       | What is left, next to the result of its edit | `Stop`: sent back with what is left         |
+| Codex                                  | `.codex/hooks.json`       | A `.codex` folder                                                            | What is left, as developer context           | `Stop`: sent back with what is left         |
+| GitHub Copilot, the CLI and the agent  | `.github/hooks/pawl.json` | `.github/copilot-instructions.md`, `.github/instructions` or `.github/hooks` | What is left, after the result of its edit   | `agentStop`: sent back with what is left    |
+| Cursor                                 | `.cursor/hooks.json`      | A `.cursor` folder                                                           | Nothing: Cursor does not read it back        | `stop`: what is left, as the next message   |
+
+The hooks go in next to any hooks you already have. These are the ones for Claude Code:
 
 ```json title=".claude/settings.json"
 {
@@ -82,7 +92,17 @@ The hook goes in next to any hooks you already have. This is the one for Claude 
         "hooks": [
           {
             "type": "command",
-            "command": "npx pawl fix --hook"
+            "command": "npx --no pawl fix --hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --no pawl check --hook"
           }
         ]
       }
@@ -91,11 +111,15 @@ The hook goes in next to any hooks you already have. This is the one for Claude 
 }
 ```
 
-Codex matches `apply_patch`, the tool it makes every edit with, and runs a project's hooks only once you trust them: review pawl's in Codex's `/hooks`. Copilot runs its hooks after every tool, so pawl skips the tools that edit nothing. Under Cursor the hook only fixes, and the `AGENTS.md` instructions tell the agent to run the check.
+Codex matches `apply_patch`, the tool it makes every edit with, and runs a project's hooks only once you trust them: review pawl's in Codex's `/hooks`. Copilot runs its hooks after every tool, so pawl skips the tools that edit nothing. Under Cursor the edit hook only fixes, and what is left reaches the agent from the stop hook, which Cursor sends as the next message.
 
-When part of the check cannot run, such as an engine that is not installed, the hook tells you and not the agent: it prints the problem and exits with 1, which the agent's tool shows you and goes past. An agent told that Biome is missing would go and install it.
+When part of the check cannot run, such as an engine that is not installed, the hooks tell you and not the agent: they print the problem and exit with 1, which the agent's tool shows you and goes past. An agent told that Biome is missing would go and install it.
 
-Older versions of pawl wrote other hook commands, `npx pawl check --changed --format agent` for Claude Code and `npx pawl fix --changed` for Cursor. Running `init --agents` again swaps them for `npx pawl fix --hook` in place.
+### Why `npx --no`
+
+A plain `npx pawl` runs the copy of `@santi020k/pawl` your project installed. When there is none, as in a fresh clone before the install, npx looks on npm for a package called `pawl`, and that name belongs to someone else. In a hook, an agent's shell or CI nobody can answer npx's question, and npm then installs it without asking. With `--no`, npx runs your copy or fails. Everything pawl writes uses it: the agent hooks, the instructions and the skill, the pre-commit hook, the editor tasks and the workflow.
+
+Older versions of pawl wrote other commands: `npx pawl check --changed --format agent` for Claude Code, `npx pawl fix --changed` for Cursor, and `npx pawl fix --hook` for every agent. Running `init --agents` again swaps them for `npx --no pawl fix --hook` in place and adds the stop hook. `init --hooks` does the same for a pre-commit line pawl wrote, and `init` for the editor tasks.
 
 ### Instructions every agent reads
 
@@ -106,10 +130,11 @@ Pawl writes instructions into `AGENTS.md` between `<!-- pawl:start -->` and `<!-
 
 This repo uses pawl. After editing code, run:
 
-    npx pawl check --changed --format agent
+    npx --no pawl check --changed --format agent
 
 It prints one JSON line per problem, each with a `fix`. No output means there is nothing to do.
-Run `npx pawl fix` to apply formatting and safe fixes.
+Run `npx --no pawl fix` to apply formatting and safe fixes. If npx cannot find pawl, install the
+project's dependencies: the package is `@santi020k/pawl`, not `pawl`.
 
 Do not silence a problem with a disable comment (`biome-ignore`, `eslint-disable`, `@ts-ignore`).
 New ones fail the check. Fix the code instead. Do not run `pawl baseline` to make findings go
@@ -123,11 +148,13 @@ Codex, Copilot, Cursor and most other agents read `AGENTS.md` on their own. Two 
 
 ### A skill
 
-Pawl writes a skill, the same file in `.claude/skills/pawl/SKILL.md` for Claude Code and in `.agents/skills/pawl/SKILL.md`, where Codex and Copilot look. An agent loads it when it needs it: what to run after an edit, how to read the findings and the exit codes, how to look up a rule with `pawl explain`, and what not to do, such as adding a disable comment or running `pawl baseline`. Running `init --agents` again updates pawl's copy. To keep a version of your own, delete the line that says pawl wrote it.
+Pawl writes a skill, the same file in `.claude/skills/pawl/SKILL.md` for Claude Code and in `.agents/skills/pawl/SKILL.md`, where Codex and Copilot look. An agent loads it when it needs it: what to run after an edit, what the stop hook asks of it, how to read the findings and the exit codes, how to look up a rule with `pawl explain`, and what not to do, such as adding a disable comment or running `pawl baseline`. Running `init --agents` again updates pawl's copy. To keep a version of your own, delete the line that says pawl wrote it.
 
 ## The hook from your own setup
 
 `--hook` works in any agent's post-edit hook, not only the ones `init` writes. It reads the file paths Claude Code, Codex, Copilot, VS Code, Cursor and Windsurf send, and answers each in its own shape: `hookSpecificOutput.additionalContext` for a `PostToolUse` hook, `additionalContext` for Copilot, nothing for Cursor. A file outside the project, a file that is gone, and a payload pawl cannot read all mean nothing to do. `pawl check --hook` reports without fixing.
+
+The same command in a stop hook reads the stop instead: `Stop` from Claude Code, Codex and VS Code, Copilot's `agentStop` and Cursor's `stop`. It answers `{ "decision": "block", "reason": ... }`, or Cursor's `followup_message`, and lets the agent finish when Cursor says the turn was cancelled. It knows a session by the `session_id`, `sessionId` or `conversation_id` the payloads carry, and it checks only the files the edit hook recorded for that session, in your system's temporary folder. Without an edit hook, it has nothing to check.
 
 ## Running init under an agent
 

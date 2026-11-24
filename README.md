@@ -244,7 +244,7 @@ An optional pack runs through ESLint next to Biome, or with ESLint as the only l
 | `snapshot` and `diff`            | Yes                      | Not planned                                                                                  |
 | `config-types`                   | Yes                      | Not needed                                                                                   |
 | `migrate`                        | From its own v2          | Yes, from any ESLint flat config                                                             |
-| Agent files                      | `generate-skill`         | `AGENTS.md` block, a skill, and hooks that fix each edit and hand back what is left          |
+| Agent files                      | `generate-skill`         | `AGENTS.md` block, a skill, and hooks for each edit and for when the agent stops             |
 | Output for agents                | No                       | Yes, `--format agent`, the default when an agent runs pawl                                   |
 | ESLint MCP scaffold              | Yes                      | Not planned                                                                                  |
 | GitHub Action                    | Yes                      | `init --workflow` writes a workflow                                                          |

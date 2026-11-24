@@ -1,19 +1,24 @@
 /**
- * `pawl fix --hook` and `pawl check --hook`, run from a coding agent's post-edit hook. The agent's
- * payload on stdin names the files it edited. Pawl looks at those files only, and answers in the
- * shape that agent reads back, so what is left reaches the model and not just the person watching.
+ * `pawl fix --hook` and `pawl check --hook`, run from a coding agent's hooks. After an edit, the
+ * agent's payload on stdin names the files it edited: pawl looks at those files only, and answers
+ * in the shape that agent reads back, so what is left reaches the model and not just the person
+ * watching. When the agent stops, pawl checks every file it edited in the session, and sends it
+ * back to work while new errors are left.
  */
 
+import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { type Readable } from 'node:stream'
 import { formatAgent } from '../check/output.ts'
-import { BLOCKING, type CheckResult } from '../check/result.ts'
+import { BLOCKING, type CheckResult, tooManyWarnings } from '../check/result.ts'
 import { projectPath } from '../project/files.ts'
+import { PAWL } from '../setup/templates.ts'
 import { isDirectory } from '../utils/fs.ts'
 import { isRecord } from '../utils/json.ts'
 import { plural } from '../utils/text.ts'
+import { type StopState } from './hook-state.ts'
 
 /**
  * How an agent hears what is left after its edit:
@@ -26,12 +31,32 @@ import { plural } from '../utils/text.ts'
  */
 export type HookReply = 'context' | 'copilot' | 'none'
 
+/**
+ * How an agent hears that it is not done when it stops:
+ * - `decision`: `{ "decision": "block", "reason": ... }`, which Claude Code, Codex and Copilot
+ *   read as "keep going", with the reason as the agent's next instruction.
+ * - `followup`: Cursor's `followup_message`, which Cursor sends as the next user message.
+ */
+export type StopReply = 'decision' | 'followup'
+
 export interface HookPayload {
   /** The files the agent edited, absolute or relative to `cwd`. */
   files: string[]
   /** The folder the agent's relative paths start from, when the payload says. */
   cwd?: string
   reply: HookReply
+  /** The agent's session, when the payload names it: Cursor calls it a conversation. */
+  session?: string
+}
+
+/** The payload of a hook that runs when the agent stops. */
+export interface StopPayload {
+  reply: StopReply
+  session?: string
+  /** True when a stop hook already sent the agent back, and this is the stop after it. */
+  continuing: boolean
+  /** False when the person cancelled the turn or it failed: then pawl does not send it back. */
+  finished: boolean
 }
 
 /**
@@ -97,6 +122,40 @@ const stringsIn = (value: unknown): string[] => {
 const patchPaths = (input: unknown): string[] =>
   stringsIn(input).flatMap(text => [...text.matchAll(PATCH_FILE)].map(match => (match[1] ?? '').trim()))
 
+/** The session a payload names: `session_id` (Claude Code, Codex, VS Code), `sessionId` (Copilot), `conversation_id` (Cursor). */
+const sessionOf = (payload: Record<string, unknown>): { session?: string } => {
+  const value = [payload.session_id, payload.sessionId, payload.conversation_id].find(
+    (item): item is string => typeof item === 'string' && item.length > 0
+  )
+
+  return value === undefined ? {} : { session: value }
+}
+
+/**
+ * A stop event: `Stop` in Claude Code, Codex and VS Code's shape, `stop` in Cursor, and
+ * Copilot's own `agentStop` payload, which names no event but has a `stopReason`.
+ */
+const isStop = (payload: Record<string, unknown>): boolean =>
+  payload.hook_event_name === 'Stop' ||
+  payload.hook_event_name === 'stop' ||
+  payload.hook_event_name === 'agentStop' ||
+  ('stopReason' in payload && !('toolName' in payload))
+
+/** Read the payload of a stop hook, or undefined when the payload is not one. */
+export const readStopPayload = (text: string): StopPayload | undefined => {
+  const payload = parse(text)
+
+  if (!isRecord(payload) || !isStop(payload)) return undefined
+
+  // Cursor counts the follow-ups its stop hooks sent in a row. The others say whether one did.
+  const cursor = payload.hook_event_name === 'stop'
+  const loops = typeof payload.loop_count === 'number' ? payload.loop_count : 0
+  const continuing = cursor ? loops > 0 : payload.stop_hook_active === true
+  const finished = !cursor || payload.status === undefined || payload.status === 'completed'
+
+  return { reply: cursor ? 'followup' : 'decision', continuing, finished, ...sessionOf(payload) }
+}
+
 const replyFor = (payload: Record<string, unknown>): HookReply => {
   // Copilot's own payload, and the one it sends in VS Code's shape, which also says PostToolUse.
   if ('toolName' in payload || 'tool_result' in payload) return 'copilot'
@@ -117,16 +176,19 @@ export const readPayload = (text: string): HookPayload => {
 
   const reply = replyFor(payload)
   const cwd = typeof payload.cwd === 'string' && payload.cwd.length > 0 ? { cwd: payload.cwd } : {}
+  const session = sessionOf(payload)
   const tool = typeof payload.tool_name === 'string' ? payload.tool_name : payload.toolName
 
-  if (typeof tool === 'string' && /^[a-z]/.test(tool) && !EDIT_TOOLS.has(tool)) return { files: [], reply, ...cwd }
+  if (typeof tool === 'string' && /^[a-z]/.test(tool) && !EDIT_TOOLS.has(tool)) {
+    return { files: [], reply, ...cwd, ...session }
+  }
 
   const args = typeof payload.toolArgs === 'string' ? (parse(payload.toolArgs) ?? payload.toolArgs) : payload.toolArgs
   const input = payload.tool_input ?? args ?? payload.tool_info ?? payload
   const named = tool === 'apply_patch' ? patchPaths(input) : pathsIn(input)
   const files = [...new Set(named.filter(file => file.length > 0))]
 
-  return { files, reply, ...cwd }
+  return { files, reply, ...cwd, ...session }
 }
 
 /**
@@ -187,7 +249,11 @@ export const readStdin = async (
 const CONTEXT_LIMIT = 9000
 
 /** What the agent reads: what pawl did, then one JSON line per problem, as `--format agent` prints them. */
-export const hookMessage = (result: CheckResult, fixed: boolean): string | undefined => {
+export const hookMessage = (
+  result: CheckResult,
+  fixed: boolean,
+  when: 'edit' | 'stop' = 'edit'
+): string | undefined => {
   // After a fix, what is still marked fixable needs an unsafe fix: "run pawl fix" would go round in circles.
   const findings = fixed ? result.findings.map(finding => ({ ...finding, fixable: false })) : result.findings
   const lines = formatAgent({ ...result, setup: [], findings })
@@ -197,29 +263,44 @@ export const hookMessage = (result: CheckResult, fixed: boolean): string | undef
   if (lines.length === 0) return undefined
 
   const count = plural(result.findings.length, 'problem')
-  const head = [
-    fixed
-      ? `pawl applied the safe fixes and formatting to the files you just edited. ${count} left:`
-      : `pawl found ${count} in the files you just edited:`
-  ]
-  const tail = [
-    'Fix them in the code. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore): new ones fail the check.'
-  ]
-  const kept: string[] = []
-  let length = [...head, ...tail].join('\n').length
+  const head =
+    when === 'stop'
+      ? [`You are not done yet: pawl found ${count} in the files you edited in this session.`]
+      : [
+          fixed
+            ? `pawl applied the safe fixes and formatting to the files you just edited. ${count} left:`
+            : `pawl found ${count} in the files you just edited:`
+        ]
+  const tail =
+    when === 'stop'
+      ? [
+          'Fix them in the code, then finish. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore): new ones fail the check.',
+          'If one needs the user, such as a tool to install or a rule to change, say so and stop.'
+        ]
+      : [
+          'Fix them in the code. Do not add a disable comment (biome-ignore, eslint-disable, @ts-ignore): new ones fail the check.'
+        ]
+  const more = (count: number): string =>
+    `And ${plural(count, 'more line')}: run "${PAWL} check --changed --format agent" to see them all.`
+  // The lines that fit next to the head and tail, with room kept for `reserve` more characters.
+  const fitting = (reserve: number): string[] => {
+    const kept: string[] = []
+    let length = [...head, ...tail].join('\n').length + reserve
 
-  for (const line of lines) {
-    if (length + line.length + 1 > CONTEXT_LIMIT) break
+    for (const line of lines) {
+      if (length + line.length + 1 > CONTEXT_LIMIT) break
 
-    kept.push(line)
-    length += line.length + 1
+      kept.push(line)
+      length += line.length + 1
+    }
+
+    return kept
   }
+  const all = fitting(0)
+  // When some lines are left out, the line that says so needs its room too.
+  const kept = all.length === lines.length ? all : fitting(more(lines.length).length + 1)
 
-  if (kept.length < lines.length) {
-    tail.unshift(
-      `And ${plural(lines.length - kept.length, 'more line')}: run "npx pawl check --changed --format agent" to see them all.`
-    )
-  }
+  if (kept.length < lines.length) tail.unshift(more(lines.length - kept.length))
 
   return [...head, ...kept, ...tail].join('\n')
 }
@@ -246,3 +327,65 @@ export const hookSetupProblems = (result: CheckResult): string | undefined => {
 
   return blocking.map(issue => `pawl: ${issue.message}${issue.fix ? ` ${issue.fix}` : ''}`).join('\n')
 }
+
+/** How often in a row the stop hook sends the agent back before it hands the rest to the person. */
+export const STOP_ROUNDS = 3
+
+/** What the stop hook decides. */
+export type StopVerdict =
+  | { kind: 'done' }
+  | { kind: 'back'; message: string; state: StopState }
+  | { kind: 'hand-off'; count: number }
+
+/** The findings that fail the check: the errors, or every finding when there are more warnings than the limit allows. */
+const failing = (result: CheckResult): CheckResult['findings'] =>
+  tooManyWarnings(result) ? result.findings : result.findings.filter(finding => finding.severity === 'error')
+
+/**
+ * What is left, without positions: fixing one problem moves the lines of the others, and that is
+ * not the same as fixing them.
+ */
+const signatureOf = (findings: CheckResult['findings']): string =>
+  createHash('sha256')
+    .update(
+      findings
+        .map(finding => `${finding.file}\0${finding.rule}\0${finding.message}`)
+        .sort()
+        .join('\n')
+    )
+    .digest('hex')
+
+/**
+ * Send the agent back while new errors are left, at most `STOP_ROUNDS` times in a row, and not
+ * again when the last round changed nothing: an agent that cannot fix a problem would go round in
+ * circles, and the person watching should hear about it instead.
+ */
+export const stopVerdict = (
+  result: CheckResult,
+  fixed: boolean,
+  continuing: boolean,
+  previous: StopState | undefined
+): StopVerdict => {
+  const findings = failing(result)
+
+  if (findings.length === 0) return { kind: 'done' }
+
+  const signature = signatureOf(findings)
+  const rounds = continuing ? (previous?.rounds ?? 0) : 0
+
+  if (rounds >= STOP_ROUNDS || (continuing && previous?.signature === signature)) {
+    return { kind: 'hand-off', count: findings.length }
+  }
+
+  const message = hookMessage({ ...result, setup: [], findings }, fixed, 'stop')
+
+  return message === undefined ? { kind: 'done' } : { kind: 'back', message, state: { rounds: rounds + 1, signature } }
+}
+
+/** The JSON that sends the agent back to work. */
+export const stopReply = (message: string, reply: StopReply): string =>
+  JSON.stringify(reply === 'followup' ? { followup_message: message } : { decision: 'block', reason: message })
+
+/** What the person hears when pawl lets the agent stop with problems left. */
+export const handOffMessage = (count: number): string =>
+  `pawl: ${plural(count, 'problem')} left in the files the agent edited. Run "${PAWL} check --changed" to see them.`

@@ -1,6 +1,7 @@
 // cspell:ignore chek chnged
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, it as test } from 'vitest'
 import { BASELINE_FILE } from '../src/check/baseline.ts'
@@ -308,7 +309,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(workflow).toContain('pnpm install --frozen-lockfile')
     // Every action is pinned to a commit, and the doctor report is kept even when the check fails.
     expect(workflow.match(/uses: \S+/g)?.every(line => /@[0-9a-f]{40}$/.test(line))).toBe(true)
-    expect(workflow).toContain('run: npx pawl doctor --format json > pawl-doctor.json')
+    expect(workflow).toContain('run: npx --no pawl doctor --format json > pawl-doctor.json')
     expect(workflow).toContain('path: pawl-doctor.json')
     expect(workflow.match(/if: always\(\)/g)).toHaveLength(2)
     expect(workflow).toContain('permissions:\n  contents: read')
@@ -317,7 +318,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
         PostToolUse: [
           {
             matcher: 'Edit|Write|MultiEdit',
-            hooks: [{ type: 'command', command: 'npx pawl fix --hook' }]
+            hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }]
           }
         ]
       }
@@ -502,6 +503,85 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(
         hook({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/tmp/x.js' } })
       ).toEqual({ code: 0, stdout: '', stderr: '' })
+    })
+
+    test('sends the agent back when it stops with errors left in its own edits, and no further than that', () => {
+      const root = project({
+        'package.json': { name: 'fixture', private: true, type: 'module' },
+        'src/a.js': 'export const a = 1\n'
+      })
+      // The hooks remember a session's edits in the temporary folder: this test gets its own.
+      const state = mkdtempSync(join(tmpdir(), 'pawl-stop-'))
+      const hook = (command: 'fix' | 'check', input: object): { code: number; stdout: string; stderr: string } => {
+        const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), command, '--hook'], {
+          cwd: root,
+          encoding: 'utf8',
+          input: JSON.stringify(input),
+          env: { ...process.env, CI: '', NO_COLOR: '1', TMPDIR: state }
+        })
+
+        return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
+      }
+      const edit = (session: string, file: string) =>
+        hook('fix', {
+          hook_event_name: 'PostToolUse',
+          session_id: session,
+          cwd: root,
+          tool_name: 'Write',
+          tool_input: { file_path: join(root, file) }
+        })
+      const stop = (session: string, active: boolean) =>
+        hook('check', { hook_event_name: 'Stop', session_id: session, cwd: root, stop_hook_active: active })
+      const silent = { code: 0, stdout: '', stderr: '' }
+
+      link(root)
+      run(root, 'init', '--yes', '--no-install', '--no-editor')
+      // The agent edits one file. The person has a problem of their own in another, which is not the agent's.
+      write(root, { 'src/edited.js': 'debugger\n', 'src/mine.js': 'debugger\n' })
+      edit('s1', 'src/edited.js')
+
+      const first = stop('s1', false)
+      const back = JSON.parse(first.stdout) as { decision: string; reason: string }
+
+      expect(first.code).toBe(0)
+      expect(back.decision).toBe('block')
+      expect(back.reason).toContain('You are not done yet: pawl found 1 problem')
+      expect(back.reason).toContain('"file":"src/edited.js"')
+      expect(back.reason).not.toContain('src/mine.js')
+      // The agent changed nothing: pawl hands the rest to the person instead of going round in circles.
+      expect(JSON.parse(stop('s1', true).stdout)).toEqual({
+        systemMessage:
+          'pawl: 1 problem left in the files the agent edited. Run "npx --no pawl check --changed" to see them.'
+      })
+      // The session's edits are forgotten, so the next turn starts clean.
+      expect(stop('s1', false)).toEqual(silent)
+
+      // Another session that fixes what the stop hook gave back finishes on the next stop.
+      edit('s2', 'src/edited.js')
+      expect(JSON.parse(stop('s2', false).stdout)).toHaveProperty('decision', 'block')
+      write(root, { 'src/edited.js': 'export const edited = 1\n' })
+      expect(stop('s2', true)).toEqual(silent)
+
+      // A turn that edited nothing has nothing to check.
+      expect(stop('s3', false)).toEqual(silent)
+
+      // Cursor: the edit hook says nothing back, so what is left reaches the agent as it stops.
+      write(root, { 'src/cursor.js': 'debugger\n' })
+      expect(
+        hook('fix', { hook_event_name: 'afterFileEdit', conversation_id: 'c1', file_path: join(root, 'src/cursor.js') })
+      ).toEqual(silent)
+      expect(
+        hook('check', { hook_event_name: 'stop', conversation_id: 'c1', status: 'aborted', loop_count: 0 })
+      ).toEqual(silent)
+
+      const cursor = hook('check', {
+        hook_event_name: 'stop',
+        conversation_id: 'c1',
+        status: 'completed',
+        loop_count: 0
+      })
+
+      expect((JSON.parse(cursor.stdout) as { followup_message: string }).followup_message).toContain('src/cursor.js')
     })
 
     test('tells the person, not the agent, when the hook could not check the edit', () => {
@@ -879,8 +959,28 @@ describe('hooks and agent instructions', () => {
     const plan = await planInit({ root, install: false, editor: false, hooks: true })
 
     applyPlan(plan)
-    expect(readFileSync(join(root, '.husky/pre-commit'), 'utf8')).toBe('pnpm test\nnpx pawl check --changed\n')
+    expect(readFileSync(join(root, '.husky/pre-commit'), 'utf8')).toBe('pnpm test\nnpx --no pawl check --changed\n')
     expect((await planInit({ root, install: false, editor: false, hooks: true })).actions).toEqual([])
+  })
+
+  it('swaps the pre-commit line an earlier version wrote, so a fresh clone never installs the unscoped package', async () => {
+    const root = project({
+      'package.json': { name: 'fixture' },
+      '.husky/pre-commit': 'pnpm test\nnpx pawl check --changed\n'
+    })
+
+    applyPlan(await planInit({ root, install: false, editor: false, hooks: true }))
+    expect(readFileSync(join(root, '.husky/pre-commit'), 'utf8')).toBe('pnpm test\nnpx --no pawl check --changed\n')
+    expect((await planInit({ root, install: false, editor: false, hooks: true })).actions).toEqual([])
+
+    const clone = project({ 'package.json': { name: 'fixture' } })
+
+    spawnSync('git', ['init', '-q'], { cwd: clone })
+    write(clone, { '.git/hooks/pre-commit': '#!/bin/sh\nnpx pawl check --changed\n' })
+    applyPlan(await planInit({ root: clone, install: false, editor: false, hooks: true }))
+    expect(readFileSync(join(clone, '.git/hooks/pre-commit'), 'utf8')).toBe(
+      '#!/bin/sh\nnpx --no pawl check --changed\n'
+    )
   })
 
   it('points to lefthook instead of editing its YAML', async () => {
@@ -888,7 +988,9 @@ describe('hooks and agent instructions', () => {
     const plan = await planInit({ root, install: false, editor: false, hooks: true })
 
     expect(plan.actions.map(action => action.path)).toEqual(['biome.json', 'package.json'])
-    expect(plan.notes.join(' ')).toContain('Add "npx pawl check --changed" to the pre-commit commands in lefthook.yml')
+    expect(plan.notes.join(' ')).toContain(
+      'Add "npx --no pawl check --changed" to the pre-commit commands in lefthook.yml'
+    )
   })
 
   it('writes agent instructions into a marked block and keeps the rest of AGENTS.md', async () => {
@@ -899,7 +1001,7 @@ describe('hooks and agent instructions', () => {
     const written = readFileSync(join(root, 'AGENTS.md'), 'utf8')
 
     expect(written).toContain('# Our repo\n\nBe kind.\n\n<!-- pawl:start -->')
-    expect(written).toContain('npx pawl check --changed --format agent')
+    expect(written).toContain('npx --no pawl check --changed --format agent')
     expect((await planInit({ root, install: false, editor: false, agents: true })).actions).toEqual([])
 
     // An older block is replaced in place.

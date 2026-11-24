@@ -5,6 +5,18 @@ import { type PolicyInput } from '../types.ts'
 import { isRecord, type JsonRecord } from '../utils/json.ts'
 import { PACKAGE_NAME } from '../version.ts'
 
+/**
+ * How everything pawl writes runs pawl: the copy the project installed, never a download. A plain
+ * `npx pawl` looks for a package called `pawl` when the project has not installed
+ * `@santi020k/pawl`, as in a fresh clone, and that name on npm belongs to someone else. Where no
+ * one can answer npx's question (a hook, an agent's shell, CI), npm answers yes on its own. With
+ * `--no`, npx runs the local copy or fails.
+ */
+export const PAWL = 'npx --no pawl'
+
+/** A command as earlier versions of pawl wrote it, before they ran the local copy only. */
+export const legacyCommand = (command: string): string => command.replace(PAWL, 'npx pawl')
+
 /** The ESLint config pawl writes. The root is the config file's folder, wherever ESLint is started from. */
 export const ESLINT_CONFIG = `import { eslint } from '${PACKAGE_NAME}'
 
@@ -85,10 +97,10 @@ jobs:
         with:
           node-version: 22
 ${setup}      - run: ${install}
-      - run: npx pawl check --ci
+      - run: ${PAWL} check --ci
       - name: Check the setup and the tool versions
         if: always()
-        run: npx pawl doctor --format json > pawl-doctor.json
+        run: ${PAWL} doctor --format json > pawl-doctor.json
       - name: Upload the doctor report
         if: always()
         uses: ${ACTIONS.uploadArtifact}
@@ -134,7 +146,7 @@ export const VSCODE_TASKS: readonly JsonRecord[] = [
     label: 'pawl: check',
     detail: 'Lint and check formatting; the findings go to the Problems panel',
     type: 'shell',
-    command: 'npx pawl check --format editor',
+    command: `${PAWL} check --format editor`,
     problemMatcher: PROBLEM_MATCHER,
     presentation: { clear: true }
   },
@@ -142,7 +154,7 @@ export const VSCODE_TASKS: readonly JsonRecord[] = [
     label: 'pawl: fix',
     detail: 'Apply safe fixes and format; what is left goes to the Problems panel',
     type: 'shell',
-    command: 'npx pawl fix --format editor',
+    command: `${PAWL} fix --format editor`,
     problemMatcher: PROBLEM_MATCHER,
     presentation: { clear: true }
   }
@@ -154,8 +166,8 @@ export const VSCODE_TASKS: readonly JsonRecord[] = [
  * editor shows.
  */
 export const ZED_TASKS: readonly JsonRecord[] = [
-  { label: 'pawl: check', command: 'npx pawl check', use_new_terminal: false, reveal: 'always', save: 'all' },
-  { label: 'pawl: fix', command: 'npx pawl fix', use_new_terminal: false, reveal: 'always', save: 'all' }
+  { label: 'pawl: check', command: `${PAWL} check`, use_new_terminal: false, reveal: 'always', save: 'all' },
+  { label: 'pawl: fix', command: `${PAWL} fix`, use_new_terminal: false, reveal: 'always', save: 'all' }
 ]
 
 export const AGENTS_START = '<!-- pawl:start -->'
@@ -167,10 +179,11 @@ export const AGENTS_BLOCK = `${AGENTS_START}
 
 This repo uses pawl. After editing code, run:
 
-    npx pawl check --changed --format agent
+    ${PAWL} check --changed --format agent
 
 It prints one JSON line per problem, each with a \`fix\`. No output means there is nothing to do.
-Run \`npx pawl fix\` to apply formatting and safe fixes.
+Run \`${PAWL} fix\` to apply formatting and safe fixes. If npx cannot find pawl, install the
+project's dependencies: the package is \`@santi020k/pawl\`, not \`pawl\`.
 
 Do not silence a problem with a disable comment (\`biome-ignore\`, \`eslint-disable\`, \`@ts-ignore\`).
 New ones fail the check. Fix the code instead. Do not run \`pawl baseline\` to make findings go
@@ -179,13 +192,23 @@ ${AGENTS_END}
 `
 
 /** What a coding agent's post-edit hook runs: fix the files it edited, then tell it what is left. */
-export const AGENT_HOOK_COMMAND = 'npx pawl fix --hook'
+export const AGENT_HOOK_COMMAND = `${PAWL} fix --hook`
+
+/**
+ * What a coding agent's stop hook runs: check every file it edited in the session, and send it
+ * back to work while new errors are left.
+ */
+export const STOP_HOOK_COMMAND = `${PAWL} check --hook`
 
 /**
  * Hook commands earlier versions of pawl wrote. Claude Code never saw the first one's output,
  * and the second fixed every changed file after each edit. Init swaps them for the one above.
  */
-export const OLD_AGENT_HOOK_COMMANDS = ['npx pawl check --changed --format agent', 'npx pawl fix --changed']
+export const OLD_AGENT_HOOK_COMMANDS = [
+  'npx pawl check --changed --format agent',
+  'npx pawl fix --changed',
+  legacyCommand(AGENT_HOOK_COMMAND)
+]
 
 /** In the skill pawl writes. A copy without it is someone's own, and init leaves it alone. */
 export const SKILL_MARKER =
@@ -205,37 +228,40 @@ This repo checks its code with pawl (https://pawl.santi020k.com). Pawl runs the 
 
 ## After you edit code
 
-1. Run \`npx pawl fix --changed\` to apply the safe fixes and format the files you changed.
-2. Run \`npx pawl check --changed --format agent\`.
+1. Run \`${PAWL} fix --changed\` to apply the safe fixes and format the files you changed.
+2. Run \`${PAWL} check --changed --format agent\`.
 3. No output means there is nothing to do. Otherwise each line is one JSON object with \`file\`, \`line\`, \`rule\` and \`message\`, and a \`fix\` when pawl knows one. Errors come first.
 4. Fix every line in the code, then run the check again.
 
 When a hook runs pawl after each of your edits, its message lists what is left in the files you just edited. Fix those before you move on.
 
+When you stop, a hook checks every file you edited in the session. If errors are left, it sends you back with the list: fix them, then finish. When a problem needs the user, such as a tool to install or a rule to change, say so and stop.
+
 ## What a finding means
 
-- \`npx pawl explain <rule>\` shows what a rule checks and its level in this repo. Give it the rule as the check printed it.
+- \`${PAWL} explain <rule>\` shows what a rule checks and its level in this repo. Give it the rule as the check printed it.
 - A finding from one of pawl's guards (internal imports of a library, a legacy SDK, an API key in the code) says in its message what to do instead.
 
 ## Exit codes
 
 - 0: nothing new.
 - 1: new errors, or more new warnings than the limit allows.
-- 2: a setup problem, so part of the check did not run. Read the message: it says what to run. Tell the user when it asks for a tool to be installed or upgraded, and run \`npx pawl doctor\` to see the whole setup.
+- 2: a setup problem, so part of the check did not run. Read the message: it says what to run. Tell the user when it asks for a tool to be installed or upgraded, and run \`${PAWL} doctor\` to see the whole setup.
+- When npx says it cannot find pawl, the project's dependencies are not installed: run the project's install. The package is \`@santi020k/pawl\`; the package called \`pawl\` on npm is not this tool, so never install it.
 
 ## Do not
 
 - Add a disable comment: \`biome-ignore\`, \`eslint-disable\`, \`oxlint-disable\`, \`@ts-ignore\`, \`@ts-expect-error\` or \`@ts-nocheck\`. A new one fails the check as \`pawl/no-new-disable\`.
-- Run \`npx pawl baseline\`. It accepts every current finding as allowed, and only a person decides that.
+- Run \`pawl baseline\`. It accepts every current finding as allowed, and only a person decides that.
 - Edit \`.pawl/baseline.json\`, or loosen a rule in the policy (\`pawl.config.ts\` or \`pawl.config.json\`) or in an engine config such as \`biome.json\`, unless the user asks you to.
 
 ## Other commands
 
-- \`npx pawl check\` checks the whole repo, and \`npx pawl check --since origin/main\` what the branch changed.
-- \`npx pawl doctor\` checks the setup and the tool versions.
+- \`${PAWL} check\` checks the whole repo, and \`${PAWL} check --since origin/main\` what the branch changed.
+- \`${PAWL} doctor\` checks the setup and the tool versions.
 `
 
-export const HOOK_COMMAND = 'npx pawl check --changed'
+export const HOOK_COMMAND = `${PAWL} check --changed`
 
 export const PRETTIER_EDITOR_SETTINGS: JsonRecord = {
   'editor.defaultFormatter': 'esbenp.prettier-vscode',

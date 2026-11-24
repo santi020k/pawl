@@ -2,7 +2,7 @@
  * The agent session the landing page replays: an agent writes a file, pawl's hook fixes what it
  * can and hands back the rest, the agent fixes the code, and the hook has nothing left to say.
  *
- * The problems, their positions and the timings come from a real run of `npx pawl fix --hook` on
+ * The problems, their positions and the timings come from a real run of `pawl fix --hook` on
  * the demo repo of `demo.ts`, with Claude Code's hook input. Re-run it after a change to the
  * standard or to the hook's output.
  */
@@ -27,7 +27,7 @@ export const replay = {
   file: 'src/refunds.ts',
   prompt: 'Add a refund endpoint to the payments API',
   wrote: 10,
-  hook: 'npx pawl fix --hook',
+  hook: 'npx --no pawl fix --hook',
   /** The first hook run: it formatted the file, then found these. */
   firstMs: 195,
   problems: [

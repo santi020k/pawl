@@ -21,13 +21,13 @@ head: [{ tag: title, content: "Editors: pawl in VS Code, Zed, Vim and Emacs | pa
 
 Run a task with **Tasks: Run Task** from the command palette. `pawl: check` runs the whole check, ratchet included, and each new finding shows up in the Problems panel and as a squiggle in the file. `pawl: fix` applies the safe fixes and formatting first, then lists what is left. Click a problem to jump to its line.
 
-The tasks run `npx pawl check --format editor`, and a problem matcher reads its lines:
+The tasks run `npx --no pawl check --format editor`, and a problem matcher reads its lines:
 
 ```json
 {
   "label": "pawl: check",
   "type": "shell",
-  "command": "npx pawl check --format editor",
+  "command": "npx --no pawl check --format editor",
   "problemMatcher": {
     "owner": "pawl",
     "source": "pawl",
@@ -70,8 +70,8 @@ The rule at the end is the same name `--format agent` gives, so `pawl explain` t
 
 Editors that read compiler output pick these lines up as they are:
 
-- **Vim and Neovim:** `:set makeprg=npx\ pawl\ check\ --format\ editor`, then `:make` fills the quickfix list. The default `errorformat` reads `file:line:col: message`; add `%f:%l:%c:\ %trror:\ %m,%f:%l:%c:\ %tarning:\ %m` in front of it to keep errors and warnings apart.
-- **Emacs:** `M-x compile` with `npx pawl check --format editor`. Compilation mode reads the lines, and `next-error` walks them.
+- **Vim and Neovim:** `:set makeprg=npx\ --no\ pawl\ check\ --format\ editor`, then `:make` fills the quickfix list. The default `errorformat` reads `file:line:col: message`; add `%f:%l:%c:\ %trror:\ %m,%f:%l:%c:\ %tarning:\ %m` in front of it to keep errors and warnings apart.
+- **Emacs:** `M-x compile` with `npx --no pawl check --format editor`. Compilation mode reads the lines, and `next-error` walks them.
 - **Anything else with a problem matcher or an error regex:** the pattern above reads the file, line, column, severity, message and rule, in that order.
 
 ## In the terminal

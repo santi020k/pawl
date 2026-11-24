@@ -37,13 +37,71 @@ describe('setting up coding agents', () => {
       hooks: {
         PostToolUse: [
           { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo ran' }] },
-          { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'npx pawl fix --hook' }] }
-        ]
+          { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }] }
+        ],
+        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }]
       }
     })
     expect(json(root, '.cursor/hooks.json')).toEqual({
       version: 1,
-      hooks: { afterFileEdit: [{ command: 'npx pawl fix --hook' }] }
+      hooks: {
+        afterFileEdit: [{ command: 'npx --no pawl fix --hook' }],
+        stop: [{ command: 'npx --no pawl check --hook' }]
+      }
+    })
+    expect(await paths(root)).toEqual([])
+  })
+
+  it('swaps a hook that could install the unscoped pawl package for one that runs the local copy only', async () => {
+    const root = project({
+      'package.json': { name: 'fixture' },
+      '.claude/settings.json': {
+        hooks: {
+          PostToolUse: [
+            { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'npx pawl fix --hook' }] }
+          ]
+        }
+      }
+    })
+
+    applyPlan(await agents(root))
+
+    expect(json(root, '.claude/settings.json')).toEqual({
+      hooks: {
+        PostToolUse: [
+          { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }] }
+        ],
+        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }]
+      }
+    })
+    expect(JSON.stringify(json(root, '.claude/settings.json'))).not.toContain('"npx pawl')
+  })
+
+  it('adds the stop hook next to a current edit hook, and keeps a stop hook of the user', async () => {
+    const root = project({
+      'package.json': { name: 'fixture' },
+      '.claude/settings.json': {
+        hooks: {
+          PostToolUse: [
+            { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }] }
+          ],
+          Stop: [{ hooks: [{ type: 'command', command: 'say done' }] }]
+        }
+      }
+    })
+
+    applyPlan(await agents(root))
+
+    expect(json(root, '.claude/settings.json')).toEqual({
+      hooks: {
+        PostToolUse: [
+          { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }] }
+        ],
+        Stop: [
+          { hooks: [{ type: 'command', command: 'say done' }] },
+          { hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+        ]
+      }
     })
     expect(await paths(root)).toEqual([])
   })
@@ -61,15 +119,19 @@ describe('setting up coding agents', () => {
     const plan = await agents(root)
 
     applyPlan(plan)
-    expect(plan.notes.join(' ')).toContain("Review pawl's hook in Codex's /hooks.")
+    expect(plan.notes.join(' ')).toContain("Review pawl's hooks in Codex's /hooks.")
     expect(json(root, '.codex/hooks.json')).toEqual({
       hooks: {
-        PostToolUse: [{ matcher: 'apply_patch', hooks: [{ type: 'command', command: 'npx pawl fix --hook' }] }]
+        PostToolUse: [{ matcher: 'apply_patch', hooks: [{ type: 'command', command: 'npx --no pawl fix --hook' }] }],
+        Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }]
       }
     })
     expect(json(root, '.github/hooks/pawl.json')).toEqual({
       version: 1,
-      hooks: { postToolUse: [{ type: 'command', command: 'npx pawl fix --hook', timeoutSec: 60 }] }
+      hooks: {
+        postToolUse: [{ type: 'command', command: 'npx --no pawl fix --hook', timeoutSec: 60 }],
+        agentStop: [{ type: 'command', command: 'npx --no pawl check --hook', timeoutSec: 60 }]
+      }
     })
     // Nothing to add the second time, and no note about Codex either.
     const again = await agents(root)
@@ -100,7 +162,7 @@ describe('agent instructions Claude Code and Gemini CLI read', () => {
     applyPlan(await agents(root))
 
     expect(text(root, 'CLAUDE.md')).toBe('@AGENTS.md\n')
-    expect(text(root, 'AGENTS.md')).toContain('npx pawl check --changed --format agent')
+    expect(text(root, 'AGENTS.md')).toContain('npx --no pawl check --changed --format agent')
     expect((await agents(root)).actions).toEqual([])
   })
 
@@ -164,8 +226,10 @@ describe('the pawl skill', () => {
 
     expect(claude).toBe(shared)
     expect(claude?.startsWith('---\nname: pawl\ndescription: ')).toBe(true)
-    expect(claude).toContain('npx pawl check --changed --format agent')
-    expect(claude).toContain('Run `npx pawl baseline`. It accepts every current finding')
+    expect(claude).toContain('npx --no pawl check --changed --format agent')
+    expect(claude).toContain('Run `pawl baseline`. It accepts every current finding')
+    expect(claude).toContain('When you stop, a hook checks every file you edited in the session.')
+    expect(claude).not.toMatch(/npx pawl /)
     expect((await agents(root)).actions).toEqual([])
   })
 

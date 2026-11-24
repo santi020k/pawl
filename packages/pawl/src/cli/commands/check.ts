@@ -9,7 +9,20 @@ import { type CheckResult, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../.
 import { plural } from '../../utils/text.ts'
 import { assertHookFlags, type Flags, formatFromEnv, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
 import { type Terminal, terminal } from '../audience.ts'
-import { hookFiles, hookMessage, hookReply, hookSetupProblems, readPayload, readStdin } from '../hook.ts'
+import {
+  handOffMessage,
+  hookFiles,
+  hookMessage,
+  hookReply,
+  hookSetupProblems,
+  readPayload,
+  readStdin,
+  readStopPayload,
+  type StopPayload,
+  stopReply,
+  stopVerdict
+} from '../hook.ts'
+import { clearSession, editedFiles, readStopState, recordEdits, writeStopState } from '../hook-state.ts'
 import { out } from '../io.ts'
 import { spinner } from '../ui.ts'
 
@@ -20,39 +33,99 @@ import { spinner } from '../ui.ts'
 const HOOK_FAILED = 1
 
 /**
+ * Run the check of a hook. What stops it is the person's to fix, so it goes to stderr: a setup
+ * problem, or a policy that does not load. Undefined then, and the hook exits with HOOK_FAILED.
+ */
+const hookCheck = async (root: string, fix: boolean, files: string[]): Promise<CheckResult | undefined> => {
+  try {
+    const result = await check({ root, fix, files })
+    const problems = hookSetupProblems(result)
+
+    if (!problems) return result
+
+    process.stderr.write(`${problems}\n`)
+  } catch (error) {
+    process.stderr.write(`pawl: ${error instanceof Error ? error.message : String(error)}\n`)
+  }
+
+  return undefined
+}
+
+/**
+ * The stop hook: check every file the agent edited in the session, and send the agent back to
+ * work while new errors are left. Once it is done, or pawl hands what is left to the person, the
+ * session's edits are forgotten, so the next turn starts clean.
+ */
+const runStopHook = async (root: string, payload: StopPayload, fix: boolean): Promise<number> => {
+  const { session } = payload
+
+  if (session === undefined || !payload.finished) return EXIT_OK
+
+  const edited = hookFiles(root, { files: editedFiles(root, session), cwd: root, reply: 'none' })
+
+  if (edited.length === 0) {
+    clearSession(root, session)
+
+    return EXIT_OK
+  }
+
+  const result = await hookCheck(root, fix, edited)
+
+  if (!result) return HOOK_FAILED
+
+  const verdict = stopVerdict(result, fix, payload.continuing, readStopState(root, session))
+
+  if (verdict.kind === 'back') {
+    writeStopState(root, session, verdict.state)
+    out(stopReply(verdict.message, payload.reply))
+
+    return EXIT_OK
+  }
+
+  clearSession(root, session)
+
+  if (verdict.kind === 'hand-off') {
+    const message = handOffMessage(verdict.count)
+
+    // Claude Code and Codex show a hook's systemMessage to the person; Cursor shows its stderr.
+    if (payload.reply === 'decision') out(JSON.stringify({ systemMessage: message }))
+    else process.stderr.write(`${message}\n`)
+  }
+
+  return EXIT_OK
+}
+
+/**
  * `--hook`: fix (or check) only the files the agent's hook input names, and give the agent what
- * is left in the shape its host reads back. Nothing to say means no output and exit code 0.
+ * is left in the shape its host reads back. Nothing to say means no output and exit code 0. A
+ * stop event runs the stop hook instead.
  */
 const runHook = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
   assertHookFlags(flags, files)
 
-  const payload = readPayload(await readStdin())
+  const text = await readStdin()
+  const stop = readStopPayload(text)
+
+  if (stop) return runStopHook(root, stop, fix)
+
+  const payload = readPayload(text)
   const edited = hookFiles(root, payload)
 
   if (edited.length === 0) return EXIT_OK
 
-  try {
-    const result = await check({ root, fix, files: edited })
-    const problems = hookSetupProblems(result)
+  // Remembered for the stop hook, which checks all of the agent's edits once more as it finishes.
+  if (payload.session !== undefined) recordEdits(root, payload.session, edited)
 
-    if (problems) {
-      process.stderr.write(`${problems}\n`)
+  const result = await hookCheck(root, fix, edited)
 
-      return HOOK_FAILED
-    }
+  if (!result) return HOOK_FAILED
 
-    const message = hookMessage(result, fix)
-    const reply = message === undefined ? undefined : hookReply(message, payload.reply)
+  const message = hookMessage(result, fix)
+  const reply = message === undefined ? undefined : hookReply(message, payload.reply)
 
-    if (reply) out(reply)
+  if (reply) out(reply)
 
-    return EXIT_OK
-  } catch (error) {
-    // A policy that does not load is the person's to fix, so it goes to stderr like any setup problem.
-    process.stderr.write(`pawl: ${error instanceof Error ? error.message : String(error)}\n`)
-
-    return HOOK_FAILED
-  }
+  return EXIT_OK
 }
 
 /** A file's text, read once however many findings point into it. */

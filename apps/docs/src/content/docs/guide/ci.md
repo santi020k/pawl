@@ -45,7 +45,7 @@ It needs the history that joins the branch to `<ref>`. In GitHub Actions, check 
 - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
   with:
     fetch-depth: 0
-- run: npx pawl check --ci --since "origin/$BASE_REF"
+- run: npx --no pawl check --ci --since "origin/$BASE_REF"
   env:
     BASE_REF: ${{ github.base_ref }}
 ```
@@ -80,10 +80,10 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx pawl check --ci
+      - run: npx --no pawl check --ci
       - name: Check the setup and the tool versions
         if: always()
-        run: npx pawl doctor --format json > pawl-doctor.json
+        run: npx --no pawl doctor --format json > pawl-doctor.json
       - name: Upload the doctor report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -102,7 +102,7 @@ For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for
 `init --hooks` adds a pre-commit hook that runs:
 
 ```sh
-npx pawl check --changed
+npx --no pawl check --changed
 ```
 
 It uses the hook manager the repo already has:

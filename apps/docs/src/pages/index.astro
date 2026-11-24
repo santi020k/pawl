@@ -53,7 +53,17 @@ const agentFiles = [
         "hooks": [
           {
             "type": "command",
-            "command": "npx pawl fix --hook"
+            "command": "npx --no pawl fix --hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --no pawl check --hook"
           }
         ]
       }
@@ -70,7 +80,12 @@ const agentFiles = [
   "hooks": {
     "afterFileEdit": [
       {
-        "command": "npx pawl fix --hook"
+        "command": "npx --no pawl fix --hook"
+      }
+    ],
+    "stop": [
+      {
+        "command": "npx --no pawl check --hook"
       }
     ]
   }
@@ -84,10 +99,11 @@ const agentFiles = [
 
 This repo uses pawl. After editing code, run:
 
-    npx pawl check --changed --format agent
+    npx --no pawl check --changed --format agent
 
 It prints one JSON line per problem, each with a \`fix\`. No output means there is nothing to do.
-Run \`npx pawl fix\` to apply formatting and safe fixes.
+Run \`npx --no pawl fix\` to apply formatting and safe fixes. If npx cannot find pawl, install the
+project's dependencies: the package is \`@santi020k/pawl\`, not \`pawl\`.
 
 Do not silence a problem with a disable comment (\`biome-ignore\`, \`eslint-disable\`, \`@ts-ignore\`).
 New ones fail the check. Fix the code instead. Do not run \`pawl baseline\` to make findings go

@@ -67,6 +67,7 @@
     "dev": "tsc -p tsconfig.build.json --watch",
     "docs:rules": "node scripts/build-rules-doc.ts && biome format --write ../../apps/docs/src/content/docs/reference/rules.md ../../apps/docs/src/data/counts.json",
     "oxlint-rules": "node scripts/build-oxlint-rules.ts && biome format --write src/engines/oxlint/rules.ts",
+    "plugin-skill": "node scripts/build-plugin-skill.ts && biome format --write ../../plugins/pawl/skills/pawl/SKILL.md",
     "preset": "node scripts/build-preset.ts && biome format --write presets",
     "schema": "node scripts/build-schema.ts && biome format --write pawl.config.schema.json",
     "test": "vitest run",

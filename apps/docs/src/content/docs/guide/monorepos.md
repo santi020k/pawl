@@ -13,11 +13,7 @@ The packages come from the `packages` list of `pnpm-workspace.yaml` and from `wo
 
 A monorepo often mixes stacks: a React app, a Vue admin, a Node API. A rule for a technology runs only in the packages that use it, whichever linter you pick. What the root `package.json` depends on counts for the whole repo.
 
-**Biome.** When one package uses a technology the rest of the repo does not, `init` gives that package its own small `biome.json`:
-
-```json title="apps/web/biome.json"
-{ "root": false, "extends": ["../../biome.json", "@santi020k/pawl/biome/react"] }
-```
+**Biome.** `init` keeps package-specific domains and rules in the root `biome.json`, scoped to each package. Root-relative policy ignores and overrides therefore retain their exact meaning. For example, React rules apply inside `apps/web/**` without changing the Node API package.
 
 **Oxlint.** `.oxlintrc.json` has one override for each such package, with the rules for its technologies and the plugins they need. A plugin switched on at the top would run its own default rules in every package, so it is switched on for that package only:
 

@@ -639,12 +639,12 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
 
     const { plan } = await init(root, { editor: false })
 
-    expect(plan.actions.map(action => action.path)).toEqual(['biome.json', 'apps/web/biome.json', 'package.json'])
-    expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET] })
-    expect(json(root, 'apps/web/biome.json')).toEqual({
-      root: false,
-      extends: ['../../biome.json', biomeTechPreset('react')]
+    expect(plan.actions.map(action => action.path)).toEqual(['biome.json', 'package.json'])
+    expect(json(root, 'biome.json')).toMatchObject({
+      extends: [BIOME_PRESET],
+      overrides: [{ includes: ['apps/web/**'], linter: { domains: { react: 'recommended' } } }]
     })
+    expect(existsSync(join(root, 'apps/web/biome.json'))).toBe(false)
     expect(json(root, BASELINE_FILE)).toMatchObject({
       findings: { 'apps/web/src/a.js': { 'react-hooks/rules-of-hooks': 1 } }
     })
@@ -658,11 +658,11 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
     expect(drifted.setup).toEqual([
       expect.objectContaining({
         code: 'biome-config-stale',
-        message: expect.stringContaining('packages/api/biome.json is missing')
+        message: 'biome.json is out of date with the policy.'
       })
     ])
     expect((await planInit({ root, install: false, editor: false })).actions.map(action => action.path)).toEqual([
-      'packages/api/biome.json'
+      'biome.json'
     ])
   })
 
@@ -678,9 +678,12 @@ describe('a monorepo, with the real Biome', { timeout: 60_000 }, () => {
     expect(plan.policy.engine).toBe('auto')
     expect(plan.actions.find(action => action.path === 'biome.json')).toBeDefined()
     expect(plan.actions.some(action => action.path.startsWith('apps/web/biome'))).toBe(false)
-    expect(plan.notes.join(' ')).toContain('apps/web/biome.jsonc has comments')
+    expect(plan.notes.join(' ')).toContain('apps/web/biome.jsonc is a nested Biome config')
     applyPlan(plan)
-    expect(json(root, 'biome.json')).toEqual({ extends: [BIOME_PRESET, '@santi020k/pawl/biome/turbo'] })
+    expect(json(root, 'biome.json')).toMatchObject({
+      extends: [BIOME_PRESET, '@santi020k/pawl/biome/turbo'],
+      overrides: [{ includes: ['apps/web/**'], linter: { domains: { vue: 'recommended' } } }]
+    })
   })
 
   it('makes check and fix root tasks in a Turborepo, uncached, under the names the scripts got', async () => {
@@ -964,7 +967,7 @@ export const built = { apiKey: \`\${process.env.PREFIX}-suffix-long\` }
     ])
   })
 
-  it('says so when a rule file is gone, and puts a copy next to a package config of its own', async () => {
+  it('says so when a rule file is gone, and shares root rule files across packages', async () => {
     const root = project({
       'package.json': { name: 'mono', private: true, workspaces: ['apps/*'], dependencies: { openai: '^6.0.0' } },
       'apps/web/package.json': { name: 'web', dependencies: { react: '^19.0.0' } },
@@ -974,7 +977,8 @@ export const built = { apiKey: \`\${process.env.PREFIX}-suffix-long\` }
     link(root)
     applyPlan(await planInit({ root, install: false, editor: false }))
 
-    expect(existsSync(join(root, 'apps/web/.pawl/rules/ai-keys.grit'))).toBe(true)
+    expect(existsSync(join(root, 'apps/web/.pawl/rules/ai-keys.grit'))).toBe(false)
+    expect(existsSync(join(root, '.pawl/rules/ai-keys.grit'))).toBe(true)
 
     const found = (await check({ root })).findings.filter(finding => finding.rule === 'pawl/ai-keys')
 

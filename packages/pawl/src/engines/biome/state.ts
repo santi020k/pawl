@@ -1,18 +1,19 @@
 /** A project's Biome config files on disk, against what the policy calls for. */
 
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { ruleFiles } from '../../catalog/guards.ts'
-import { type Technology } from '../../catalog/rules.ts'
 import { extraGlobals, RUNTIMES } from '../../catalog/runtimes.ts'
 import { BIOME_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
-import { type Detection, technologies as repoTechnologies } from '../../project/detect.ts'
+import { type Detection, packageTechnologies, technologies as repoTechnologies } from '../../project/detect.ts'
+import { listFiles } from '../../project/files.ts'
+import { ALWAYS_IGNORED } from '../../project/ignores.ts'
 import { type Policy, type SetupIssue } from '../../types.ts'
 import { ancestors } from '../../utils/fs.ts'
 import { isRecord, type Json, type JsonObject, type JsonRecord, readJsonc, sameJson } from '../../utils/json.ts'
 import { toList } from '../../utils/list.ts'
 import { PACKAGE_NAME } from '../../version.ts'
-import { BIOME_PRESET, type BiomeContext, biomePackageConfig, biomeProjectConfig, isRuleValue } from './config.ts'
+import { BIOME_PRESET, type BiomeContext, biomeProjectConfig, isRuleValue } from './config.ts'
 
 /** Biome reads the .gitignore when the policy wants it and there is a .gitignore or a git repo to read. */
 export const biomeVcs = (root: string, policy: Pick<Policy, 'gitignore'>): boolean =>
@@ -24,15 +25,20 @@ export const biomeContextFor = (
   policy: Policy,
   detection: Detection,
   tools: { linter: string; formatter: string }
-): BiomeContext => ({
-  technologies: repoTechnologies(detection),
-  dependencies: detection.dependencies,
-  lint: tools.linter === 'biome',
-  format: tools.formatter === 'biome',
-  vcs: biomeVcs(root, policy),
-  runtimes: detection.runtimes,
-  ignores: detection.ignores
-})
+): BiomeContext => {
+  const packages = packageTechnologies(detection)
+
+  return {
+    technologies: repoTechnologies(detection),
+    packages: Object.fromEntries(detection.workspace.packages.map(dir => [dir, packages[dir] ?? []])),
+    dependencies: detection.dependencies,
+    lint: tools.linter === 'biome',
+    format: tools.formatter === 'biome',
+    vcs: biomeVcs(root, policy),
+    runtimes: detection.runtimes,
+    ignores: detection.ignores
+  }
+}
 
 export interface RuleFileState {
   /** Relative to the project root. */
@@ -188,35 +194,32 @@ export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeCon
   return { status: 'ok', file, preset }
 }
 
-export interface BiomePackageCheck {
-  dir: string
-  file: string
-  status: 'ok' | 'missing' | 'stale' | 'unreadable'
-  expected: JsonObject
-  /** The file's current content, when it could be read without losing comments. */
-  current?: JsonObject
+/** Config files govern source paths even when Git ignores the config itself. */
+export const nestedBiomeConfigs = (root: string, useGitFiles = true): string[] => {
+  const directories = new Set<string>()
+  const addParents = (file: string): void => {
+    let dir = dirname(file)
+
+    while (dir !== '.') {
+      directories.add(dir)
+      dir = dirname(dir)
+    }
+  }
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
+      if (!entry.isDirectory() || ALWAYS_IGNORED.includes(entry.name)) continue
+
+      const child = dir ? `${dir}/${entry.name}` : entry.name
+
+      directories.add(child)
+      walk(child)
+    }
+  }
+
+  if (useGitFiles) listFiles(root).forEach(addParents)
+  else walk('')
+
+  return [...directories]
+    .flatMap(dir => BIOME_CONFIG_FILES.filter(name => existsSync(join(root, dir, name))).map(name => `${dir}/${name}`))
+    .sort()
 }
-
-/** Compare each package's biome.json with the technologies that package uses. */
-export const checkBiomePackages = (
-  root: string,
-  perPackage: Readonly<Record<string, readonly Technology[]>>,
-  rootFile = 'biome.json',
-  preset: string = BIOME_PRESET
-): BiomePackageCheck[] =>
-  Object.entries(perPackage).map(([dir, technologies]) => {
-    const expected = biomePackageConfig(dir, technologies, rootFile, preset)
-    const name = firstExisting(join(root, dir), BIOME_CONFIG_FILES)
-    const file = `${dir}/${name ?? 'biome.json'}`
-
-    if (!name) return { dir, file, status: 'missing', expected }
-
-    const { value, hasComments } = readJsonc<JsonObject>(join(root, file))
-
-    if (!value) return { dir, file, status: 'unreadable', expected }
-
-    const present = extendsList(value)
-    const ok = (expected.extends as Json[]).every(entry => present.includes(entry))
-
-    return { dir, file, status: ok ? 'ok' : 'stale', expected, ...(hasComments ? {} : { current: value }) }
-  })

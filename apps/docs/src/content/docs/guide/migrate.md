@@ -1,7 +1,7 @@
 ---
 
 title: Coming from ESLint
-description: "Move an existing ESLint config to pawl with one command. pawl migrate reads eslint.config.js or .eslintrc and writes down only what differs from the standard."
+description: "Move an existing ESLint flat config to pawl, keeping rule differences and supported file scopes."
 head: [{ tag: title, content: "Migrate an ESLint config to pawl | pawl" }]
 ---
 
@@ -10,6 +10,14 @@ npx @santi020k/pawl migrate
 ```
 
 `migrate` reads your `eslint.config.js` the way ESLint resolves it, compares the result with the pawl standard, and writes down only the difference.
+
+## File-specific rules
+
+For flat configs, migration also reads the ordered config entries, including entries imported from shared configs. It carries supported file patterns, rule levels and ESLint options into the policy's `overrides`. Test exceptions stay in tests, workspace rules stay in their workspace, and later matching entries still win. These patterns apply to future files too; migration does not replace them with a list of today's files.
+
+The migration report lists the ordered scopes. Review them alongside the rule differences before accepting the migration. Options under `overrides` still use ESLint's shape; Biome needs its own `biomeOptions`.
+
+Pawl cannot represent every ESLint scope. Migration stops before writing files for unsupported patterns or scope features, including AND-pattern arrays, local `ignores`, `basePath`, scoped parser or processor settings, scoped formatting or import-sorting rules, and option inheritance that cannot be carried safely. The error identifies what needs manual attention. Simplify or convert those entries before trying again; `--keep-config` does not bypass this check.
 
 ## What it writes
 
@@ -54,6 +62,8 @@ Moving onto a policy means taking its levels. Where your old config had a rule l
 
 Install the policy package first: `migrate` has to read it to compare. A relative path to a policy file works too.
 
+Migrating file scopes onto a parent policy that already has `overrides` requires manual reconciliation. Pawl stops before writing rather than guessing how the old scopes should combine with the parent's scopes.
+
 ## Options
 
 | Option          | Meaning                                                 |
@@ -65,4 +75,4 @@ Install the policy package first: `migrate` has to read it to compare. A relativ
 
 `pawl init` does not read an ESLint config: with an `.eslintrc` it says so and points here, because migrating is the only way that file's rules reach the policy. Run `pawl migrate` first, in place of `init`.
 
-A legacy `.eslintrc` works too, as long as the project has ESLint 8 or 9. Pawl writes a new `eslint.config.js` and leaves the old file for you to delete. ESLint 10 no longer reads `.eslintrc`: convert it with `npx @eslint/migrate-config` first.
+Convert a legacy `.eslintrc` to flat config with `npx @eslint/migrate-config <config-file>` first, then review the converted config and run `pawl migrate`. Migration no longer flattens legacy configurations from sampled files, because that could lose inherited file-specific rules.

@@ -6,6 +6,7 @@ import { defaultPolicy } from '../../policy/merge.ts'
 import { configIgnores, DEFAULT_IGNORES, toBiomeIgnore, toEngineGlob } from '../../project/ignores.ts'
 import { type Level, type Policy, type Runtime } from '../../types.ts'
 import { isRecord, type Json, type JsonObject, sameJson, sortKeys } from '../../utils/json.ts'
+import { nestedPackageExclusions, packagePatterns } from './scopes.ts'
 
 /** The Biome version this release of pawl is tested with. Kept in step with package.json by a test. */
 export const BIOME_VERSION = '2.6.8'
@@ -25,6 +26,8 @@ export const biomeTechPreset = (technology: Technology, preset: string = BIOME_P
 export interface BiomeContext {
   /** The technologies the project uses. Each adds its own preset. */
   technologies?: readonly Technology[]
+  /** Technologies owned by individual workspace packages, scoped from the project root. */
+  packages?: Readonly<Record<string, readonly Technology[]>>
   /** Biome lints. Off when ESLint is the linter and Biome only formats. */
   lint?: boolean
   /** Biome formats. Off when the project formats with Prettier. */
@@ -111,18 +114,65 @@ const lintRules = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObje
   toGroups(biomeEntries(effectiveRules(policy), include, name => policy.biomeOptions[name]))
 
 /** The policy's overrides as Biome's: one per override that sets a rule Biome has, or gives one options. */
-const biomeOverrides = (policy: Policy, include: (tag: RuleTag) => boolean): JsonObject[] =>
+const biomeOverrides = (
+  policy: Policy,
+  include: (tag: RuleTag) => boolean,
+  packages: NonNullable<BiomeContext['packages']> = {}
+): JsonObject[] =>
   policy.overrides.flatMap(override => {
-    const entries = biomeEntries(
-      overrideRules(override, undefined, policy, override.biomeOptions),
-      include,
-      name => override.biomeOptions[name] ?? policy.biomeOptions[name]
-    )
+    const entries = (accept: (tag: RuleTag) => boolean): [string, Json][] =>
+      biomeEntries(
+        overrideRules(override, undefined, policy, override.biomeOptions),
+        accept,
+        name => override.biomeOptions[name] ?? policy.biomeOptions[name]
+      )
+    const shared = entries(include)
+    const scoped = Object.entries(packages).flatMap(([dir, technologies]) => {
+      const own = entries(tag => !include(tag) && isGated(tag) && technologies.includes(tag))
+      const includes = packagePatterns(override.files, dir)
 
-    return entries.length > 0
-      ? [{ includes: override.files.map(toEngineGlob), linter: { rules: toGroups(entries) } }]
-      : []
+      if (own.length === 0 || !includes.some(pattern => !pattern.startsWith('!'))) return []
+
+      return [
+        {
+          includes: [...includes, ...nestedPackageExclusions(dir, Object.keys(packages))],
+          linter: { rules: toGroups(own) }
+        }
+      ]
+    })
+
+    return [
+      ...(shared.length > 0
+        ? [{ includes: override.files.map(toEngineGlob), linter: { rules: toGroups(shared) } }]
+        : []),
+      ...scoped
+    ]
   })
+
+/** Package domains and rules stay in the root config so policy globs keep their original base. */
+const packageOverrides = (policy: Policy, packages: NonNullable<BiomeContext['packages']>, lint = true): JsonObject[] =>
+  Object.entries(packages).flatMap(([dir, technologies]) =>
+    ordered(technologies).flatMap(technology => {
+      const { linter: _linter, ...parser } = biomeTechConfig(policy, technology)
+
+      if (!lint && Object.keys(parser).length === 0) return []
+
+      return [
+        {
+          ...parser,
+          includes: [`${dir}/**`, ...nestedPackageExclusions(dir, Object.keys(packages))],
+          ...(lint
+            ? {
+                linter: {
+                  domains: { [BIOME_DOMAINS[technology]]: 'recommended' },
+                  rules: lintRules(policy, tag => tag === technology)
+                }
+              }
+            : {})
+        }
+      ]
+    })
+  )
 
 /** Component files: a script Biome reads, and a template it does not unless its HTML support is switched on. */
 export const TEMPLATE_FILES = ['**/*.vue', '**/*.svelte', '**/*.astro']
@@ -162,6 +212,7 @@ export const biomeConfig = (
   policy: Policy,
   {
     technologies = [],
+    packages = {},
     lint = true,
     format = true,
     dependencies = [],
@@ -173,7 +224,11 @@ export const biomeConfig = (
   const { style } = policy
   const include = (tag: RuleTag): boolean => !isGated(tag) || technologies.includes(tag)
   const rules = lintRules(policy, include)
-  const overrides = lint ? [...standardOverrides(include), ...biomeOverrides(policy, include)] : []
+  const overrides = [
+    ...(lint ? standardOverrides(include) : []),
+    ...packageOverrides(policy, packages, lint),
+    ...(lint ? biomeOverrides(policy, include, packages) : [])
+  ]
   const globals = extraGlobals(runtimes)
   const restricted = lint ? importRestrictions(policy, dependencies) : undefined
 
@@ -295,7 +350,10 @@ export const biomeProjectConfig = (
   } = diff(biomeConfig(policy, context), biomeConfig(defaultPolicy(), { technologies: context.technologies ?? [] }))
   const include = (tag: RuleTag): boolean => !isGated(tag) || (context.technologies ?? []).includes(tag)
   // Biome adds a project's overrides after the preset's, so the standard's own are not repeated here.
-  const overrides = context.lint === false ? [] : biomeOverrides(policy, include)
+  const overrides = [
+    ...packageOverrides(policy, context.packages ?? {}, context.lint !== false),
+    ...(context.lint === false ? [] : biomeOverrides(policy, include, context.packages))
+  ]
   // A later pattern wins in Biome, so the preset's ignores are undone by naming the folders again.
   // The build folders detection found, such as a Rust project's target, are the project's own.
   const includes = [
@@ -316,7 +374,9 @@ export const biomeProjectConfig = (
 
 /**
  * The biome.json of one package in a monorepo that uses a technology the rest of the repo does not.
- * It builds on the root config and adds that technology's rules for this package only.
+ * Legacy config shape, retained for callers inspecting old generated configs. Use biomeProjectConfig
+ * with package scopes for new configs; nested inheritance
+ * changes the base of policy globs in Biome 2.6.8 and is rejected by check and fix.
  */
 export const biomePackageConfig = (
   packageDir: string,

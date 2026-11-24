@@ -873,6 +873,7 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
   const physical = options.technologies?.includes('astro') ? [...SCRIPT_FILES, '**/*.astro'] : SCRIPT_FILES
   const rules: Rules = {}
   const typedRules: Rules = {}
+  const twins: Rules = {}
   const levels = effectiveRules(options.policy, {
     typescript: options.typescript,
     technologies: options.technologies ?? []
@@ -901,6 +902,12 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
     const given = options.policy.options[name] ?? getRule(name)?.options?.eslint
     const target = needsTypeInformation(eslintName, plugins) ? typedRules : rules
     target[eslintName] = given ? [level, ...given] : level
+    const twin = prefix ? undefined : getRule(name)?.aliases?.find(alias => alias.startsWith(`${TS_PREFIX}/`))
+    if (twin && options.typescript && plugins[TS_PREFIX]) {
+      twins[eslintName] = 'off'
+      const twinTarget = needsTypeInformation(twin, plugins) ? typedRules : twins
+      twinTarget[twin] = target[eslintName]
+    }
   }
   const used = (values: Rules): Record<string, unknown> =>
     Object.fromEntries(
@@ -910,6 +917,8 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
       })
     )
   if (Object.keys(rules).length > 0) result.push({ name: 'pawl/locked', files: physical, plugins: used(rules), rules })
+  if (Object.keys(twins).length > 0)
+    result.push({ name: 'pawl/locked/typescript-twins', files: TS_FILES, plugins: used(twins), rules: twins })
   if (Object.keys(typedRules).length > 0)
     result.push({
       name: 'pawl/locked/typescript',

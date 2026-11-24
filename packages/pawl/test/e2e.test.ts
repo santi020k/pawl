@@ -847,6 +847,13 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(as({ CLAUDECODE: '1', PAWL_FORMAT: 'editor' }, 'check').stdout).toMatch(/^src\/b\.js:1:1: error: /)
       expect(as({ PAWL_FORMAT: 'editor' }, 'check', '--format', 'agent').stdout).toMatch(/^\{"file":"src\/b\.js"/)
       expect(as({ PAWL_FORMAT: 'xml' }, 'check').code).toBe(2)
+      for (const command of ['check', 'fix']) {
+        const explicit = as({ PAWL_FORMAT: 'xml' }, command, '--format', 'json')
+
+        expect(explicit.code).toBe(1)
+        expect(JSON.parse(explicit.stdout)).toMatchObject({ reportVersion: 1, setup: [] })
+        expect(as({ PAWL_FORMAT: 'json' }, command, '--format', 'xml').code).toBe(2)
+      }
       expect(as({}, 'check', '--format', 'editor')).toEqual({
         code: 1,
         stdout:

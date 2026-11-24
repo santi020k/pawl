@@ -51,6 +51,42 @@ const frameworkPlan = (root: string) =>
   })
 
 describe('framework ESLint integration', () => {
+  it.each([false, true])('preserves locked TypeScript twins with shared config: %s', async shared => {
+    const root = rootFixture()
+    write(root, { 'src/contract.ts': 'export interface API { run(value: string): void }\nconst unused = 1;\n' })
+    const plan = await eslintPlan({
+      root,
+      policy: mergeLayers([
+        { source: 'company', input: { rules: { 'no-unused-vars': 'error' }, locked: ['no-unused-vars'] } }
+      ]),
+      biomeActive: false,
+      typescript: true,
+      pluginRoots: [pluginRoot],
+      ...(shared
+        ? {
+            baseConfig: [{ rules: { 'no-unused-vars': 'off', '@typescript-eslint/no-unused-vars': 'off' } }]
+          }
+        : {})
+    })
+    const runner = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: plan.config })
+    const tsConfig: unknown = await runner.calculateConfigForFile(join(root, 'src/contract.ts'))
+    expect(tsConfig).toMatchObject({
+      rules: { 'no-unused-vars': [0, expect.any(Object)], '@typescript-eslint/no-unused-vars': [2, expect.any(Object)] }
+    })
+    const reports = await runner.lintFiles(['src/contract.ts'])
+    const messages = reports.flatMap(report => report.messages)
+    expect(messages.filter(message => message.fatal || message.ruleId === 'no-unused-vars')).toEqual([])
+    expect(messages.filter(message => message.ruleId === '@typescript-eslint/no-unused-vars')).toEqual([
+      expect.objectContaining({ severity: 2, message: expect.stringContaining('unused') })
+    ])
+    const jsConfig: unknown = await runner.calculateConfigForFile(join(root, 'src/contract.js'))
+    expect(jsConfig).toMatchObject({ rules: { 'no-unused-vars': [2, expect.any(Object)] } })
+    const virtualConfig: unknown = await runner.calculateConfigForFile(join(root, 'README.md/0_0.ts'))
+    expect(virtualConfig).toMatchObject({
+      rules: { 'no-unused-vars': [0, expect.any(Object)], '@typescript-eslint/no-unused-vars': [2, expect.any(Object)] }
+    })
+  })
+
   it('keeps locked floors and the real Astro parser after local exceptions', async () => {
     const root = rootFixture()
     const plan = await frameworkPlan(root)

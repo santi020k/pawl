@@ -24,6 +24,7 @@ import ratchet from '../assets/ratchet.webp'
 import { dependencyCount, dockerCheckCount, packCount, ruleCount } from '../components/landing/facts.ts'
 import SiteFooter from '../components/landing/SiteFooter.astro'
 import SiteHeader from '../components/landing/SiteHeader.astro'
+import QualityWorkflow from '../components/QualityWorkflow.astro'
 import RatchetChart from '../components/RatchetChart.astro'
 import Terminal from '../components/Terminal.astro'
 import { explain, sessions } from '../data/demo.ts'
@@ -187,12 +188,6 @@ const features = [
     body: 'pnpm, npm and yarn workspaces, Turborepo and Nx. React rules apply in the React app and nowhere else.',
     href: '/guide/monorepos/',
     icon: 'folder-tree'
-  },
-  {
-    title: 'Need a wider repository gate?',
-    body: 'Pawl owns lint, formatting and the baseline. Add Quality when you also need type checks, tests, builds and other repository checks in one workflow. Keep one owner for each check; Pawl still works on its own.',
-    href: '/guide/quality/',
-    icon: 'list-checks'
   },
   {
     title: 'Zero dependencies',
@@ -446,6 +441,8 @@ const facts = [
         </div>
       </Container>
     </section>
+
+    <QualityWorkflow />
 
     <section class="band cta" data-theme="dark" aria-labelledby="cta-title">
       <Backdrop variant="grid" tone="brand" intensity="subtle" class="cta__backdrop">
@@ -910,7 +907,7 @@ const facts = [
     color: hsl(var(--ink-soft));
   }
 
-  /* On a phone the icon sits beside the title, so nine cards take less scrolling. */
+  /* On a phone the icon sits beside the title, so the cards take less scrolling. */
   @media (max-width: 48rem) {
     .band :global(.feature .ui-card__header) {
       grid-template-columns: auto minmax(0, 1fr);

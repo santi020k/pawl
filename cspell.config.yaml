@@ -121,6 +121,7 @@ words:
   - ZWSP
 ignorePaths:
   - node_modules
+  - packages/pawl/api.md
   - dist
   - coverage
   - pnpm-lock.yaml

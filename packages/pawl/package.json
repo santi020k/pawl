@@ -62,6 +62,7 @@
     "README.md"
   ],
   "scripts": {
+    "api": "node scripts/build-api.ts && biome format --write api.md",
     "build": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "docs:rules": "node scripts/build-rules-doc.ts && biome format --write ../../apps/docs/src/content/docs/reference/rules.md ../../apps/docs/src/data/counts.json",

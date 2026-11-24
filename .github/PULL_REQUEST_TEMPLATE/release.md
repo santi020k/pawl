@@ -5,6 +5,7 @@ Version: `v`
 - [ ] The branch is `release/v<version>` and `pnpm release:check` passes.
 - [ ] `pnpm version-packages` consumed every changeset; versions, changelogs and the lockfile are committed together.
 - [ ] `pnpm ok` passes on this revision.
+- [ ] The diff of `packages/pawl/api.md` since the last release is reviewed, and every breaking change is in the migration notes.
 - [ ] For v1.0.0, track Claude and Codex store submissions and public installation verification using [the plugin launch plan](https://github.com/santi020k/pawl/blob/main/CONTRIBUTING.md#plugin-stores-at-v1); mark this item not applicable for earlier releases.
 
 ## Changes

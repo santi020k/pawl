@@ -11,7 +11,7 @@
  * before every edit and every shell command the agent makes.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, posix, resolve } from 'node:path'
 import { BASELINE_FILE } from '../check/baseline.ts'
 import {
@@ -261,6 +261,62 @@ const gitCommand = (args: readonly string[]): { name: string; args: string[] } =
   return { name: (args[index] ?? '').toLowerCase(), args: args.slice(index + 1) }
 }
 
+/** The pathspecs a git command that rewrites working-tree files names: `git restore .`, `git checkout main -- src`. */
+const gitPathspecs = (command: ShellCommand): string[] => {
+  const { name, args } = programOf(command.words)
+
+  if (name !== 'git') return []
+
+  const git = gitCommand(args)
+
+  return GIT_WRITES.has(git.name) ? operands(git.args) : []
+}
+
+const isDirectory = (path: string): boolean => {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/** A glob in a pathspec: what follows it can match any file in the folder before it. */
+const GLOB = /[*?[]/
+
+/**
+ * The guarded files a pathspec covers when it names a folder or a pattern, not one file: `.`,
+ * `.pawl/`, `:/`, `src/*`. A pathspec with any other magic, such as `:!docs`, covers the whole
+ * repository, because the guard does not read it further. The guarded files of the folder are the
+ * ones it has, and the baseline of the repository when the folder holds it, even if it is gone.
+ */
+const coveredBy = (top: string, base: string, pathspec: string): string[] => {
+  let spec = slashes(pathspec)
+  let from = base
+
+  if (spec.startsWith(':/')) {
+    spec = spec.slice(2)
+    from = top
+  } else if (spec.startsWith(':(top)')) {
+    spec = spec.slice(':(top)'.length)
+    from = top
+  } else if (spec.startsWith(':')) {
+    spec = ''
+    from = top
+  }
+
+  const glob = spec.search(GLOB)
+  const prefix = glob === -1 ? spec : spec.slice(0, spec.lastIndexOf('/', glob) + 1)
+  const dir = isAbsolute(prefix) ? prefix : resolve(from, prefix || '.')
+
+  if (glob === -1 && spec !== '' && !isDirectory(dir)) return []
+
+  const baseline = join(top, BASELINE_FILE)
+  const holdsBaseline = projectPath(dir, baseline) !== undefined
+  const candidates = [BASELINE_FILE, ...GUARDED].map(file => join(dir, file)).filter(file => existsSync(file))
+
+  return holdsBaseline ? [baseline, ...candidates] : candidates
+}
+
 /** The files one simple command writes, moves or removes, as it names them. */
 const writtenBy = (command: ShellCommand): string[] => {
   const { name, args } = programOf(command.words)
@@ -313,7 +369,12 @@ export const guardFinding = (root: string, payload: GuardPayload): GuardFinding 
   const top = repositoryRoot(root)
   const base = payload.cwd ?? root
   const commands = payload.command === undefined ? [] : shellCommands(payload.command)
-  const named = [...payload.files, ...commands.flatMap(writtenBy), ...matches(payload.command ?? '', PATCH_FILES)]
+  const named = [
+    ...payload.files,
+    ...commands.flatMap(writtenBy),
+    ...commands.flatMap(gitPathspecs).flatMap(pathspec => coveredBy(top, base, pathspec)),
+    ...matches(payload.command ?? '', PATCH_FILES)
+  ]
   const files = named.flatMap(file => {
     const name = slashes(file)
     const path = projectPath(top, isAbsolute(name) ? name : resolve(base, name))

@@ -24,6 +24,7 @@
 - A guard on the baseline, so neither a coding agent nor a branch can make the check allow more without a person deciding it.
 
   - `init --agents` adds a hook that runs before each tool, `PreToolUse`, for Claude Code and Codex. When the agent is about to edit `.pawl/baseline.json`, the policy or an engine config, run `pawl baseline`, or run a command that writes the baseline, Claude Code asks you first and shows what the call would change. Codex cannot ask yet, so the hook refuses a change to the baseline, says why, and lets an edit to the policy or an engine config through. Run `pawl init --agents` again to add the hook next to the ones pawl already wrote.
+  - A git command that restores a folder or a pattern, such as `git restore .` or `git checkout main -- .`, counts as a change to the baseline, the policy and the engine configs it holds.
   - The hook runs `npx --no pawl check --hook`, the stop hook's command: pawl reads which event it is from the hook's input. It loads no project and runs no engine, so a tool call that changes none of those files goes through at once.
   - Copilot and Cursor get no guard. Copilot refuses a tool when a hook before it fails, as `npx --no pawl` does in a clone before the install, so the guard would stop every tool there. Cursor has no hook before an edit that can ask. `pawl check --hook` still reads Copilot's own `preToolUse` input, for a hook you set up by hand.
   - `pawl check --since <ref>` also fails with `pawl/no-baseline-growth` when `.pawl/baseline.json` allows more than it does where the branch left `<ref>`: more findings or disable comments in a file, fewer assertions, more skipped tests or more retries, raised timeouts and fixed sleeps in a test file, or a test file it no longer counts. A branch that records its first baseline counts too. To accept it, a person adds a `Pawl-Baseline: accept` trailer to any commit on the branch. Set the rule to `off` in the policy to turn it off.
@@ -38,9 +39,9 @@
 
 ### Patch Changes
 
-- `pawl upgrade` in a workspace moves each package by its own version. A package whose own copy of a tool is one pawl works with, such as ESLint 10 next to a root on ESLint 8, is left out of the install instead of being moved back to the root's major version.
+- `pawl upgrade` in a workspace moves each package by its own version. A package whose own copy of a tool is one pawl works with, such as ESLint 10 next to a root on ESLint 8, is left out of the install instead of being moved back to the root's major version. A package with an older copy of its own is moved even when the root's copy is one pawl works with.
 
-- The test ratchet counts a `timeout` or a `retry` only where it configures the test runner. An object in a test's body that names one, such as test data for code with its own timeout, no longer counts as a mask and cannot fail `pawl/no-weaker-tests`.
+- The test ratchet counts a `timeout` or a `retry` only where it configures the test runner. An object in a test's body that names one, such as test data for code with its own timeout, no longer counts as a mask and cannot fail `pawl/no-weaker-tests`. A number after a closing `}` counts as a raised timeout only after a test's own function, not after an object or a callback passed to other code.
 
 - `pawl sync`, `pawl upgrade`, `pawl add` and `pawl doctor` started in a package of a monorepo, or in a folder such as `src`, now work on the root pawl was set up in, as `pawl check` does. Before, they could write a `biome.json` into the package, which Biome reads as a second root config, and install the tools there. Outside a git repository every command now stays in the folder it starts in, as the docs said; a config in a folder above it, such as the home folder, no longer counts.
 

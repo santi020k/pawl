@@ -152,6 +152,63 @@ describe('the guard before an agent tool runs', () => {
     expect(decision(decide(root, claude('PowerShell', { command: 'npx --no pawl baseline' })))).toBe('ask')
   })
 
+  it('refuses a git command that rewrites a folder or a pattern holding the baseline', () => {
+    const repo = project({
+      '.git/HEAD': 'ref: refs/heads/main\n',
+      '.pawl/baseline.json': { findings: {} },
+      'pawl.config.json': {},
+      'src/index.ts': 'export {}\n',
+      'packages/web/package.json': { name: 'web' },
+      'packages/web/eslint.config.js': 'export default []\n'
+    })
+    const web = join(repo, 'packages/web')
+    const bash = (cwd: string, command: string): string =>
+      JSON.stringify({
+        hook_event_name: 'PreToolUse',
+        session_id: 's',
+        turn_id: 't',
+        cwd,
+        tool_name: 'Bash',
+        tool_input: { command }
+      })
+
+    for (const command of [
+      'git restore .',
+      'git restore ./',
+      'git restore --source=HEAD~1 .',
+      'git restore -s main -- .',
+      'git checkout .',
+      'git checkout main -- .',
+      'git checkout -- .pawl/',
+      'git restore :/',
+      "git restore ':(top)'",
+      "git restore ':!src'",
+      "git restore '*'",
+      `git restore ${repo}`,
+      'git rm -r --cached .'
+    ])
+      expect(decision(decide(repo, bash(repo, command))), command).toBe('deny')
+
+    for (const command of ['git restore ../..', 'git restore :/', 'git checkout main -- ../../.pawl'])
+      expect(decision(decide(web, bash(web, command))), command).toBe('deny')
+
+    const policy = guardFinding(repo, { host: 'claude', files: [], command: 'git restore .', cwd: repo })
+
+    expect(policy?.files).toEqual(expect.arrayContaining(['.pawl/baseline.json', 'pawl.config.json']))
+    expect(guardFinding(web, { host: 'claude', files: [], command: 'git restore .', cwd: web })?.files).toEqual([
+      'packages/web/eslint.config.js'
+    ])
+
+    for (const command of [
+      'git restore src',
+      'git restore src/index.ts',
+      "git restore 'src/*.ts'",
+      'git checkout main',
+      'git status .'
+    ])
+      expect(decide(repo, bash(repo, command)), command).toEqual({})
+  })
+
   it('reads no other payload as one before a tool', () => {
     for (const text of [
       JSON.stringify({

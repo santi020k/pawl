@@ -312,27 +312,36 @@ const cacheDirectory = (root: string): string => {
 
   const owner = join(directory, 'owner.json')
   const expected = '{"pawlEslintCache":1}\n'
-  const ownerStat = lstatOptional(owner)
 
-  if (ownerStat) {
-    let text = ''
+  // A check that starts at the same time may take the directory between these steps. Its owner
+  // file is then there, and is read as any other.
+  if (!lstatOptional(owner)) {
+    const entries = readdirSync(directory)
 
-    try {
-      text = readRegularTextFile(owner, 1024)
-    } catch (cause) {
-      throw new Error('The ESLint cache directory has unrecognized ownership metadata.', { cause })
+    if (!entries.includes('owner.json')) {
+      if (entries.length > 0) throw new Error('The ESLint cache directory contains unowned files.')
+
+      try {
+        writeFileSync(owner, expected, { flag: 'wx', mode: 0o600 })
+
+        return directory
+      } catch (error) {
+        if (!isRecord(error) || error.code !== 'EEXIST') throw error
+      }
     }
-
-    if (text !== expected) {
-      throw new Error('The ESLint cache directory has unrecognized ownership metadata.')
-    }
-
-    return directory
   }
 
-  if (readdirSync(directory).length > 0) throw new Error('The ESLint cache directory contains unowned files.')
+  let text = ''
 
-  writeFileSync(owner, expected, { flag: 'wx', mode: 0o600 })
+  try {
+    text = readRegularTextFile(owner, 1024)
+  } catch (cause) {
+    throw new Error('The ESLint cache directory has unrecognized ownership metadata.', { cause })
+  }
+
+  if (text !== expected) {
+    throw new Error('The ESLint cache directory has unrecognized ownership metadata.')
+  }
 
   return directory
 }

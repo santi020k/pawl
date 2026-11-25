@@ -26,6 +26,7 @@ import { oxlintCovers, tsgolintInstalled } from '../oxlint/config.ts'
 import {
   follow,
   importFromProject,
+  importRulePlugin,
   importVia,
   type Loaded,
   needs,
@@ -437,14 +438,20 @@ const placeRules = async (build: Build): Promise<void> => {
       plugins.set(
         prefix,
         options.plugins?.[prefix] === undefined
-          ? await importVia(root, pluginRoots, pluginPackage(prefix))
+          ? await importRulePlugin(root, pluginRoots, prefix)
           : suppliedPlugin(options.plugins[prefix])
       )
 
     const loaded = plugins.get(prefix) as Loaded
 
     if (!loaded.module) {
-      notEnforced.push({ rule: name, needs: needs(pluginPackage(prefix), loaded) })
+      notEnforced.push({ rule: name, needs: needs(loaded.packageName ?? pluginPackage(prefix), loaded) })
+
+      continue
+    }
+
+    if (lacks(loaded, eslintName, prefix)) {
+      notEnforced.push({ rule: name, needs: `a version of ${loaded.packageName ?? pluginPackage(prefix)} that has it` })
 
       continue
     }
@@ -472,6 +479,10 @@ const usesLibraryOf = (prefix: string, { policy, dependencies = [] }: EslintPlan
     packs.some(pack => pack.when.some(name => dependencies.includes(name)) || runners[pack.name] !== undefined)
   )
 }
+
+/** The plugin in use lists its rules, and not this one: ESLint would refuse the config. */
+const lacks = (loaded: Loaded, rule: string, prefix: string): boolean =>
+  isRecord(loaded.module?.rules) && !(rule.slice(prefix.length + 1) in loaded.module.rules)
 
 /** The guards: imports and code patterns to stay away from, for the libraries the project uses. */
 const applyGuards = ({ options, coreRules, coveredByBiome }: Build): void => {
@@ -791,6 +802,12 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
     ),
     ...packBlocks.map(({ pack, plugin }): [string, unknown] => [pack.prefix, plugin])
   ])
+  const packageNames = new Map<string, string>([
+    ...[...plugins].flatMap(([prefix, loaded]): [string, string][] =>
+      loaded.packageName ? [[prefix, loaded.packageName]] : []
+    ),
+    ...packBlocks.map(({ pack }): [string, string] => [pack.prefix, pack.plugin])
+  ])
   const components = tseslint ? activeComponentFiles(build.activePacks, options) : []
   for (const [index, override] of policy.overrides.entries()) {
     const rules: Rules = {}
@@ -812,16 +829,28 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
         if (!loadedPlugins.has(prefix)) {
           const loaded =
             options.plugins?.[prefix] === undefined
-              ? await importVia(root, pluginRoots, pluginPackage(prefix))
+              ? await importRulePlugin(root, pluginRoots, prefix)
               : suppliedPlugin(options.plugins[prefix])
 
           if (!loaded.module) {
-            notEnforced.push({ rule: name, needs: needs(pluginPackage(prefix), loaded) })
+            notEnforced.push({ rule: name, needs: needs(loaded.packageName ?? pluginPackage(prefix), loaded) })
 
             continue
           }
 
           loadedPlugins.set(prefix, loaded.module)
+          if (loaded.packageName) packageNames.set(prefix, loaded.packageName)
+        }
+
+        const plugin = loadedPlugins.get(prefix)
+
+        if (isRecord(plugin) && lacks({ module: plugin }, eslintName, prefix)) {
+          notEnforced.push({
+            rule: name,
+            needs: `a version of ${packageNames.get(prefix) ?? pluginPackage(prefix)} that has it`
+          })
+
+          continue
         }
 
         used[prefix] = loadedPlugins.get(prefix)

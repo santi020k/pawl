@@ -1264,8 +1264,10 @@ describe("the tools are the project's choice", { timeout: 60_000 }, () => {
       'eslint-plugin-unicorn',
       'eslint-plugin-promise',
       'eslint-plugin-unused-imports',
-      'eslint-plugin-import',
+      // Not eslint-plugin-import: its peer range leaves out ESLint 10, so npm would refuse it.
+      'eslint-plugin-import-x',
       'eslint-plugin-no-only-tests',
+      // The project tests with Vitest.
       '@vitest/eslint-plugin'
     ]
     const plan = await planInit({ root, engine: 'eslint', editor: false })

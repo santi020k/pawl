@@ -89,7 +89,7 @@ In a TypeScript project, `init` also installs `oxlint-tsgolint`. Oxlint runs the
 
 ### ESLint as the linter
 
-When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-eslint` in a TypeScript project. These run the `javascript` and `typescript` packs. It also installs the plugins that the rules of the standard need when ESLint runs them in place of Biome: `eslint-plugin-unicorn`, `eslint-plugin-promise`, `eslint-plugin-unused-imports`, `eslint-plugin-import`, `eslint-plugin-no-only-tests`, and `@vitest/eslint-plugin` in a project that tests with Vitest. These are the plugins `pawl doctor` would otherwise report as missing. `pawl add`, in a project that ESLint lints, installs the ones that are missing too. With `--no-install`, `init` and `add` write them into `devDependencies` with the rest.
+When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-eslint` in a TypeScript project. These run the `javascript` and `typescript` packs. It also installs the plugins that the rules of the standard need when ESLint runs them in place of Biome: `eslint-plugin-unicorn`, `eslint-plugin-promise`, `eslint-plugin-unused-imports`, `eslint-plugin-import-x`, `eslint-plugin-no-only-tests`, and `@vitest/eslint-plugin` in a project that tests with Vitest. The `import/*` rules run with `eslint-plugin-import-x`, registered under `import`, because `eslint-plugin-import` does not support ESLint 10 yet; a project that already has `eslint-plugin-import` keeps it, and a rule the plugin in use does not implement is listed by `pawl doctor`. These are the plugins `pawl doctor` would otherwise report as missing. `pawl add`, in a project that ESLint lints, installs the ones that are missing too. With `--no-install`, `init` and `add` write them into `devDependencies` with the rest.
 
 | Package                 | Peer range |
 | ----------------------- | ---------- |
@@ -101,7 +101,7 @@ When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-es
 
 The other three plugins are not peers of pawl, and `pawl doctor` does not check their versions.
 
-Under npm, these plugins go in last, in a command of their own. npm refuses a whole install when the peer range of one package leaves out a version the project has: `eslint-plugin-import` does not list ESLint 10 yet, and `@vitest/eslint-plugin` 1.6.28 leaves out TypeScript 5. Then only that last command fails: pawl says so and exits with code 2, with pawl and ESLint already installed, and `pawl doctor` names the plugins that are still missing. pnpm, Yarn and Bun warn about such a range and install the plugin.
+Under npm, these plugins go in last, in a command of their own. npm refuses a whole install when the peer range of one package leaves out a version the project has: `@vitest/eslint-plugin` 1.6.28 leaves out TypeScript 5. Then only that last command fails: pawl says so and exits with code 2, with pawl and ESLint already installed, and `pawl doctor` names the plugins that are still missing. pnpm, Yarn and Bun warn about such a range and install the plugin.
 
 ### Plugins
 

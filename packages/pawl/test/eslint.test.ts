@@ -19,7 +19,9 @@ const withPlugins = (): string =>
     'node_modules/typescript-eslint/index.js':
       "export default { parser: { name: 'ts-parser' }, plugin: { rules: {} } }\n",
     'node_modules/eslint-plugin-react-hooks/package.json': manifest('eslint-plugin-react-hooks'),
-    'node_modules/eslint-plugin-react-hooks/index.js': 'export default { rules: {} }\n'
+    // The rules of the standard it implements: the plan leaves out a rule the plugin does not have.
+    'node_modules/eslint-plugin-react-hooks/index.js':
+      "const rule = { create: () => ({}) }\nexport default { rules: { 'rules-of-hooks': rule, 'exhaustive-deps': rule } }\n"
   })
 
 describe('eslintPlan', () => {

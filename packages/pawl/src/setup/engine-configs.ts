@@ -11,6 +11,7 @@ import {
   checkRuleFiles,
   inlineOverridesConflict,
   nestedBiomeConfigs,
+  switchedOff,
   syncBiomeGlobals
 } from '../engines/biome/state.ts'
 import { checkOxlintConfig, mergeOxlintConfig, oxlintConfig, oxlintContextFor } from '../engines/oxlint/config.ts'
@@ -20,7 +21,7 @@ import { type Detection } from '../project/detect.ts'
 import { type Toolset } from '../project/toolset.ts'
 import { type Policy } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
-import { type JsonRecord, mergeDeep, readJsonc, sameJson, writeJson } from '../utils/json.ts'
+import { isRecord, type JsonRecord, mergeDeep, readJsonc, sameJson, writeJson } from '../utils/json.ts'
 import { toList } from '../utils/list.ts'
 import { type SetupAction } from './plan.ts'
 
@@ -177,6 +178,14 @@ export const planBiomeConfig = (
     )
 
     if (owned && expected.overrides === undefined) delete merged.overrides
+
+    // What pawl switched off for another tool, Biome runs again: the standard has it on.
+    for (const section of switchedOff(value, context)) {
+      const { enabled: _enabled, ...rest } = isRecord(merged[section]) ? merged[section] : {}
+
+      if (Object.keys(rest).length > 0) merged[section] = rest
+      else delete merged[section]
+    }
 
     return biomeWrite(
       root,

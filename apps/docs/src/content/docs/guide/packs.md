@@ -34,6 +34,19 @@ pawl doctor                    # shows which packs are active
 - The `jsx-a11y` standard is in the catalog, so Biome and Oxlint enforce it without the plugin. Under ESLint its rules come with the pack, and are not reported as missing while the pack is off.
 - A rule the installed plugin does not have is left out and listed by `pawl doctor`, so an older plugin does not break the run.
 
+## Key order in data files
+
+The `jsonc` pack leaves the order of keys alone. `package.json`, `tsconfig.json` and editor files such as `.vscode/tasks.json` are written in an order people read them in, and `jsonc/sort-keys` would make `pawl fix` rewrite it. The `yaml` and `toml` packs do not sort keys either. Turn sorting on in an override, for the files where the order means nothing:
+
+```ts title="pawl.config.ts"
+import { definePolicy } from '@santi020k/pawl'
+
+export default definePolicy({
+  packs: ['jsonc'],
+  overrides: [{ files: ['src/locales/**/*.json'], rules: { 'jsonc/sort-keys': 'warn' } }]
+})
+```
+
 ## Starting from a plugin's preset
 
 `unicorn/recommended` in `packs` starts the unicorn pack from the plugin's own recommended preset. Any pack takes a preset name this way.

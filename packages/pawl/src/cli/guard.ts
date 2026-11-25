@@ -3,7 +3,9 @@
  * cannot make a check pass can make it stop failing instead: record the findings with
  * `pawl baseline`, edit `.pawl/baseline.json`, or loosen the policy or an engine config. Each of
  * those is a person's decision, so the guard hands it to one: Claude Code and Copilot ask the
- * person, and Codex, which cannot ask, refuses a change to the baseline and says why.
+ * person, and Codex, which cannot ask, refuses a change to the baseline and says why. `init
+ * --agents` writes it for Claude Code and Codex only: Copilot refuses a tool when a hook before it
+ * fails, as `npx --no pawl` does before the install, so a Copilot guard is for a hook set up by hand.
  *
  * The guard only reads the payload. It loads no project and runs no engine, because it runs
  * before every edit and every shell command the agent makes.

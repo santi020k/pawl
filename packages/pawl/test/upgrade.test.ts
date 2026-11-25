@@ -2,7 +2,9 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, readFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { getPack } from '../src/catalog/packs.ts'
 import { BIOME_VERSION } from '../src/engines/biome/config.ts'
+import { PLUGIN_PEERS } from '../src/setup/install.ts'
 import { planUpgrade, upgradeSpec } from '../src/setup/upgrade.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
 
@@ -38,24 +40,66 @@ const outdated = (lockfile: Record<string, string> = { 'pnpm-lock.yaml': "lockfi
 }
 
 describe('pawl upgrade', () => {
-  it('installs the tools that are out of range, the pinned ones exactly and the rest at their newest', async () => {
+  it('moves a tool older than the major version of its floor to that major version, and says so', async () => {
     const plan = await planUpgrade(outdated())
 
     expect(plan.upgrades).toEqual([
-      expect.objectContaining({ name: 'eslint', installed: '8.57.0', spec: 'eslint@latest' }),
+      expect.objectContaining({ name: 'eslint', installed: '8.57.0', spec: 'eslint@9', major: true }),
       expect.objectContaining({
         name: 'eslint-plugin-promise',
         installed: '6.0.0',
-        spec: 'eslint-plugin-promise@latest'
+        spec: 'eslint-plugin-promise@7',
+        major: true
       })
     ])
-    expect(plan.install).toBe('pnpm add -D eslint@latest eslint-plugin-promise@latest')
+    expect(plan.install).toBe('pnpm add -D eslint@9 eslint-plugin-promise@7')
+    expect(plan.notes).toContain(
+      'No eslint 8.x is in >=9.35.0, so it moves to 9, a new major version. Read its release notes before you commit the upgrade.'
+    )
+  })
+
+  it('keeps a tool on its major version when a newer version of it is in range', async () => {
+    const root = outdated()
+
+    write(root, {
+      'node_modules/eslint/package.json': {
+        name: 'eslint',
+        version: '9.30.0',
+        main: 'index.js',
+        bin: { eslint: 'bin.js' }
+      }
+    })
+
+    const plan = await planUpgrade(root)
+
+    expect(plan.upgrades[0]).toMatchObject({ name: 'eslint', installed: '9.30.0', spec: 'eslint@9', major: false })
+    expect(plan.notes.join(' ')).not.toContain('No eslint 9.x')
+  })
+
+  it('installs the newest version of the release line the floor is in, as ^ reads a line', () => {
+    expect(upgradeSpec('eslint', '9.30.0', '>=9.35.0')).toEqual({ spec: 'eslint@9', major: false })
+    expect(upgradeSpec('eslint', '8.57.0', '>=9.35.0')).toEqual({ spec: 'eslint@9', major: true })
+    // A prerelease above the floor is out of range, and the release of its own line is in it.
+    expect(upgradeSpec('eslint', '10.0.0-rc.2', '>=9.35.0')).toEqual({ spec: 'eslint@10', major: false })
+    // Below 1.0.0, the minor is the line.
+    expect(upgradeSpec('eslint-plugin-solid', '0.14.0', '>=0.14.1')).toEqual({
+      spec: 'eslint-plugin-solid@0.14',
+      major: false
+    })
+    expect(upgradeSpec('eslint-plugin-solid', '0.13.2', '>=0.14.1')).toEqual({
+      spec: 'eslint-plugin-solid@0.14',
+      major: true
+    })
+    expect(upgradeSpec('prettier', '2.8.8', '>=3.0.0')).toEqual({ spec: 'prettier@3', major: true })
   })
 
   it('pins Biome and Oxlint exactly, as pawl reads what those versions report', () => {
-    expect(upgradeSpec('@biomejs/biome')).toMatch(/^@biomejs\/biome@\d+\.\d+\.\d+$/)
-    expect(upgradeSpec('oxlint')).toMatch(/^oxlint@\d+\.\d+\.\d+$/)
-    expect(upgradeSpec('prettier')).toBe('prettier@latest')
+    expect(upgradeSpec('@biomejs/biome', '2.0.0', BIOME_VERSION)).toEqual({
+      spec: `@biomejs/biome@${BIOME_VERSION}`,
+      major: false
+    })
+    expect(upgradeSpec('@biomejs/biome', '1.9.4', BIOME_VERSION).major).toBe(true)
+    expect(upgradeSpec('oxlint', '1.0.0', '>=1.94.0').spec).toMatch(/^oxlint@\d+\.\d+\.\d+$/)
   })
 
   it('has nothing to install when every tool is in range, and leaves tools that are not installed to add', async () => {
@@ -78,7 +122,8 @@ describe('pawl upgrade', () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('eslint 8.57.0 is outside >=')
-    expect(result.stdout).toContain('Run    pnpm add -D eslint@latest eslint-plugin-promise@latest')
+    expect(result.stdout).toContain('eslint 8.57.0 is outside >=9.35.0: installing eslint@9, a new major version')
+    expect(result.stdout).toContain('Run    pnpm add -D eslint@9 eslint-plugin-promise@7')
     expect(result.stdout).toContain('Dry run. Nothing was changed.')
   })
 
@@ -86,11 +131,11 @@ describe('pawl upgrade', () => {
     const plan = await planUpgrade(withOldBiome({ 'package-lock.json': '{}\n' }))
 
     expect(plan.install).toBe(
-      `npm install -D --save-exact @biomejs/biome@${BIOME_VERSION} && npm install -D eslint@latest eslint-plugin-promise@latest`
+      `npm install -D --save-exact @biomejs/biome@${BIOME_VERSION} && npm install -D eslint@9 eslint-plugin-promise@7`
     )
     // pnpm, Yarn and Bun keep an exact version exact as they are given it.
     expect((await planUpgrade(withOldBiome({ 'pnpm-lock.yaml': "lockfileVersion: '9.0'\n" }))).install).toBe(
-      `pnpm add -D @biomejs/biome@${BIOME_VERSION} eslint@latest eslint-plugin-promise@latest`
+      `pnpm add -D @biomejs/biome@${BIOME_VERSION} eslint@9 eslint-plugin-promise@7`
     )
   })
 
@@ -114,6 +159,93 @@ describe('pawl upgrade', () => {
     expect(await flag(workspace({}, 'yarn@1.22.22'))).toBe(true)
     expect(await flag(workspace({}, 'yarn@4.19.0'))).toBe(false)
     expect(await flag(workspace({ 'yarn.lock': '__metadata:\n  version: 8\n', '.yarnrc.yml': '' }))).toBe(false)
+  })
+
+  it('installs a tool into the workspace packages that declare it, not into the root it is hoisted to', async () => {
+    const workspace = (files: Record<string, string>): string => {
+      const root = outdated(files)
+
+      write(root, {
+        'package.json': {
+          name: 'app',
+          private: true,
+          type: 'module',
+          workspaces: ['packages/*'],
+          devDependencies: { 'eslint-plugin-promise': '6.0.0' }
+        },
+        'packages/web/package.json': { name: '@app/web', devDependencies: { eslint: '8.57.0' } },
+        'packages/config/package.json': { name: '@app/config', dependencies: { eslint: '8.57.0' } },
+        'packages/docs/package.json': { name: '@app/docs' }
+      })
+
+      return root
+    }
+    const npm = await planUpgrade(workspace({ 'package-lock.json': '{}\n' }))
+
+    expect(npm.upgrades[0]).toMatchObject({ name: 'eslint', where: ['packages/config', 'packages/web'] })
+    // A package that lists the tool in its dependencies keeps it there.
+    expect(npm.install).toBe(
+      'npm install -w @app/config eslint@9 && npm install -D -w @app/web eslint@9 && npm install -D eslint-plugin-promise@7'
+    )
+    expect((await planUpgrade(workspace({ 'yarn.lock': '# yarn lockfile v1\n' }))).install).toBe(
+      'yarn workspace @app/config add eslint@9 && yarn workspace @app/web add -D eslint@9 && yarn add -D -W eslint-plugin-promise@7'
+    )
+    expect((await planUpgrade(workspace({ 'pnpm-lock.yaml': "lockfileVersion: '9.0'\n" }))).install).toBe(
+      'pnpm add --filter @app/config eslint@9 && pnpm add -D --filter @app/web eslint@9 && pnpm add -D -w eslint-plugin-promise@7'
+    )
+    expect((await planUpgrade(workspace({ 'bun.lock': '{}\n' }))).install).toBe(
+      'bun add --cwd packages/config eslint@9 && bun add -d --cwd packages/web eslint@9 && bun add -d eslint-plugin-promise@7'
+    )
+
+    const unnamed = workspace({ 'package-lock.json': '{}\n' })
+
+    write(unnamed, { 'packages/web/package.json': { devDependencies: { eslint: '8.57.0' } } })
+
+    const plan = await planUpgrade(unnamed)
+
+    expect(plan.install).toBe('npm install -w @app/config eslint@9 && npm install -D eslint-plugin-promise@7')
+    expect(plan.notes).toContain(
+      'packages/web declares eslint 8.57.0 and has no package name, so pawl cannot install into it. Install eslint@9 in packages/web yourself.'
+    )
+  })
+
+  it('installs the vue-eslint-parser that eslint-plugin-vue 10 takes as a peer, first and on its own under npm', async () => {
+    const vue = (lockfile: Record<string, string>): string => {
+      const root = outdated(lockfile)
+
+      write(root, {
+        'package.json': {
+          name: 'app',
+          type: 'module',
+          dependencies: { vue: '^3.5.0' },
+          devDependencies: { eslint: '8.57.0', 'eslint-plugin-vue': '9.33.0' }
+        },
+        'pawl.config.json': { engine: 'eslint', packs: ['vue'] },
+        'node_modules/eslint-plugin-vue/package.json': {
+          name: 'eslint-plugin-vue',
+          version: '9.33.0',
+          main: 'index.js'
+        },
+        'node_modules/eslint-plugin-vue/index.js': 'module.exports = { rules: {}, configs: {} }\n'
+      })
+
+      return root
+    }
+
+    // npm cannot swap the plugin and the parser its old version brought in one install: ERESOLVE.
+    expect((await planUpgrade(vue({ 'package-lock.json': '{}\n' }))).install).toBe(
+      'npm install -D vue-eslint-parser@10 && npm install -D eslint@9 eslint-plugin-vue@10'
+    )
+    // Yarn 1 installs no peers, so the plugin needs the parser in the command too.
+    expect((await planUpgrade(vue({ 'yarn.lock': '# yarn lockfile v1\n' }))).install).toBe(
+      'yarn add -D vue-eslint-parser@10 eslint@9 eslint-plugin-vue@10'
+    )
+  })
+
+  it('takes the parser on the line of the Vue plugin it installs', () => {
+    // eslint-plugin-vue 10 takes vue-eslint-parser 10. A new floor for the plugin needs its peer looked at again.
+    expect(getPack('vue')?.range).toBe('>=10.0.0')
+    expect(PLUGIN_PEERS['eslint-plugin-vue']).toEqual(['vue-eslint-parser@10'])
   })
 
   it.skipIf(process.platform === 'win32')(
@@ -146,7 +278,7 @@ describe('pawl upgrade', () => {
       expect(existsSync(join(done, 'biome.json'))).toBe(true)
       expect(readFileSync(join(done, 'npm.log'), 'utf8').trim().split('\n')).toEqual([
         `npm install -D --save-exact @biomejs/biome@${BIOME_VERSION}`,
-        'npm install -D eslint@latest eslint-plugin-promise@latest'
+        'npm install -D eslint@9 eslint-plugin-promise@7'
       ])
 
       const failed = withOldBiome({ 'package-lock.json': '{}\n' })

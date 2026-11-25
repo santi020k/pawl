@@ -15,7 +15,7 @@ import { writeText } from '../utils/fs.ts'
 import { plural } from '../utils/text.ts'
 import { PACKAGE_NAME } from '../version.ts'
 import { planEngineConfigs } from './engine-configs.ts'
-import { installCommand, listed } from './install.ts'
+import { installCommand, listed, missingPlugins } from './install.ts'
 import { planAgents, planEditor, planHook, planScripts, planTurboTasks, planWorkflow } from './integrations.ts'
 import { assertPacks, describeActions, legacyNote, planPolicyFile, type SetupAction, type SetupPlan } from './plan.ts'
 import { ESLINT_CONFIG } from './templates.ts'
@@ -76,14 +76,22 @@ interface Choice {
   typeAware: boolean
 }
 
-/** The tools for a project: what the options name, else what the mode keeps or brings in. */
-const chooseTools = (options: InitOptions, detection: Detection): Choice => {
+/**
+ * The tools for a project: what the options name, else what the policy names, as after an earlier
+ * `init`, else what the mode keeps or brings in.
+ */
+const chooseTools = (options: InitOptions, detection: Detection, policy: Policy): Choice => {
   const { root, mode = 'auto' } = options
   const { tools } = detection
   const keep = mode === 'keep' && !tools.biome
   const kept: EngineName | undefined = (tools.oxlint && 'oxlint') || (tools.eslint && 'eslint') || undefined
-  const linter: EngineName = options.engine ?? (keep && kept ? kept : 'biome')
-  const formatter: FormatterName = options.formatter ?? (keep && tools.prettier ? 'prettier' : 'biome')
+  const named = {
+    linter: policy.engine === 'auto' ? undefined : policy.engine,
+    formatter: policy.formatter === 'auto' ? undefined : policy.formatter
+  }
+  const linter: EngineName = options.engine ?? named.linter ?? (keep && kept ? kept : 'biome')
+  const formatter: FormatterName =
+    options.formatter ?? named.formatter ?? (keep && tools.prettier ? 'prettier' : 'biome')
   const eslint =
     linter === 'eslint' ||
     (options.packs?.length ?? 0) > 0 ||
@@ -239,7 +247,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
 
   const { policy: loaded, detection } = await loadProject(root)
   const { tools } = detection
-  const choice = chooseTools(options, detection)
+  const choice = chooseTools(options, detection, loaded)
   const { linter, formatter } = choice
   const named = requested.filter(name => onlyWhenNamed(name) && !loaded.packs.includes(name))
   const pinned = pinnedChoice(root, choice, detection, named.length > 0 ? [...loaded.packs, ...named] : [])
@@ -276,7 +284,12 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   }
 
   const present = listed(root)
-  const packages = missingPackages(root, choice, detection, requested, present, options.packages)
+  const needed = missingPackages(root, choice, detection, requested, present, options.packages)
+  // The plugins ESLint needs besides: with ESLint as the linter, the standard's own rules take some, as unicorn's.
+  const plugins = (
+    choice.eslint && existsSync(join(root, 'package.json')) ? await missingPlugins(root, policy) : []
+  ).filter(name => !needed.includes(name) && !present.has(name))
+  const packages = [...needed, ...plugins]
   const suggestion = packSuggestions(detection, policy, requested, present)
 
   if (suggestion) notes.push(suggestion)
@@ -307,7 +320,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     formatter,
     actions: actions.filter((action): action is SetupAction => action !== undefined),
     notes,
-    install: install && packages.length > 0 ? installCommand(detection, packages) : undefined,
+    install: install && packages.length > 0 ? installCommand(detection, needed, plugins) : undefined,
     packages,
     policy
   }

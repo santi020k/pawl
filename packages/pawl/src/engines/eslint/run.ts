@@ -33,8 +33,10 @@ const BIN = { packageName: 'eslint', bin: 'eslint', fallback: 'bin/eslint.js' }
 /** ESLint is installed in the project. Pawl never brings its own. */
 export const eslintInstalled = (root: string): boolean => resolveBin(root, BIN) !== undefined
 
+// Zero is a position too: ESLint passes on a parse error's column as the parser counts it, and the
+// YAML and GraphQL parsers count from 0. The finding moves it to 1.
 const position = (value: unknown): boolean =>
-  value === undefined || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
+  value === undefined || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
 
 const isMessage = (value: unknown): value is EslintMessage =>
   isRecord(value) &&

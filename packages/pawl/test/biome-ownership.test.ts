@@ -261,3 +261,42 @@ describe('generated Biome override ownership', () => {
     expect(contents(external, 'user.json')).toBe(before)
   })
 })
+
+describe('the linter and formatter pawl switched off in biome.json', () => {
+  it('switches them on again, and reports a biome.json that still has them off', async () => {
+    // Oxlint lints, so pawl writes biome.json with Biome's linter off.
+    const root = project({
+      'package.json': { name: 'back-to-biome' },
+      'pawl.config.json': { engine: 'oxlint' },
+      'a.js': 'debugger;\n'
+    })
+    const biome = (): Record<string, unknown> => JSON.parse(contents(root, 'biome.json')) as Record<string, unknown>
+
+    link(root)
+    applyPlan(await planSync(root))
+    expect(biome()).toMatchObject({ linter: { enabled: false } })
+
+    // Back to Biome: the check must lint again, and say so until biome.json is synced.
+    write(root, { 'pawl.config.json': {} })
+    expect((await check({ root })).setup).toEqual([expect.objectContaining({ code: 'biome-config-stale' })])
+
+    applyPlan(await planSync(root))
+    expect(biome()).not.toHaveProperty('linter.enabled')
+    expect(await debuggerFiles(root)).toEqual(['a.js'])
+
+    // Prettier formats, so pawl writes biome.json with Biome's formatter off, then Biome formats again.
+    write(root, { 'pawl.config.json': { formatter: 'prettier' } })
+    applyPlan(await planSync(root))
+    expect(biome()).toMatchObject({ formatter: { enabled: false } })
+
+    write(root, { 'pawl.config.json': {}, 'b.js': 'export const b   =  1\n' })
+    expect((await check({ root })).setup).toEqual([expect.objectContaining({ code: 'biome-config-stale' })])
+
+    applyPlan(await planSync(root))
+    expect(biome()).not.toHaveProperty('formatter.enabled')
+    expect((await check({ root })).findings).toContainEqual(
+      expect.objectContaining({ file: 'b.js', rule: 'pawl/format' })
+    )
+    expect((await planSync(root)).actions).toEqual([])
+  })
+})

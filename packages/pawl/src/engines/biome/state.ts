@@ -82,6 +82,20 @@ const contains = (actual: Json | undefined, expected: Json): boolean => {
   return sameJson(actual, expected)
 }
 
+/**
+ * The parts of Biome that biome.json switches off while the policy has Biome run them: its linter,
+ * its formatter. Pawl writes `enabled: false` itself when another tool lints or formats, and the
+ * policy only adds what differs from the standard, so after the policy hands the work back to
+ * Biome the old file would still match it, and Biome would check nothing.
+ */
+export const switchedOff = (value: JsonRecord, context: BiomeContext): ('linter' | 'formatter')[] =>
+  (['linter', 'formatter'] as const).filter(section => {
+    const settings = value[section]
+    const wanted = section === 'linter' ? context.lint !== false : context.format !== false
+
+    return wanted && isRecord(settings) && settings.enabled === false
+  })
+
 /** Inline arrays do not identify which entries Pawl owns; do not guess their precedence. */
 export const inlineOverridesConflict = (actual: JsonRecord, expected: JsonRecord): boolean =>
   Array.isArray(actual.overrides) &&
@@ -207,7 +221,13 @@ export const checkBiomeConfig = (root: string, policy: Policy, context: BiomeCon
 
   const overridesOk = !ownedOverrides || sameJson(value.overrides ?? [], expected.overrides ?? [])
 
-  if (!extendsOk || !globalsOk || !overridesOk || !contains(withoutGlobals(value), withoutGlobals(expected))) {
+  if (
+    !extendsOk ||
+    !globalsOk ||
+    !overridesOk ||
+    switchedOff(value, context).length > 0 ||
+    !contains(withoutGlobals(value), withoutGlobals(expected))
+  ) {
     return {
       status: 'stale',
       file,

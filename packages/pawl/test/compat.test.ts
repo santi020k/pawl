@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PACKS } from '../src/catalog/packs.ts'
+import { rangeFor } from '../src/setup/install.ts'
 import { installedVersion, satisfies } from '../src/utils/semver.ts'
 import { PEER_RANGES } from '../src/version.ts'
 import { project } from './helpers.ts'
@@ -58,6 +59,17 @@ describe('the plugin ranges', () => {
       expect(PEER_RANGES[pack.plugin], pack.plugin).toBe(pack.range)
       expect(pack.range, pack.plugin).not.toBe('*')
       expect(pack.range, pack.plugin).toMatch(/^>=\d+\.\d+\.\d+$/)
+    }
+  })
+
+  it('write a range into package.json whose lowest version pawl works with', () => {
+    // What `add` and `init` write with --no-install, for the package manager to resolve later.
+    for (const name of [...PACKS.map(pack => pack.plugin).filter(plugin => plugin !== 'eslint'), 'typescript-eslint']) {
+      const written = rangeFor(name)
+      const lowest = /^\^(\d+\.\d+\.\d+)$/.exec(written)?.[1]
+
+      expect(lowest, `${name} ${written}`).toBeDefined()
+      expect(satisfies(lowest ?? '', PEER_RANGES[name] ?? ''), `${name} ${written}`).toBe(true)
     }
   })
 })

@@ -19,18 +19,16 @@ The work planned on `release/v0.6.0`. The branch starts from `release/v0.5.0` as
 - [x] `pawl upgrade` (`0.6.0/upgrade-command`).
 - [x] The public API as a generated report, `packages/pawl/api.md` (`0.6.0/api-snapshot`), and the plugin's skill generated from the same guidance as the one `init` writes (`0.6.0/skill-single-source`).
 - [x] A weekly engine canary and a Windows job that does not block yet (`0.6.0/ci-canary-windows`).
+- [x] Hardening on `release/v0.6.0`: the CI output against workflow-command injection and odd paths, the engine reports and exit codes, the baseline's shape, and the ESLint cache's file reads.
 - [x] Docs: a benchmarks page from `scripts/bench.ts`, the adoption pages folded into three, the report contract under Reference, and a Pawl in use page (`0.6.0/benchmarks`, `0.6.0/docs-adoption-pages`, `0.6.0/docs-case-studies`).
-
-## Candidates
-
-None is committed to this release until someone starts it. Sizes are relative: S is a contained change in one layer, M touches several layers.
-
-- [ ] More git hook managers (S to M): a lint-staged entry, an edit to lefthook's YAML that keeps comments, and a local hook for `.pre-commit-config.yaml`.
-- [ ] More coding agents (S each): Windsurf and Devin (the Claude Code hook format), Aider (`read: [AGENTS.md]` and `lint-cmd`), each with the stop hook and the guard where the agent has those events.
-- [ ] `pawl fix --baseline` with a coding agent: fix findings the baseline still allows, check again and shrink the baseline.
 
 ## Deferred
 
+These did not land in 0.6.0 and go to a later release. Sizes are relative: S is a contained change in one layer, M touches several layers.
+
+- More git hook managers (S to M): a lint-staged entry, an edit to lefthook's YAML that keeps comments, and a local hook for `.pre-commit-config.yaml`.
+- More coding agents (S each): Windsurf and Devin (the Claude Code hook format), Aider (`read: [AGENTS.md]` and `lint-cmd`), each with the stop hook and the guard where the agent has those events.
+- `pawl fix --baseline` with a coding agent: fix findings the baseline still allows, check again and shrink the baseline.
 - Approved and retired AI models in the policy (M): the catalog of retired model IDs needs updating every release; worth it once a policy package asks for it.
 - Oxfmt as a formatter (M to L), with the policy's style written into its config.
 - `pawl lsp` (M to L): new findings as errors and baselined ones as hints in every editor, from one long-running process.

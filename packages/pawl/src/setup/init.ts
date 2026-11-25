@@ -15,7 +15,7 @@ import { writeText } from '../utils/fs.ts'
 import { plural } from '../utils/text.ts'
 import { PACKAGE_NAME } from '../version.ts'
 import { planEngineConfigs } from './engine-configs.ts'
-import { installCommand, listed } from './install.ts'
+import { installCommand, listed, missingPlugins } from './install.ts'
 import { planAgents, planEditor, planHook, planScripts, planTurboTasks, planWorkflow } from './integrations.ts'
 import { assertPacks, describeActions, legacyNote, planPolicyFile, type SetupAction, type SetupPlan } from './plan.ts'
 import { ESLINT_CONFIG } from './templates.ts'
@@ -284,7 +284,12 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   }
 
   const present = listed(root)
-  const packages = missingPackages(root, choice, detection, requested, present, options.packages)
+  const needed = missingPackages(root, choice, detection, requested, present, options.packages)
+  // The plugins ESLint needs besides: with ESLint as the linter, the standard's own rules take some, as unicorn's.
+  const plugins = (
+    choice.eslint && existsSync(join(root, 'package.json')) ? await missingPlugins(root, policy) : []
+  ).filter(name => !needed.includes(name) && !present.has(name))
+  const packages = [...needed, ...plugins]
   const suggestion = packSuggestions(detection, policy, requested, present)
 
   if (suggestion) notes.push(suggestion)
@@ -315,7 +320,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     formatter,
     actions: actions.filter((action): action is SetupAction => action !== undefined),
     notes,
-    install: install && packages.length > 0 ? installCommand(detection, packages) : undefined,
+    install: install && packages.length > 0 ? installCommand(detection, needed, plugins) : undefined,
     packages,
     policy
   }

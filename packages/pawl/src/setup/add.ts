@@ -6,7 +6,7 @@ import { ESLINT_CONFIG_FILES, hasAny } from '../project/config-files.ts'
 import { type Policy } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
 import { PACKAGE_NAME } from '../version.ts'
-import { installCommand, listed } from './install.ts'
+import { installCommand, listed, missingPlugins } from './install.ts'
 import { planScripts } from './integrations.ts'
 import { assertPacks, legacyNote, planPolicyFile, type SetupAction, type SetupPlan } from './plan.ts'
 import { ESLINT_CONFIG } from './templates.ts'
@@ -58,9 +58,14 @@ export const planAdd = async (root: string, names: readonly string[], install = 
   const present = listed(root)
   // ESLint lints the scripts too, also next to Biome, and reads TypeScript only with typescript-eslint.
   const eslint = needsEslint ? ['eslint', ...(detection.typescript ? ['typescript-eslint'] : [])] : []
-  const packages = [...new Set([...eslint, ...names.flatMap(name => getPack(name)?.plugin ?? [])])].filter(
+  const needed = [...new Set([...eslint, ...names.flatMap(name => getPack(name)?.plugin ?? [])])].filter(
     name => !present.has(name)
   )
+  // The plugins ESLint needs besides: where it is the linter, the standard's own rules take some, as unicorn's.
+  const plugins = (needsEslint && loaded.engine !== 'biome' ? await missingPlugins(root, policy) : []).filter(
+    name => !needed.includes(name) && !present.has(name)
+  )
+  const packages = [...needed, ...plugins]
   const manifest = install ? undefined : planScripts(root, notes, packages)
 
   if (manifest) actions.push(manifest)
@@ -69,7 +74,7 @@ export const planAdd = async (root: string, names: readonly string[], install = 
     detection,
     actions,
     notes,
-    install: install && packages.length > 0 ? installCommand(detection, packages) : undefined,
+    install: install && packages.length > 0 ? installCommand(detection, needed, plugins) : undefined,
     packages,
     policy
   }

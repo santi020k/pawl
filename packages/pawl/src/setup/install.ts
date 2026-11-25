@@ -2,9 +2,11 @@ import { closeSync, existsSync, openSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { PACKS } from '../catalog/packs.ts'
 import { BIOME_VERSION } from '../engines/biome/config.ts'
+import { eslintPlanFor } from '../engines/eslint/plan.ts'
 import { TYPE_AWARE_PACKAGE } from '../engines/oxlint/config.ts'
 import { OXLINT_VERSION, TSGOLINT_VERSION } from '../engines/oxlint/rules.ts'
 import { type Detection, type PackageManager } from '../project/detect.ts'
+import { type Policy } from '../types.ts'
 import { readJson } from '../utils/json.ts'
 import { installedVersion } from '../utils/semver.ts'
 import { PACKAGE_NAME, VERSION } from '../version.ts'
@@ -167,16 +169,26 @@ export const upgradeCommand = (
   return start === undefined ? undefined : commandFrom(manager, start, specs)
 }
 
-/** The command that adds packages to the root of the project with its own package manager. */
-export const installCommand = (detection: Detection, packages: readonly string[] = [PACKAGE_NAME]): string => {
+/**
+ * The command that adds packages to the root of the project with its own package manager, and
+ * then the plugins in `after`. npm refuses a whole install when the peer ranges of one package
+ * leave out what is there, as eslint-plugin-import's leave out ESLint 10, so under npm those go in
+ * a command of their own after the rest: pawl and the tools are installed even when one fails.
+ */
+export const installCommand = (
+  detection: Detection,
+  packages: readonly string[] = [PACKAGE_NAME],
+  after: readonly string[] = []
+): string => {
   const manager = detection.packageManager ?? 'npm'
+  const start = rootStart(detection, manager, DEV_FLAG[manager])
+  // Biome is pinned: pawl reads a report format Biome may change between releases.
+  const specs = packages.map(name => (name === '@biomejs/biome' ? `${name}@${BIOME_VERSION}` : name))
 
-  return commandFrom(
-    manager,
-    rootStart(detection, manager, DEV_FLAG[manager]),
-    // Biome is pinned: pawl reads a report format Biome may change between releases.
-    packages.map(name => (name === '@biomejs/biome' ? `${name}@${BIOME_VERSION}` : name))
-  )
+  if (manager !== 'npm' || after.length === 0 || specs.length === 0)
+    return commandFrom(manager, start, [...specs, ...after])
+
+  return `${commandFrom(manager, start, specs)} && ${commandFrom(manager, start, after)}`
 }
 
 /**
@@ -203,6 +215,22 @@ export const declarations = (detection: Detection, name: string): Destination[] 
  */
 export const PLUGIN_PEERS: Readonly<Record<string, readonly string[]>> = {
   'eslint-plugin-vue': ['vue-eslint-parser@10']
+}
+
+/** What the ESLint plan says a plugin that is not installed needs: its package name, and nothing more. */
+const PACKAGE = /^(?:@[\w.-]+\/)?[\w.-]+$/
+
+/**
+ * The plugins ESLint needs for a policy and cannot load, because they are not installed, as
+ * `pawl doctor` lists them: the plugin of each pack it switches on, and of each rule of the
+ * standard it runs. With ESLint as the linter, those rules take eslint-plugin-unicorn,
+ * eslint-plugin-promise and more. A plugin that is installed but fails to load is for the doctor
+ * to report, not one to install again.
+ */
+export const missingPlugins = async (root: string, policy: Policy): Promise<string[]> => {
+  const { notEnforced } = await eslintPlanFor(root, policy)
+
+  return [...new Set(notEnforced.map(item => item.needs).filter(needs => PACKAGE.test(needs)))]
 }
 
 /** The packages a project already lists, in any dependency group. */

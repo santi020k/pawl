@@ -297,9 +297,9 @@ const COPILOT_HOOK: AgentHook = {
     'hooks that fix each Copilot edit, tell Copilot what is left, and send it back when it stops with errors left',
   add: existing => copilotEntry(existing, 'postToolUse', AGENT_HOOK_COMMAND),
   stopEvent: 'agentStop',
-  addStop: existing => copilotEntry(existing, 'agentStop', STOP_HOOK_COMMAND),
-  guardEvent: 'preToolUse',
-  addGuard: existing => copilotEntry(existing, 'preToolUse', GUARD_HOOK_COMMAND)
+  addStop: existing => copilotEntry(existing, 'agentStop', STOP_HOOK_COMMAND)
+  // No guard: Copilot denies the tool when a preToolUse hook fails, so in a clone before the
+  // install, where npx cannot find pawl, the guard would stop every tool the agent runs.
 }
 
 /** The files that say a repo uses Copilot's agents. */

@@ -142,8 +142,7 @@ describe('setting up coding agents', () => {
       version: 1,
       hooks: {
         postToolUse: [{ type: 'command', command: 'npx --no pawl fix --hook', timeoutSec: 60 }],
-        agentStop: [{ type: 'command', command: 'npx --no pawl check --hook', timeoutSec: 60 }],
-        preToolUse: [{ type: 'command', command: 'npx --no pawl check --hook', timeoutSec: 60 }]
+        agentStop: [{ type: 'command', command: 'npx --no pawl check --hook', timeoutSec: 60 }]
       }
     })
     // Nothing to add the second time, and no note about Codex either.

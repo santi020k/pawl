@@ -82,7 +82,7 @@ const peersOf = async (dependencies: Readonly<Record<string, string>>): Promise<
     // Ranges are the packages the run adds for itself, such as TypeScript; only plugins are looked up.
     if (version !== 'latest' && !/^\d+\.\d+\.\d+$/.test(version)) continue
 
-    const response = await fetch(`https://registry.npmjs.org/${name.replace('/', '%2f')}`)
+    const response = await fetch(`https://registry.npmjs.org/${name.replaceAll('/', '%2f')}`)
 
     if (!response.ok) throw new Error(`The registry answered ${response.status} for ${name}`)
 

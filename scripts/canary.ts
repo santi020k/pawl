@@ -93,7 +93,7 @@ export const setCatalogEntry = (yaml: string, name: string, version: string): st
 }
 
 const latest = async (name: string): Promise<string> => {
-  const response = await fetch(`https://registry.npmjs.org/${name.replace('/', '%2f')}`)
+  const response = await fetch(`https://registry.npmjs.org/${name.replaceAll('/', '%2f')}`)
 
   if (!response.ok) throw new Error(`The registry answered ${response.status} for ${name}`)
 

@@ -317,6 +317,9 @@ describe('GitHub annotations', () => {
     expect(formatGithub(result([any]), { base: './.config/' })).toContain('file=.config/src/a.ts,')
     expect(formatGithub(result([any]), { base: '.github/scripts' })).toContain('file=.github/scripts/src/a.ts,')
     expect(formatGithub(result([any]), { base: '.' })).toContain('file=src/a.ts,')
+    expect(formatGithub(result([any]), { base: 'packages/web///' })).toContain('file=packages/web/src/a.ts,')
+    // Many slashes take no longer than a few: the trailing ones are trimmed by a scan, not a regular expression.
+    expect(formatGithub(result([any]), { base: `${'/'.repeat(100_000)}x` })).toContain('src/a.ts,')
     expect(formatGithub(result([any]), { base: './' })).toContain('file=src/a.ts,')
     expect(formatGithub(result([any]), { base: './/' })).toContain('file=src/a.ts,')
     expect(formatGithub(result([any]), { base: '..' })).toContain('file=../src/a.ts,')

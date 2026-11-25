@@ -25,8 +25,17 @@ const DOCS = 'https://pawl.santi020k.com'
 
 type Level = 'error' | 'warning'
 
+/** The path without its trailing slashes, by a scan from the end: a regular expression is quadratic on many slashes. */
+const trimTrailingSlashes = (path: string): string => {
+  let end = path.length
+
+  while (end > 0 && path[end - 1] === '/') end -= 1
+
+  return path.slice(0, end)
+}
+
 const stripCurrentPrefix = (path: string): string => {
-  const clean = path.replace(/^(?:\.?\/)+/, '').replace(/\/+$/, '')
+  const clean = trimTrailingSlashes(path.replace(/^(?:\.?\/)+/, ''))
 
   return clean === '.' ? '' : clean
 }

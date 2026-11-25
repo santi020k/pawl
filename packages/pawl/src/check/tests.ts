@@ -71,12 +71,9 @@ const SKIP =
  * `sleep(500)`). Each line counts once, however many of them it has.
  */
 const MASKS: readonly RegExp[] = [
-  /\bretry\s*:\s*[1-9]/,
-  /\bretries\s*:\s*[1-9]/,
   /\.retry\s*\(\s*[1-9]/,
   /\bretryTimes\s*\(/,
   /\.retries\s*\(\s*[1-9]/,
-  /\b(?:test)?timeout\s*:\s*\d/i,
   /\b(?:jest|vi|test|this)\.setTimeout\s*\(/,
   /\bthis\.timeout\s*\(\s*\d/,
   /\btest\.slow\s*\(/,
@@ -87,11 +84,130 @@ const MASKS: readonly RegExp[] = [
   /\b(?:sleep|delay|wait)\s*\(\s*\d/
 ]
 
-/** A `timeout` option, which on an assertion that retries or a wait for something is how to wait well. */
-const TIMEOUT_OPTION = /\b(?:test)?timeout\s*:/i
+/**
+ * A retry or a timeout option. It raises them for a test only on a call of the test runner: on an
+ * assertion that retries or a wait for something, it is how to wait well, and on the code the
+ * test calls, it is what the test checks.
+ */
+const OPTION = /\b(?:retry|retries)\s*:\s*[1-9]|\b(?:test)?timeout\s*:\s*\d/gi
 
-/** An assertion that retries, or a wait for a thing rather than for a time. */
-const WAITS_FOR = /\b(?:expect(?:\.poll)?|waitFor\w*|toPass)\s*\(/
+/** The test runner's own calls: `test`, `it.concurrent`, `describe`, the hooks, `test.describe.configure`, `vi.setConfig`. */
+const RUNNER =
+  /^(?:[fx]?(?:test|it|describe|suite|context|specify|bench)|(?:before|after)(?:Each|All)?|vi\.setConfig)\b/
+
+/**
+ * Script text with the inside of every string, template and regular expression blanked, and every
+ * comment, lines kept, so a retry or a timeout written in one is not taken for code.
+ */
+const blankScript = (text: string): string => {
+  let out = ''
+  let index = 0
+  // The last character outside what is blanked that is not a space: a slash after one of these starts a regular expression.
+  let last = ''
+  const blank = (from: number, to: number): string => text.slice(from, to).replace(/[^\n]/g, ' ')
+
+  while (index < text.length) {
+    const char = text[index] as string
+    const next = text[index + 1]
+
+    if (char === '/' && (next === '/' || next === '*')) {
+      // A line comment ends before its newline, a block comment after its */, and either at the end.
+      const end = next === '/' ? text.indexOf('\n', index) : text.indexOf('*/', index + 2) + 2
+      const stop = end === -1 || end === 1 ? text.length : end
+
+      out += blank(index, stop)
+      index = stop
+    } else if (`'"\``.includes(char) || (char === '/' && (last === '' || /[(,=:[!&|?{};+\-*%<>~^]/.test(last)))) {
+      let end = index + 1
+      let inClass = false
+
+      while (end < text.length) {
+        const current = text[end]
+
+        if (current === '\\') end++
+        else if (current === '\n' && char !== '`') break
+        else if (char === '/' && current === '[') inClass = true
+        else if (char === '/' && current === ']') inClass = false
+        else if (current === char && !inClass) break
+
+        end++
+      }
+
+      const stop = Math.min(end, text.length)
+      const closed = text[stop] === char
+
+      out += char + blank(index + 1, stop) + (closed ? char : '')
+      index = closed ? stop + 1 : stop
+      last = char
+    } else {
+      if (!/\s/.test(char)) last = char
+
+      out += char
+      index++
+    }
+  }
+
+  return out
+}
+
+/** Where the bracket that `close` closes opens, in text whose strings are blanked. */
+const openerOf = (script: string, close: number): number => {
+  let depth = 0
+
+  for (let index = close; index >= 0; index--) {
+    const char = script[index] as string
+
+    if (')]}'.includes(char)) depth++
+    else if ('([{'.includes(char) && --depth === 0) return index
+  }
+
+  return 0
+}
+
+/** What a call hangs from, up to its opening parenthesis: `expect(page.getByText(…)).toBeVisible`, `test.describe.configure`. */
+const chainBefore = (script: string, paren: number): string => {
+  let index = paren - 1
+
+  while (index >= 0) {
+    const char = script[index] as string
+
+    if (/[\w$]/.test(char)) {
+      index--
+    } else if (char === '.') {
+      index--
+
+      while (index >= 0 && /\s/.test(script[index] as string)) index--
+
+      if (script[index] === '?') index--
+    } else if (char === ')' || char === ']') {
+      index = openerOf(script, index) - 1
+    } else {
+      break
+    }
+  }
+
+  return script.slice(index + 1, paren)
+}
+
+/** The call whose arguments hold the text at `at`, through the objects and lists around it. Empty outside any call. */
+const callAround = (script: string, at: number): string => {
+  let depth = 0
+
+  for (let index = at - 1; index >= 0; index--) {
+    const char = script[index] as string
+
+    if (')]}'.includes(char)) depth++
+    else if (char === '(' && depth === 0) return chainBefore(script, index)
+    else if ('([{'.includes(char)) depth = Math.max(0, depth - 1)
+  }
+
+  return ''
+}
+
+/** True when a line of the script has a retry, a raised timeout or a fixed sleep. `start` is where the line starts in it. */
+const masks = (script: string, start: number, line: string): boolean =>
+  MASKS.some(mask => mask.test(line)) ||
+  [...line.matchAll(OPTION)].some(match => RUNNER.test(callAround(script, start + match.index)))
 
 /** A line that is only a comment. Assertions shown in a comment are not run. */
 const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/
@@ -110,12 +226,15 @@ export const countTests = (file: string, text: string): TestFile => {
     return match ? [{ line: index + 1, text: match[0].replace(/\s*\($/, '') }] : []
   })
 
-  const maskLines = code.split('\n').flatMap((line, index) => {
-    // A timeout on an assertion that retries, or on a wait for something, is how to wait well.
-    const waitsWell = WAITS_FOR.test(line)
-    const pattern = MASKS.find(mask => mask.test(line) && !(waitsWell && TIMEOUT_OPTION.test(line)))
+  const script = blankScript(text)
+  const lines = text.split('\n')
+  let start = 0
+  const maskLines = script.split('\n').flatMap((line, index) => {
+    const found = masks(script, start, line)
 
-    return pattern ? [{ line: index + 1, text: line.trim().slice(0, 80) }] : []
+    start += line.length + 1
+
+    return found ? [{ line: index + 1, text: (lines[index] ?? '').trim().slice(0, 80) }] : []
   })
 
   return {

@@ -4,9 +4,9 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { readdirSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { toPosix } from '../utils/fs.ts'
+import { isFile, toPosix } from '../utils/fs.ts'
 import { WALK_SKIP } from './ignores.ts'
 
 const realpath = (path: string): string => {
@@ -81,7 +81,7 @@ export const changedFiles = (root: string): string[] | undefined => {
     }
   }
 
-  return [...new Set(files)].filter(file => existsSync(join(root, file)))
+  return [...new Set(files)].filter(file => isFile(join(root, file)))
 }
 
 /** Why `changedSince` could not tell which files changed. */
@@ -157,7 +157,7 @@ export const changedSince = (root: string, ref: string): string[] => {
       'Run "git status" to see what is wrong with the repository.'
     )
 
-  return [...new Set(files)].filter(file => existsSync(join(root, file)))
+  return [...new Set(files)].filter(file => isFile(join(root, file)))
 }
 
 /** A file of the project as it was at a commit, or undefined when it did not exist there. */
@@ -185,7 +185,7 @@ export const trailersSince = (root: string, base: string, key: string): string[]
 export const listFiles = (root: string): string[] => {
   try {
     return gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard']).filter(file =>
-      existsSync(join(root, file))
+      isFile(join(root, file))
     )
   } catch {
     return walk(root, root)

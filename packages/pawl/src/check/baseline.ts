@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from '../project/files.ts'
 import { type Finding, type SetupIssue } from '../types.ts'
-import { readJson, sortKeys, writeJson } from '../utils/json.ts'
+import { isFile } from '../utils/fs.ts'
+import { isRecord, readJson, sortKeys, writeJson } from '../utils/json.ts'
 import { type TestCounts } from './tests.ts'
 
 export const BASELINE_FILE = '.pawl/baseline.json'
@@ -102,14 +103,45 @@ export const blankJsonStrings = (text: string): string => {
   return out
 }
 
+const isCount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+
+const isCountMap = (value: unknown): value is Record<string, number> =>
+  isRecord(value) && Object.values(value).every(isCount)
+
+const isFindingsMap = (value: unknown): value is Record<string, Record<string, number>> =>
+  isRecord(value) && Object.values(value).every(isCountMap)
+
+const isTestCounts = (value: unknown): value is TestCounts =>
+  isRecord(value) &&
+  isCount(value.assertions) &&
+  isCount(value.skipped) &&
+  (value.masks === undefined || isCount(value.masks))
+
+const isTestsMap = (value: unknown): value is Record<string, TestCounts> =>
+  isRecord(value) && Object.values(value).every(isTestCounts)
+
 /** A baseline from its JSON, or undefined when it is not one this version of pawl knows. */
-export const parseBaseline = (baseline: Baseline | undefined): Baseline | undefined =>
-  baseline?.version === 1
-    ? { ...baseline, findings: baseline.findings ?? {}, suppressions: baseline.suppressions ?? {} }
-    : undefined
+export const parseBaseline = (baseline: unknown): Baseline | undefined => {
+  if (
+    !isRecord(baseline) ||
+    baseline.version !== 1 ||
+    (baseline.findings !== undefined && !isFindingsMap(baseline.findings)) ||
+    (baseline.suppressions !== undefined && !isCountMap(baseline.suppressions)) ||
+    (baseline.tests !== undefined && !isTestsMap(baseline.tests))
+  )
+    return undefined
+
+  return {
+    version: 1,
+    findings: baseline.findings ?? {},
+    suppressions: baseline.suppressions ?? {},
+    ...(baseline.tests === undefined ? {} : { tests: baseline.tests })
+  }
+}
 
 export const readBaseline = (root: string): Baseline | undefined =>
-  parseBaseline(readJson<Baseline>(join(root, BASELINE_FILE)))
+  parseBaseline(readJson<unknown>(join(root, BASELINE_FILE)))
 
 /**
  * True when there is a baseline file that cannot be used: it is not valid JSON, as after a merge
@@ -141,7 +173,7 @@ export const scanSuppressions = (
   for (const file of files ?? listFiles(root)) {
     const pattern = suppressionPattern(file)
 
-    if (!pattern || ignored(file) || !existsSync(join(root, file))) continue
+    if (!pattern || ignored(file) || !isFile(join(root, file))) continue
 
     const text = readFileSync(join(root, file), 'utf8')
     const lines = (JSON_FILE.test(file) ? blankJsonStrings(text) : text).split('\n')
@@ -256,7 +288,7 @@ export const newSuppressions = (suppressions: readonly Suppression[], baseline: 
 
   for (const suppression of suppressions) {
     const allowed = ownValue(baseline.suppressions, suppression.file) ?? 0
-    const found = counts[suppression.file] ?? 0
+    const found = ownValue(counts, suppression.file) ?? 0
 
     if (found <= allowed) continue
 

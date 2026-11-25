@@ -1,11 +1,12 @@
 /** `pawl check`, `pawl fix` and `pawl baseline`: run the engines, then report or record what they found. */
 
 import { readFileSync } from 'node:fs'
-import { isAbsolute, join, relative, sep } from 'node:path'
+import { join, resolve } from 'node:path'
 import { BASELINE_FILE } from '../../check/baseline.ts'
 import { type CheckOptions, type CheckProgress, check } from '../../check/check.ts'
 import { engineTitle, format, type OutputFormat, type RichOptions } from '../../check/output.ts'
 import { type CheckResult, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
+import { projectPath } from '../../project/files.ts'
 import { plural } from '../../utils/text.ts'
 import { assertHookFlags, type Flags, formatFromEnv, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
 import { type Terminal, terminal } from '../audience.ts'
@@ -214,9 +215,9 @@ export const workspaceBase = (root: string, env: Readonly<Record<string, string 
 
   if (!workspace) return ''
 
-  const path = relative(workspace, root)
+  const path = projectPath(resolve(workspace), resolve(root))
 
-  return path === '' || path.startsWith('..') || isAbsolute(path) ? '' : path.split(sep).join('/')
+  return path === undefined || path === '.' ? '' : path
 }
 
 /**

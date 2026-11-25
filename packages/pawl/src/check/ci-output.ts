@@ -24,12 +24,39 @@ const DOCS = 'https://pawl.santi020k.com'
 
 type Level = 'error' | 'warning'
 
+const stripCurrentPrefix = (path: string): string => {
+  const clean = path.replace(/^(?:\.?\/)+/, '').replace(/\/+$/, '')
+
+  return clean === '.' ? '' : clean
+}
+
 /** A finding's path from the root of the repository. */
 const fromRoot = (file: string, base = ''): string => {
-  const folder = base.replace(/^\.\/?/, '').replace(/\/+$/, '')
+  const cleanFile = stripCurrentPrefix(file)
 
-  return folder ? `${folder}/${file}` : file
+  if (!cleanFile) return ''
+
+  const folder = stripCurrentPrefix(base)
+
+  return folder ? `${folder}/${cleanFile}` : cleanFile
 }
+
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
+
+/** Encode each path segment as an RFC 3986 relative URI reference while preserving `/` separators. */
+const toSarifUri = (path: string): string =>
+  path
+    .split('/')
+    .map(segment => encodeURIComponent(segment.replace(LONE_SURROGATE, '\uFFFD')))
+    .join('/')
+
+/**
+ * Neutralize GitHub Actions workflow commands in appended human log text without altering
+ * intentional annotations. Every `::` and legacy `##[` is broken up regardless of line
+ * breaks, Unicode whitespace (including U+0085), or ANSI escape sequences.
+ */
+export const neutralizeGithubCommands = (text: string): string =>
+  text.replace(/:(?=:)/g, ': ').replaceAll('##[', '## [')
 
 const findingLevel = (finding: Finding): Level => (finding.severity === 'error' ? 'error' : 'warning')
 
@@ -79,11 +106,13 @@ export const formatGithub = (result: CheckResult, options: CiOutputOptions = {})
     lines.push(workflowCommand('error', { title: 'pawl/max-warnings' }, warningLimit(result)))
 
   for (const finding of result.findings) {
+    const file = fromRoot(finding.file, options.base)
+
     lines.push(
       workflowCommand(
         findingLevel(finding),
         {
-          file: fromRoot(finding.file, options.base),
+          ...(file ? { file } : {}),
           line: Math.max(1, finding.line),
           col: Math.max(1, finding.column),
           title: scopedLabel(finding)
@@ -136,6 +165,7 @@ export const formatSarif = (result: CheckResult, options: CiOutputOptions = {}):
   const results = result.findings.map(finding => {
     const id = scopedLabel(finding)
     const known = rules.get(id) ?? { index: rules.size, rule: sarifRule(finding, id) }
+    const file = fromRoot(finding.file, options.base)
 
     rules.set(id, known)
 
@@ -144,14 +174,18 @@ export const formatSarif = (result: CheckResult, options: CiOutputOptions = {}):
       ruleIndex: known.index,
       level: findingLevel(finding),
       message: { text: explained(finding, ' ') },
-      locations: [
-        {
-          physicalLocation: {
-            artifactLocation: { uri: fromRoot(finding.file, options.base), uriBaseId: '%SRCROOT%' },
-            region: { startLine: Math.max(1, finding.line), startColumn: Math.max(1, finding.column) }
+      ...(file
+        ? {
+            locations: [
+              {
+                physicalLocation: {
+                  artifactLocation: { uri: toSarifUri(file), uriBaseId: '%SRCROOT%' },
+                  region: { startLine: Math.max(1, finding.line), startColumn: Math.max(1, finding.column) }
+                }
+              }
+            ]
           }
-        }
-      ],
+        : {}),
       ...(finding.overBaseline ? { properties: { overBaseline: finding.overBaseline } } : {})
     }
   })

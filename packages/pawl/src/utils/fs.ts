@@ -13,6 +13,15 @@ export const ancestors = (start: string): string[] => {
 /** A path with forward slashes, as pawl keeps every path. */
 export const toPosix = (path: string): string => (sep === '/' ? path : path.split(sep).join('/'))
 
+/** True when the path exists and is a regular file. */
+export const isFile = (path: string): boolean => {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
+}
+
 /** True when the path exists and is a folder. */
 export const isDirectory = (path: string): boolean => {
   try {

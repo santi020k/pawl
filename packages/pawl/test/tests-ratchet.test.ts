@@ -4,7 +4,15 @@ import { describe, expect, it } from 'vitest'
 import { BASELINE_FILE } from '../src/check/baseline.ts'
 import { check } from '../src/check/check.ts'
 import { formatPretty } from '../src/check/output.ts'
-import { countTests, isTestFile, type TestCounts, type TestFile, testCounts, weakerTests } from '../src/check/tests.ts'
+import {
+  countTests,
+  isTestFile,
+  scanTests,
+  type TestCounts,
+  type TestFile,
+  testCounts,
+  weakerTests
+} from '../src/check/tests.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
 import { applyPlan } from '../src/setup/plan.ts'
@@ -160,6 +168,24 @@ describe('the ratchet', () => {
     expect(weakerTests([counts('src/a.test.ts', 0)], undefined, { policy, whole: true, ignored: () => false })).toEqual(
       { findings: [], canTighten: false }
     )
+  })
+
+  it('ignores inherited prototype properties on test baselines and skips directories passed to scanTests', () => {
+    const inherited: Record<string, TestCounts> = {}
+
+    Object.setPrototypeOf(inherited, { 'src/inherited.test.ts': { assertions: 5, skipped: 0 } })
+
+    const outcome = weakerTests([counts('src/inherited.test.ts', 0)], inherited, {
+      policy,
+      whole: true,
+      ignored: () => false
+    })
+
+    expect(outcome).toEqual({ findings: [], canTighten: false })
+
+    const withDir = project({ 'dir.test.ts/nested.ts': 'export const a = 1\n' })
+
+    expect(scanTests(withDir, () => false, ['dir.test.ts'])).toEqual([])
   })
 })
 

@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { getGuard } from '../catalog/guards.ts'
 import { getPack, PACKS } from '../catalog/packs.ts'
 import { findConfigFile } from '../policy/load.ts'
 import { type Detection } from '../project/detect.ts'
 import { type Policy, type PolicyInput } from '../types.ts'
-import { writeText } from '../utils/fs.ts'
+import { toPosix, writeText } from '../utils/fs.ts'
 import { type JsonRecord, mergeDeep, readJsonc, sameJson, writeJson } from '../utils/json.ts'
 import { toList } from '../utils/list.ts'
 import { policyFile } from './templates.ts'
@@ -65,7 +65,7 @@ export const planPolicyFile = (root: string, pinned: PolicyInput, notes: string[
 
   if (file) {
     notes.push(
-      `Add ${JSON.stringify(pinned)} to ${file.slice(root.length + 1)}. Pawl does not edit a policy file you wrote.`
+      `Add ${JSON.stringify(pinned)} to ${toPosix(relative(root, file))}. Pawl does not edit a policy file you wrote.`
     )
 
     return undefined

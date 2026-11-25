@@ -1,3 +1,4 @@
+import { relative } from 'node:path'
 import { activeGuards } from '../catalog/guards.ts'
 import { getPack } from '../catalog/packs.ts'
 import { readBaseline, unreadableBaseline } from '../check/baseline.ts'
@@ -24,6 +25,7 @@ import { LANGUAGE_INFO, type Language } from '../project/languages.ts'
 import { analyzeLintTraversal, type LintTraversalReport } from '../project/lint-traversal.ts'
 import { analyzeTaskReachability, type TaskReachability } from '../project/task-reachability.ts'
 import { type EngineName, type FormatterName, type Policy, type Runtime, type SetupIssue } from '../types.ts'
+import { toPosix } from '../utils/fs.ts'
 import { installedVersion, satisfies } from '../utils/semver.ts'
 import { plural } from '../utils/text.ts'
 import { NODE_RANGE, PACKAGE_NAME, PACKAGE_ROOT, PEER_RANGES, VERSION } from '../version.ts'
@@ -370,7 +372,7 @@ export const doctor = async (root: string): Promise<DoctorReport> => {
       packages: detection.workspace.packages.length
     },
     policy: {
-      file: file?.slice(root.length + 1),
+      file: file ? toPosix(relative(root, file)) : undefined,
       sources: policy.sources,
       strict: policy.strict,
       maxWarnings: policy.maxWarnings

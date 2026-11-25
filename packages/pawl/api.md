@@ -1003,6 +1003,7 @@ export interface LanguageCheckOptions {
   policy: Policy
   detection: Detection
   files?: readonly string[]
+  projectFiles?: readonly string[]
   ignored: (file: string) => boolean
   write?: boolean
 }

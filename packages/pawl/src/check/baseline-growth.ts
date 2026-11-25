@@ -17,6 +17,10 @@ export const ACCEPT_TRAILER = 'Pawl-Baseline'
 /** The trailer's values that accept it. */
 export const accepts = (value: string): boolean => /^accept(?:ed)?$/i.test(value.trim())
 
+/** A key of a record the JSON had, never one it inherits, such as "constructor". */
+const own = <T>(record: Record<string, T> | undefined, key: string): T | undefined =>
+  record !== undefined && Object.hasOwn(record, key) ? record[key] : undefined
+
 /** What a baseline allows that the one before it did not, one line each. Empty when it allows no more. */
 export const baselineGrowth = (before: Baseline | undefined, after: Baseline | undefined): string[] => {
   if (!after) return []
@@ -25,20 +29,20 @@ export const baselineGrowth = (before: Baseline | undefined, after: Baseline | u
 
   for (const [file, rules] of Object.entries(after.findings)) {
     for (const [rule, count] of Object.entries(rules)) {
-      const was = before?.findings[file]?.[rule] ?? 0
+      const was = own(own(before?.findings, file), rule) ?? 0
 
       if (count > was) lines.push(`${file}: ${plural(count - was, `more ${rule} finding`)}`)
     }
   }
 
   for (const [file, count] of Object.entries(after.suppressions)) {
-    const was = before?.suppressions[file] ?? 0
+    const was = own(before?.suppressions, file) ?? 0
 
     if (count > was) lines.push(`${file}: ${plural(count - was, 'more disable comment')}`)
   }
 
   for (const [file, counts] of Object.entries(after.tests ?? {})) {
-    const was = before?.tests?.[file]
+    const was = own(before?.tests, file)
 
     if (!was) continue
 
@@ -60,7 +64,7 @@ export const baselineGrowth = (before: Baseline | undefined, after: Baseline | u
 
   // A test file whose floor is gone has no floor at all.
   for (const file of Object.keys(before?.tests ?? {})) {
-    if (after.tests !== undefined && !(file in after.tests)) lines.push(`${file}: no longer counted`)
+    if (after.tests !== undefined && !Object.hasOwn(after.tests, file)) lines.push(`${file}: no longer counted`)
   }
 
   return lines.sort()

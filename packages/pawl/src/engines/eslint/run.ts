@@ -1,4 +1,5 @@
 import { scopedName } from '../../catalog/rules.ts'
+import { projectPath } from '../../project/files.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
@@ -124,7 +125,7 @@ export const runEslint = async ({
         const findings: Finding[] = []
 
         for (const { filePath, messages } of results) {
-          const file = toPosix(filePath.startsWith(root) ? filePath.slice(root.length + 1) : filePath)
+          const file = projectPath(root, filePath) ?? toPosix(filePath)
 
           for (const message of messages) {
             findings.push({

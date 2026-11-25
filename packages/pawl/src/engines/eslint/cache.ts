@@ -1,15 +1,21 @@
 /** Opt-in native ESLint caching with a project-wide deterministic-input contract. */
 import { createHash, type Hash } from 'node:crypto'
 import {
-  existsSync,
+  closeSync,
+  constants,
+  type Dirent,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
+  type Stats,
   writeFileSync
 } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
@@ -22,11 +28,17 @@ const CONFIG = '.pawl/eslint-cache.json'
 const DIRECTORY = '.pawl/cache/eslint'
 const MAX_FILES = 100_000
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
+const HASH_CHUNK_BYTES = 64 * 1024
+const READ_FILE_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)
+const FILE_CHANGED = 'ESLint cache input changed while hashing.'
+const NOT_REGULAR = 'An ESLint cache input is not a regular file, directory or symbolic link.'
 const LIMIT = 'ESLint cache inputs exceed the bounded snapshot. Run without --eslint-cache or reduce the input tree.'
 
 interface Contract {
   inputs: string[]
 }
+
+type EntryKind = 'file' | 'directory' | 'symlink'
 
 /** Paths are explicit filesystem inputs, not globs. Nothing is inferred from executable config. */
 const contract = (root: string): Contract => {
@@ -61,12 +73,121 @@ const add = (digest: Hash, value: string | Buffer): void => {
   digest.update(`${bytes.length}:`).update(bytes)
 }
 
+const compareEntries = (a: Dirent, b: Dirent): number => {
+  if (a.name < b.name) return -1
+
+  return a.name > b.name ? 1 : 0
+}
+
+const direntKind = (entry: Dirent): EntryKind | undefined => {
+  if (entry.isSymbolicLink()) return 'symlink'
+
+  if (entry.isDirectory()) return 'directory'
+
+  return entry.isFile() ? 'file' : undefined
+}
+
+const lstatOptional = (path: string): Stats | undefined => {
+  try {
+    return lstatSync(path)
+  } catch (error) {
+    if (isRecord(error) && error.code === 'ENOENT') return undefined
+
+    throw error
+  }
+}
+
+/**
+ * Stream one regular file into the fingerprint digest using a reusable chunk buffer, refusing
+ * symlinks, non-regular files (such as FIFOs) and concurrent size changes.
+ */
+export const hashRegularFile = (
+  path: string,
+  digest: Hash,
+  chunk: Buffer,
+  remainingBytes: number,
+  onChunk?: () => void
+): number => {
+  const fd = openSync(path, READ_FILE_FLAGS)
+
+  try {
+    const stat = fstatSync(fd)
+
+    if (!stat.isFile()) throw new Error(NOT_REGULAR)
+
+    if (stat.size > remainingBytes) throw new Error(LIMIT)
+
+    add(digest, `file:${stat.mode}`)
+    digest.update(`${stat.size}:`)
+
+    let total = 0
+
+    for (;;) {
+      const count = readSync(fd, chunk, 0, chunk.length, null)
+
+      if (count === 0) break
+
+      total += count
+
+      if (total > stat.size) throw new Error(FILE_CHANGED)
+
+      if (total > remainingBytes) throw new Error(LIMIT)
+
+      digest.update(count === chunk.length ? chunk : chunk.subarray(0, count))
+      onChunk?.()
+    }
+
+    if (total !== stat.size) throw new Error(FILE_CHANGED)
+
+    return total
+  } finally {
+    closeSync(fd)
+  }
+}
+
+const readRegularTextFile = (path: string, maxBytes = MAX_BYTES): string => {
+  const fd = openSync(path, READ_FILE_FLAGS)
+
+  try {
+    const stat = fstatSync(fd)
+
+    if (!stat.isFile()) throw new Error(NOT_REGULAR)
+
+    if (stat.size > maxBytes) throw new Error(LIMIT)
+
+    const chunk = Buffer.allocUnsafe(Math.min(Math.max(stat.size, 1), HASH_CHUNK_BYTES))
+    const parts: Buffer[] = []
+    let total = 0
+
+    for (;;) {
+      const count = readSync(fd, chunk, 0, chunk.length, null)
+
+      if (count === 0) break
+
+      total += count
+
+      if (total > stat.size || total > maxBytes) throw new Error(FILE_CHANGED)
+
+      parts.push(Buffer.from(chunk.subarray(0, count)))
+    }
+
+    if (total !== stat.size) throw new Error(FILE_CHANGED)
+
+    return Buffer.concat(parts, total).toString('utf8')
+  } finally {
+    closeSync(fd)
+  }
+}
+
 /** Include every Node resolution ancestor, including the dependencies beside a pnpm symlink target. */
-const resolutionInputs = (start: string): string[] => {
+const resolutionInputs = (start: string, seenDirs?: Set<string>): string[] => {
   const paths: string[] = []
-  let dir = start
+  let dir = resolve(start)
 
   for (;;) {
+    if (seenDirs?.has(dir)) return paths
+
+    seenDirs?.add(dir)
     paths.push(join(dir, 'node_modules'))
 
     for (const name of [
@@ -95,6 +216,8 @@ const resolutionInputs = (start: string): string[] => {
 export const eslintCacheFingerprint = (root: string, external: readonly string[]): string => {
   const digest = createHash('sha256')
   const seen = new Set<string>()
+  const seenResolutionDirs = new Set<string>()
+  const chunk = Buffer.allocUnsafe(HASH_CHUNK_BYTES)
   const output = resolve(root, DIRECTORY)
   let files = 0
   let bytes = 0
@@ -114,7 +237,7 @@ export const eslintCacheFingerprint = (root: string, external: readonly string[]
     })
   )
 
-  const walk = (path: string): void => {
+  const walk = (path: string, knownKind?: EntryKind): void => {
     const absolute = resolve(path)
 
     if (absolute === output || absolute.startsWith(`${output}${sep}`)) return
@@ -127,47 +250,48 @@ export const eslintCacheFingerprint = (root: string, external: readonly string[]
 
     if (++files > MAX_FILES) throw new Error(LIMIT)
 
-    let stat: ReturnType<typeof lstatSync>
+    let kind = knownKind
 
-    try {
-      stat = lstatSync(absolute)
-    } catch (error) {
-      if (isRecord(error) && error.code === 'ENOENT') {
+    if (kind === undefined) {
+      const stat = lstatOptional(absolute)
+
+      if (!stat) {
         add(digest, 'missing')
 
         return
       }
 
-      throw error
+      if (stat.isSymbolicLink()) kind = 'symlink'
+      else if (stat.isDirectory()) kind = 'directory'
+      else if (stat.isFile()) kind = 'file'
+      else throw new Error(NOT_REGULAR)
     }
 
-    if (stat.isSymbolicLink()) {
+    if (kind === 'symlink') {
       const target = realpathSync(absolute)
 
       add(digest, `link:${target}`)
       walk(target)
 
-      for (const input of resolutionInputs(dirname(target))) walk(input)
-    } else if (stat.isDirectory()) {
+      for (const input of resolutionInputs(dirname(target), seenResolutionDirs)) walk(input)
+    } else if (kind === 'directory') {
       add(digest, 'directory')
 
-      for (const entry of readdirSync(absolute).sort()) walk(join(absolute, entry))
-    } else if (stat.isFile()) {
-      bytes += stat.size
+      const entries = readdirSync(absolute, { withFileTypes: true }).sort(compareEntries)
 
-      if (bytes > MAX_BYTES) throw new Error(LIMIT)
-
-      add(digest, `file:${stat.mode}`)
-      add(digest, readFileSync(absolute))
+      for (const entry of entries) walk(join(absolute, entry.name), direntKind(entry))
     } else {
-      throw new Error('An ESLint cache input is not a regular file, directory or symbolic link.')
+      bytes += hashRegularFile(absolute, digest, chunk, MAX_BYTES - bytes)
     }
   }
 
   walk(root)
   walk(process.execPath)
 
-  for (const input of [...resolutionInputs(dirname(root)), ...external.map(path => resolve(root, path))].sort())
+  for (const input of [
+    ...resolutionInputs(dirname(root), seenResolutionDirs),
+    ...external.map(path => resolve(root, path))
+  ].sort())
     walk(input)
 
   return digest.digest('hex')
@@ -178,7 +302,9 @@ const cacheDirectory = (root: string): string => {
   const directory = join(root, DIRECTORY)
 
   for (const path of [join(root, '.pawl'), join(root, '.pawl/cache'), directory]) {
-    if (existsSync(path) && (!lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink()))
+    const stat = lstatOptional(path)
+
+    if (stat && (!stat.isDirectory() || stat.isSymbolicLink()))
       throw new Error('The ESLint cache directory must be a regular directory, not a symbolic link.')
   }
 
@@ -186,14 +312,27 @@ const cacheDirectory = (root: string): string => {
 
   const owner = join(directory, 'owner.json')
   const expected = '{"pawlEslintCache":1}\n'
+  const ownerStat = lstatOptional(owner)
 
-  if (!existsSync(owner)) {
-    if (readdirSync(directory).length > 0) throw new Error('The ESLint cache directory contains unowned files.')
+  if (ownerStat) {
+    let text = ''
 
-    writeFileSync(owner, expected, { flag: 'wx', mode: 0o600 })
-  } else if (lstatSync(owner).isSymbolicLink() || readFileSync(owner, 'utf8') !== expected) {
-    throw new Error('The ESLint cache directory has unrecognized ownership metadata.')
+    try {
+      text = readRegularTextFile(owner, 1024)
+    } catch (cause) {
+      throw new Error('The ESLint cache directory has unrecognized ownership metadata.', { cause })
+    }
+
+    if (text !== expected) {
+      throw new Error('The ESLint cache directory has unrecognized ownership metadata.')
+    }
+
+    return directory
   }
+
+  if (readdirSync(directory).length > 0) throw new Error('The ESLint cache directory contains unowned files.')
+
+  writeFileSync(owner, expected, { flag: 'wx', mode: 0o600 })
 
   return directory
 }
@@ -208,9 +347,7 @@ interface CacheRecord {
 /** Corrupt or interrupted cache state is a miss, never a result. */
 const readCache = (path: string, key: string): string | undefined => {
   try {
-    if (lstatSync(path).isSymbolicLink()) return undefined
-
-    const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
+    const value: unknown = JSON.parse(readRegularTextFile(path, MAX_BYTES))
 
     if (
       !isRecord(value) ||
@@ -273,9 +410,9 @@ export const prepareEslintCache = (root: string): EslintCacheSession => {
             command: 'eslint --cache'
           })
 
-        if (!existsSync(native)) return
+        if (!lstatOptional(native)) return
 
-        const next = readFileSync(native, 'utf8')
+        const next = readRegularTextFile(native, MAX_BYTES)
 
         // Native cache serialization is private to ESLint. Preserve its bytes and only check JSON integrity.
         JSON.parse(next)

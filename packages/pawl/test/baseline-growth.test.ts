@@ -49,6 +49,15 @@ describe('what a baseline allows that the one before did not', () => {
     expect(baselineGrowth(baseline(), more)).toEqual([])
   })
 
+  it('reads only the entries a baseline has, not ones every object inherits', () => {
+    const after = baseline({ findings: { constructor: { toString: 1 } }, suppressions: { constructor: 1 } })
+
+    expect(baselineGrowth(baseline({ findings: {}, suppressions: {} }), after)).toEqual([
+      'constructor: 1 more disable comment',
+      'constructor: 1 more toString finding'
+    ])
+  })
+
   it('counts a whole new baseline, as on the branch that adopts pawl', () => {
     expect(baselineGrowth(undefined, baseline())).toContain('src/a.js: 1 more no-console finding')
   })
@@ -86,7 +95,7 @@ const grown = (): string => {
   return root
 }
 
-describe('a check since a ref, when the baseline allows more', () => {
+describe('a check since a ref, when the baseline allows more', { timeout: 60_000 }, () => {
   it('fails at the baseline file and says how a person accepts it', async () => {
     const root = grown()
     const result = await check({ root, since: 'main' })

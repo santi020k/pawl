@@ -122,6 +122,7 @@ words:
   - xtest
   - ZWNJ
   - ZWSP
+  - frontmatter
 ignorePaths:
   - node_modules
   - packages/pawl/api.md

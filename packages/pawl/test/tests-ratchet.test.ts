@@ -308,6 +308,29 @@ describe('retries, raised timeouts and fixed sleeps', () => {
     ])
   })
 
+  it('counts a retry method of the test runner, and not one on the code the test calls', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('a', async () => {",
+        "  await request.get('/api').retry(3)",
+        '  client.retries(2)',
+        '})',
+        "test.retry(2)('b', () => {})",
+        "it('c', function () {",
+        '  this.retries(2)',
+        '})',
+        "it('d', () => {}).retries(2)"
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => [mask.line, mask.kind])).toEqual([
+      [5, 'retry'],
+      [7, 'retry'],
+      [9, 'retry']
+    ])
+  })
+
   it('fails a file with more of them than the baseline recorded, and has no floor without a count', () => {
     const tests = [
       {

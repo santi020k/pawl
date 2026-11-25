@@ -74,9 +74,7 @@ const SKIP =
  * `sleep(500)`). Each line counts once, however many of them it has.
  */
 const MASKS: readonly (readonly [Mask, RegExp])[] = [
-  ['retry', /\.retry\s*\(\s*[1-9]/],
   ['retry', /\bretryTimes\s*\(/],
-  ['retry', /\.retries\s*\(\s*[1-9]/],
   ['timeout', /\b(?:jest|vi|test|this)\.setTimeout\s*\(/],
   ['timeout', /\bthis\.timeout\s*\(\s*\d/],
   ['timeout', /\btest\.slow\s*\(/],
@@ -237,11 +235,27 @@ const timeoutAfterTest = (script: string, start: number, line: string): boolean 
   return opensBlock(script, openerOf(script, brace)) && RUNNER.test(chainBefore(script, openerOf(script, paren)))
 }
 
+/** A retry method with a count: `test.retry(2)`, `this.retries(2)`, `it('x', fn).retries(2)`. */
+const RETRY_CALL = /\.(?:retry|retries)\s*\(\s*[1-9]/g
+
+/**
+ * A retry method called on the test runner or on Mocha's `this`, not one on the code the test
+ * calls, such as SuperAgent's `request.get('/api').retry(3)`, which is what the test checks.
+ */
+const retryOfTest = (script: string, start: number, line: string): boolean =>
+  [...line.matchAll(RETRY_CALL)].some(match => {
+    const chain = chainBefore(script, start + match.index + match[0].indexOf('('))
+
+    return /^this\./.test(chain) || RUNNER.test(chain)
+  })
+
 /** The retry, raised timeout or fixed sleep a line of the script has, if any. `start` is where the line starts in it. */
 const maskOf = (script: string, start: number, line: string): Mask | undefined => {
   const kind = MASKS.find(([, mask]) => mask.test(line))?.[0]
 
   if (kind) return kind
+
+  if (retryOfTest(script, start, line)) return 'retry'
 
   if (timeoutAfterTest(script, start, line)) return 'timeout'
 

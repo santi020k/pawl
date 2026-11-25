@@ -75,6 +75,16 @@ const SCRIPT_HOSTS: ReadonlySet<string> = new Set(['vue', 'svelte'])
  */
 const COMPONENT_HOSTS: ReadonlySet<string> = new Set(['vue', 'svelte', 'astro'])
 
+/**
+ * Rules of a pack's plugin that are the same check as a rule of the standard, by the standard's
+ * rule, in the files Biome lints. Where Biome is the linter and runs that rule, they are off in
+ * those files, so a finding is not reported twice. Biome's noDuplicateObjectKeys reads JSON too,
+ * but not JSON5.
+ */
+const BIOME_TWINS: Readonly<Record<string, { files: string[]; rules: Record<string, string> }>> = {
+  jsonc: { files: ['**/*.{json,jsonc}'], rules: { 'jsonc/no-dupe-keys': 'no-dupe-keys' } }
+}
+
 export interface EslintPlan {
   config: FlatConfig[]
   /** Rules left to Biome because it enforces them faster. */
@@ -774,15 +784,14 @@ const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options 
     }
 
     // A check of the plugin that a rule of the standard Biome runs makes too, in the files Biome lints.
-    const biome = Object.entries(pack.biome?.rules ?? {}).flatMap(([name, standard]) =>
+    const twins = BIOME_TWINS[pack.name]
+    const biome = Object.entries(twins?.rules ?? {}).flatMap(([name, standard]) =>
       options.biomeActive && runsElsewhere(standard) ? [[name, 'off']] : []
     )
-    if (pack.biome && biome.length > 0)
+    if (twins && biome.length > 0)
       config.push({
         name: `pawl/pack/${pack.name}/biome`,
-        files: explicitFiles
-          ? pack.biome.files.flatMap(file => explicitFiles.map(pattern => [file, pattern]))
-          : pack.biome.files,
+        files: explicitFiles ? twins.files.flatMap(file => explicitFiles.map(pattern => [file, pattern])) : twins.files,
         rules: Object.fromEntries(biome)
       })
   }

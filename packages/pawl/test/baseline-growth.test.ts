@@ -49,6 +49,18 @@ describe('what a baseline allows that the one before did not', () => {
     expect(baselineGrowth(baseline(), more)).toEqual([])
   })
 
+  it('names the floors a baseline drops: every test file with its tests, or the count of retries and sleeps', () => {
+    const counted = baseline({ tests: { 'src/a.test.js': { assertions: 4, skipped: 0, masks: 1 } } })
+    const { findings, suppressions } = counted
+
+    expect(baselineGrowth(counted, { version: 1, findings, suppressions })).toEqual([
+      'src/a.test.js: no longer counted'
+    ])
+    expect(baselineGrowth(counted, baseline())).toEqual([
+      'src/a.test.js: retries, raised timeouts and fixed sleeps no longer counted'
+    ])
+  })
+
   it('reads only the entries a baseline has, not ones every object inherits', () => {
     const after = baseline({ findings: { constructor: { toString: 1 } }, suppressions: { constructor: 1 } })
 
@@ -115,6 +127,22 @@ describe('a check since a ref, when the baseline allows more', { timeout: 60_000
     git(root, 'commit', '-q', '--allow-empty', '-m', 'accept the findings\n\nPawl-Baseline: accept')
 
     expect((await check({ root, since: 'main' })).findings.filter(item => item.rule === BASELINE_GROWTH)).toEqual([])
+  })
+
+  it('fails a branch whose baseline drops the counts of the tests', async () => {
+    const root = grown()
+    const { findings, suppressions } = baseline()
+
+    git(root, 'checkout', '-q', 'main')
+    write(root, { '.pawl/baseline.json': baseline() })
+    git(root, 'commit', '-qam', 'count the tests')
+    git(root, 'checkout', '-qB', 'feature')
+    write(root, { '.pawl/baseline.json': { version: 1, findings, suppressions } })
+    git(root, 'commit', '-qam', 'drop the tests')
+
+    const finding = (await check({ root, since: 'main' })).findings.find(item => item.rule === BASELINE_GROWTH)
+
+    expect(finding?.message).toContain('src/a.test.js: no longer counted')
   })
 
   it('is off when the policy turns the rule off', async () => {

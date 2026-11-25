@@ -52,19 +52,21 @@ export const baselineGrowth = (before: Baseline | undefined, after: Baseline | u
     if (counts.skipped > was.skipped)
       lines.push(`${file}: ${plural(counts.skipped - was.skipped, 'more skipped test')}`)
 
-    // A count that was not there had no floor, so it is not more than before.
+    // A count that was not there had no floor, so it is not more than before. One that is gone has none any more.
     if (counts.masks !== undefined && was.masks !== undefined && counts.masks > was.masks) {
       const more = counts.masks - was.masks
 
       lines.push(
         `${file}: ${more} more ${more === 1 ? 'retry, raised timeout or fixed sleep' : 'retries, raised timeouts or fixed sleeps'}`
       )
+    } else if (counts.masks === undefined && was.masks !== undefined) {
+      lines.push(`${file}: retries, raised timeouts and fixed sleeps no longer counted`)
     }
   }
 
-  // A test file whose floor is gone has no floor at all.
+  // A test file whose floor is gone has no floor at all, nor has any in a baseline without tests.
   for (const file of Object.keys(before?.tests ?? {})) {
-    if (after.tests !== undefined && !Object.hasOwn(after.tests, file)) lines.push(`${file}: no longer counted`)
+    if (own(after.tests, file) === undefined) lines.push(`${file}: no longer counted`)
   }
 
   return lines.sort()

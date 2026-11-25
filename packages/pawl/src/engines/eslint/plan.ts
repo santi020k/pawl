@@ -323,12 +323,14 @@ const loadPacks = async (build: Build): Promise<void> => {
       loaded = supplied === undefined ? await importVia(root, pluginRoots, pack.plugin) : suppliedPlugin(supplied)
 
     if (!loaded.module) {
+      // A plugin that is not installed only suggests its pack. One that is installed but cannot load
+      // would have switched the pack on, so the check stops rather than pass without its rules.
       if (reason === 'suggested' && !loaded.error) availablePacks.push(pack.name)
       else
         notEnforced.push({
           rule: `The ${pack.title} pack`,
           needs: needs(pack.plugin, loaded),
-          ...(entryFor(policy.packs, pack) === undefined ? {} : { required: true })
+          ...(entryFor(policy.packs, pack) === undefined && !loaded.error ? {} : { required: true })
         })
 
       continue

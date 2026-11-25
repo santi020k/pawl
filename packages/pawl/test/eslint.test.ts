@@ -295,6 +295,25 @@ describe('eslintPlan', () => {
       expect(plan.config.map(entry => entry.name)).toEqual(['pawl/ignores', 'pawl/base'])
     })
 
+    it('stops the check when the plugin of a pack the project depends on is installed but cannot load', async () => {
+      const root = project({
+        'package.json': { name: 'fixture' },
+        'node_modules/eslint-plugin-zod/package.json': manifest('eslint-plugin-zod'),
+        'node_modules/eslint-plugin-zod/index.js': "throw new Error('Cannot find package zod-peer.')\n"
+      })
+      const plan = await eslintPlan({ ...options, root, dependencies: ['zod'] })
+
+      expect(plan.activePacks).toEqual([])
+      expect(plan.availablePacks).toEqual([])
+      expect(plan.notEnforced).toEqual([
+        {
+          rule: 'The Zod pack',
+          needs: 'eslint-plugin-zod, which is installed but failed to load: Cannot find package zod-peer.',
+          required: true
+        }
+      ])
+    })
+
     it('reports a pack the policy names when its plugin is not installed', async () => {
       const policy = mergeLayers([{ source: 'repo', input: { packs: ['unicorn'] } }])
       const plan = await eslintPlan({ ...options, root: project({ 'package.json': { name: 'fixture' } }), policy })

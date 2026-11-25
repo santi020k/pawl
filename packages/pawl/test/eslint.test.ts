@@ -222,7 +222,7 @@ describe('eslintPlan', () => {
       'package.json': { name: 'fixture' },
       'node_modules/typescript-eslint/package.json': manifest('typescript-eslint'),
       'node_modules/typescript-eslint/index.js': [
-        "const names = ['no-floating-promises', 'no-unsafe-return', 'no-non-null-assertion']",
+        "const names = ['no-floating-promises', 'no-unsafe-return', 'no-non-null-assertion', 'require-await']",
         "const rules = Object.fromEntries(names.map(name => ['@typescript-eslint/' + name, 'error']))",
         'const plugin = { rules: Object.fromEntries(names.map(name => [name, { create: () => ({}) }])) }',
         "export default { parser: { name: 'ts-parser' }, plugin, configs: { strictTypeChecked: [{ rules }], stylisticTypeChecked: [] } }"
@@ -241,6 +241,8 @@ describe('eslintPlan', () => {
     expect(await levelOf({}, '@typescript-eslint/no-unsafe-return')).toBe('error')
     // A rule Biome runs stays Biome's, and a level the policy sets wins over the preset.
     expect(await levelOf({}, '@typescript-eslint/no-non-null-assertion')).toBe('off')
+    // A rule the standard turns off on purpose, not as unstable, stays off in ESLint too.
+    expect(await levelOf({}, '@typescript-eslint/require-await')).toBe('off')
     expect(await levelOf({ [floating]: 'off' }, floating)).toBe('off')
     expect(await levelOf({ [floating]: 'error' }, floating)).toBe('off')
   })

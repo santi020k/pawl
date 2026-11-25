@@ -389,7 +389,7 @@ const placeRules = async (build: Build): Promise<void> => {
       // The javascript and typescript packs start from presets that may turn it on in ESLint too.
       // A rule off only because the standard holds it back, as it does an unstable one, does not run
       // in the fast linter, so the preset's level stands unless the policy sets one.
-      if (level === 'off' && policy.rules[name] === undefined) continue
+      if (level === 'off' && def?.nursery === true && policy.rules[name] === undefined) continue
 
       for (const alias of [scopedRule(name, 'eslint') ?? name, ...(def?.aliases ?? [])]) {
         if (alias in coreRules) coreRules[alias] = 'off'
@@ -673,7 +673,10 @@ const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options 
   const runsElsewhere = (name: string): boolean => {
     const canonical = canonicalName(name)
 
-    return covered(name) && (levels.get(canonical) !== 'off' || policy.rules[canonical] !== undefined)
+    return (
+      covered(name) &&
+      (levels.get(canonical) !== 'off' || getRule(canonical)?.nursery !== true || policy.rules[canonical] !== undefined)
+    )
   }
 
   for (const { pack, plugin, fromPlugin, dirs } of packBlocks) {

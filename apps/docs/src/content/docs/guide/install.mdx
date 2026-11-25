@@ -52,7 +52,15 @@ Pawl finds the package manager from the `packageManager` field in `package.json`
 | yarn            | `yarn add -D`       |
 | Bun             | `bun add -d`        |
 
-In a pnpm workspace it adds `-w`, so the tools go in the root.
+At the root of a workspace, pnpm and Yarn 1 refuse to add a package unless a flag says it goes there, so pawl adds `-w` under pnpm and `-W` under Yarn 1, and the tools go in the root. npm, Bun and Yarn 2 and later need no flag, and Yarn 2 and later refuse `-W`. Pawl tells Yarn 1 from later versions by the `packageManager` field, then `.yarnrc.yml` and the lockfile.
+
+npm writes `^` before a version it is given, so it would not keep Biome's exact version exact in `package.json`. Under npm, `init` installs Biome first, with `--save-exact`, in a command of its own, then the rest:
+
+```sh
+npm install -D --save-exact @biomejs/biome@2.6.8 && npm install -D @santi020k/pawl
+```
+
+pnpm, Yarn and Bun keep an exact version exact, so one command installs everything.
 
 If the install fails, pawl prints the command to run yourself and exits with code 2. With `--no-install`, it writes the packages into `devDependencies` instead and leaves the install to you.
 
@@ -64,12 +72,12 @@ Pawl has no dependencies. Every engine, formatter and ESLint plugin is an option
 | ---------------- | -------------------------------------------------- | ---------------- |
 | `@biomejs/biome` | Lint and format. The default for both.             | `2.6.8`, exactly |
 | `oxlint`         | Lint, with ESLint's rule names                     | `>=1.94.0`       |
-| `eslint`         | Lint, and the host for every [pack](/guide/packs/) | `>=9.22.0`       |
+| `eslint`         | Lint, and the host for every [pack](/guide/packs/) | `>=9.35.0`       |
 | `prettier`       | Format                                             | `>=3.0.0`        |
 
 With nothing chosen, Biome lints and formats. [Choosing tools](/guide/tools/) covers the other mixes.
 
-Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases. `init` installs that version.
+Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases. `init` installs that version. ESLint's floor is the oldest version that has every rule of the standard: pawl 0.6 raised it from 9.22.0 to 9.35.0, and `typescript-eslint`'s from 8.0.0 to 8.15.0. `pawl upgrade` installs the versions pawl takes; see [Upgrading](/guide/upgrade/).
 
 ### Oxlint as the linter
 
@@ -81,16 +89,23 @@ In a TypeScript project, `init` also installs `oxlint-tsgolint`. Oxlint runs the
 
 ### ESLint as the linter
 
-When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-eslint` in a TypeScript project. These run the `javascript` and `typescript` packs.
+When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-eslint` in a TypeScript project. These run the `javascript` and `typescript` packs. It also installs the plugins that the rules of the standard need when ESLint runs them in place of Biome: `eslint-plugin-unicorn`, `eslint-plugin-promise`, `eslint-plugin-unused-imports`, `eslint-plugin-import-x`, `eslint-plugin-no-only-tests`, and `@vitest/eslint-plugin` in a project that tests with Vitest. The `import/*` rules run with `eslint-plugin-import-x`, registered under `import`, because `eslint-plugin-import` does not support ESLint 10 yet; a project that already has `eslint-plugin-import` keeps it, and a rule the plugin in use does not implement is listed by `pawl doctor`. These are the plugins `pawl doctor` would otherwise report as missing. `pawl add`, in a project that ESLint lints, installs the ones that are missing too. With `--no-install`, `init` and `add` write them into `devDependencies` with the rest.
 
-| Package             | Peer range |
-| ------------------- | ---------- |
-| `@eslint/js`        | `>=9.0.0`  |
-| `typescript-eslint` | `>=8.0.0`  |
+| Package                 | Peer range |
+| ----------------------- | ---------- |
+| `@eslint/js`            | `>=9.0.0`  |
+| `typescript-eslint`     | `>=8.15.0` |
+| `eslint-plugin-unicorn` | `>=77.0.0` |
+| `eslint-plugin-promise` | `>=7.0.0`  |
+| `@vitest/eslint-plugin` | `>=1.0.0`  |
+
+The other three plugins are not peers of pawl, and `pawl doctor` does not check their versions.
+
+Under npm, these plugins go in last, in a command of their own. npm refuses a whole install when the peer range of one package leaves out a version the project has: `@vitest/eslint-plugin` 1.6.28 leaves out TypeScript 5. Then only that last command fails: pawl says so and exits with code 2, with pawl and ESLint already installed, and `pawl doctor` names the plugins that are still missing. pnpm, Yarn and Bun warn about such a range and install the plugin.
 
 ### Plugins
 
-Each optional [pack](/guide/packs/) runs one ESLint plugin, and the plugin is an optional peer too. `pawl add <pack>` installs ESLint and the plugin. A pack that is wanted but whose plugin is missing, or fails to load, is listed by `pawl doctor`.
+Each optional [pack](/guide/packs/) runs one ESLint plugin, and the plugin is an optional peer too, with a floor: the oldest version that passed a run of the pack against it. `pawl add <pack>` installs ESLint and the plugin. A pack that is wanted but whose plugin is missing, fails to load or is older than its floor is listed by `pawl doctor`.
 
 ## Check the install
 

@@ -88,6 +88,8 @@ export interface LanguageCheckOptions {
   detection: Detection
   /** Only these files, relative to the root and already past the ignores. Undefined means every file. */
   files?: readonly string[]
+  /** Cached project files to reuse when checking the whole project without narrowing tool.wholeProject. */
+  projectFiles?: readonly string[]
   /** True for a file pawl skips. */
   ignored: (file: string) => boolean
   write?: boolean
@@ -150,7 +152,7 @@ export const checkLanguages = async (options: LanguageCheckOptions): Promise<Lan
 
   if (projects.length === 0) return result
 
-  const all = options.files ?? listFiles(root).filter(file => !options.ignored(file))
+  const all = options.files ?? (options.projectFiles ?? listFiles(root)).filter(file => !options.ignored(file))
 
   for (const project of projects) {
     const files = projectFiles(project, all, projects)

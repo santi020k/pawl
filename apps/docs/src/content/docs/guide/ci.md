@@ -1,7 +1,7 @@
 ---
 
 title: CI and hooks
-description: "Run pawl in CI and before each commit: --ci fails on new findings and on config drift, and init can write a GitHub Actions workflow and a pre-commit hook."
+description: "Run pawl in CI and before each commit: --ci fails on new findings and on config drift, findings show on the pull request and in code scanning, and init can write a GitHub Actions workflow and a pre-commit hook."
 head: [{ tag: title, content: "CI and hooks: GitHub Actions and pre-commit | pawl" }]
 ---
 
@@ -50,6 +50,8 @@ It needs the history that joins the branch to `<ref>`. In GitHub Actions, check 
     BASE_REF: ${{ github.base_ref }}
 ```
 
+A check with `--since` also fails when the branch's [baseline allows more](/guide/ratchet/#a-baseline-that-allows-more) than the one on `<ref>`, unless a commit on the branch has a `Pawl-Baseline: accept` trailer.
+
 When git does not know the ref, or the clone is too shallow to join it to the branch, the check stops with exit code 2. It never falls back to checking nothing.
 
 The scope is whole files, not changed lines. A file the pull request touches is checked in full, and the [baseline](/guide/ratchet/) still allows the findings it already had. A partial run cannot see findings in files the branch did not touch, so keep a full `pawl check --ci` on the main branch.
@@ -58,7 +60,7 @@ A pull request that touches thousands of files is checked too. When the list is 
 
 ### GitHub Actions
 
-`init --workflow` writes `.github/workflows/pawl.yml`. It runs the check, then `pawl doctor --format json` and uploads its report as the `pawl-doctor` artifact, so the tool versions and any drift are on record even when the check fails. Every action is pinned to a commit. For an npm project it looks like this:
+`init --workflow` writes `.github/workflows/pawl.yml`. It runs the check with [annotations](#findings-on-the-pull-request), then `pawl doctor --format json` and uploads its report as the `pawl-doctor` artifact, so the tool versions and any drift are on record even when the check fails. Every action is pinned to a commit. For an npm project it looks like this:
 
 ```yaml title=".github/workflows/pawl.yml"
 name: pawl
@@ -80,7 +82,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx --no pawl check --ci
+      - run: npx --no pawl check --ci --format github
       - name: Check the setup and the tool versions
         if: always()
         run: npx --no pawl doctor --format json > pawl-doctor.json
@@ -95,7 +97,45 @@ jobs:
 
 The doctor step fails the job when it finds a problem, such as a Biome other than the pinned one or a tool older than pawl supports.
 
-For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for Bun it adds `oven-sh/setup-bun`. If the workflow file already exists, `init` leaves it alone.
+For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for Bun it adds `oven-sh/setup-bun`. If the workflow file already exists, `init` leaves it alone. A workflow written by an earlier version gets the annotations too: in GitHub Actions, `pawl check` uses `--format github` when no format is given.
+
+### Findings on the pull request
+
+```sh
+pawl check --ci --format github
+```
+
+`--format github` prints a GitHub Actions annotation for each new finding, with its file, line, column, rule and fix, so it shows on that line in the pull request's changed files. Setup problems and the warning limit show on the run, and in CI every setup problem is an error. The annotations sit in a group the log folds away, and the plain report follows, so the log reads as it always did. GitHub turns at most 10 errors and 10 warnings of a step into annotations; the log keeps every finding. Findings the baseline allows get none.
+
+`pawl check` and `pawl fix` pick `--format github` on their own in a GitHub Actions job (`GITHUB_ACTIONS=true`) when neither `--format` nor `PAWL_FORMAT` names a format, unless a coding agent runs them there, which gets `agent`. This is new in 0.6: before, such a job got `pretty`. If a step reads what pawl prints, give it the format it reads, or set `PAWL_FORMAT=pretty` on the step to go back to the plain report alone.
+
+When pawl runs in a folder below the root of the repository, the annotations name files from the root, as GitHub reads them, using the `GITHUB_WORKSPACE` folder the job checked out.
+
+### Code scanning with SARIF
+
+```sh
+pawl check --ci --format sarif > pawl.sarif
+```
+
+`--format sarif` prints the new findings as [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html), the format GitHub code scanning and other code-scanning tools read. Each finding is a result with its rule, level and location, and each rule from pawl's catalog carries its summary and how to fix it. Setup problems are notifications of the run, and a run that could not complete says so. Upload the file even when the check fails, since it exits with 1 whenever it finds a new error:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+  actions: read # only for a private repository
+
+steps:
+  # ...checkout, setup and install as above
+  - run: npx --no pawl check --ci --format sarif > pawl.sarif
+  - uses: github/codeql-action/upload-sarif@v4
+    if: always()
+    with:
+      sarif_file: pawl.sarif
+      category: pawl
+```
+
+Uploading needs `security-events: write`, and a private repository also needs `actions: read`. `category` keeps pawl's results apart from those of other tools on the same commit. Pin the action to a commit, as the workflow `init` writes does. On GitHub, code scanning is free for public repositories; a private one needs GitHub Code Security. Annotations need neither.
 
 ## Before each commit
 
@@ -104,6 +144,8 @@ For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for
 ```sh
 npx --no pawl check --changed
 ```
+
+In the hook, `--changed` checks the files the commit changes, so an untracked file or a change you have not staged does not stop the commit.
 
 It uses the hook manager the repo already has:
 

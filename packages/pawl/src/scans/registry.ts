@@ -1,3 +1,4 @@
+import { listFiles } from '../project/files.ts'
 import { type Finding } from '../types.ts'
 import { docker } from './docker.ts'
 import { hiddenScan } from './hidden.ts'
@@ -11,7 +12,12 @@ export const SCANS: readonly Scan[] = [docker, markdown, hiddenScan]
 export const scansReadIgnored = (file: string): boolean => SCANS.some(scan => scan.readsIgnored?.(file) === true)
 
 /** Run every scan. */
-export const runScans = (options: ScanOptions): Finding[] => SCANS.flatMap(scan => runScan(scan, options))
+export const runScans = (options: ScanOptions): Finding[] => {
+  const projectFiles = options.files === undefined ? (options.projectFiles ?? listFiles(options.root)) : undefined
+  const runOptions: ScanOptions = projectFiles ? { ...options, projectFiles } : options
+
+  return SCANS.flatMap(scan => runScan(scan, runOptions))
+}
 
 /** One of pawl's own rules by name, with or without `pawl/`, and the scan that has it. */
 export const findOwnRule = (name: string): { rule: OwnRule; scan: Scan } | undefined => {

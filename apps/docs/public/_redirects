@@ -1,3 +1,27 @@
 # The changelog moved from the Reference section to the top level.
 /reference/changelog /changelog/ 301
 /reference/changelog/ /changelog/ 301
+
+# 0.6.0 folded the adoption and integration pages into three, and the report contract moved to Reference.
+/guide/strict-adoption /guide/existing-repos/#adopt-without-a-baseline 301
+/guide/strict-adoption/ /guide/existing-repos/#adopt-without-a-baseline 301
+/guide/reviewed-exceptions /guide/existing-repos/#reviewed-exceptions 301
+/guide/reviewed-exceptions/ /guide/existing-repos/#reviewed-exceptions 301
+/guide/generated-scopes /guide/existing-repos/#generated-biome-scopes 301
+/guide/generated-scopes/ /guide/existing-repos/#generated-biome-scopes 301
+/guide/shared-eslint /guide/existing-eslint/#shared-eslint-plugins 301
+/guide/shared-eslint/ /guide/existing-eslint/#shared-eslint-plugins 301
+/guide/formatter-ownership /guide/existing-eslint/#one-import-sort-owner 301
+/guide/formatter-ownership/ /guide/existing-eslint/#one-import-sort-owner 301
+/guide/test-runners /guide/existing-eslint/#mixed-test-runners 301
+/guide/test-runners/ /guide/existing-eslint/#mixed-test-runners 301
+/guide/framework-coverage /guide/existing-eslint/#astro-coverage-boundaries 301
+/guide/framework-coverage/ /guide/existing-eslint/#astro-coverage-boundaries 301
+/guide/eslint-cache /guide/speed/#cache-eslint-checks 301
+/guide/eslint-cache/ /guide/speed/#cache-eslint-checks 301
+/guide/lint-ownership /guide/speed/#lint-task-ownership 301
+/guide/lint-ownership/ /guide/speed/#lint-task-ownership 301
+/guide/task-reachability /guide/speed/#task-reachability 301
+/guide/task-reachability/ /guide/speed/#task-reachability 301
+/guide/report-contract /reference/report/ 301
+/guide/report-contract/ /reference/report/ 301

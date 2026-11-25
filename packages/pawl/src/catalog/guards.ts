@@ -88,7 +88,7 @@ const GRIT = {
     pattern: '`$key: $value`',
     conditions: [
       `$key <: r"^(?:${KEY_NAMES})$"`,
-      `$value <: r"^${QUOTE.replace('"', '\\"')}[^$]{8,}${QUOTE.replace('"', '\\"')}$"`
+      `$value <: r"^${QUOTE.replaceAll('"', '\\"')}[^$]{8,}${QUOTE.replaceAll('"', '\\"')}$"`
     ],
     span: '$value'
   },

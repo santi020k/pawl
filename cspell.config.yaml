@@ -30,6 +30,8 @@ words:
   - detekt
   - distroless
   - Dockerfiles
+  - endgroup
+  - ERESOLVE
   - errorformat
   - esbuild
   - extglob
@@ -37,6 +39,8 @@ words:
   - fflate
   - fontsource
   - genai
+  - graphqlrc
+  - valueonly
   - ghostty
   - HALFWIDTH
   - heredocs
@@ -69,8 +73,11 @@ words:
   - opencontainers
   - pagefind
   - pathext
+  - pathspec
+  - pathspecs
   - pbxproj
   - proptypes
+  - pushd
   - punct
   - Qwen
   - Qwik
@@ -85,6 +92,7 @@ words:
   - setext
   - Slidev
   - spinbutton
+  - SRCROOT
   - stylesheet
   - swiftformat
   - swiftlint
@@ -117,8 +125,10 @@ words:
   - xtest
   - ZWNJ
   - ZWSP
+  - frontmatter
 ignorePaths:
   - node_modules
+  - packages/pawl/api.md
   - dist
   - coverage
   - pnpm-lock.yaml

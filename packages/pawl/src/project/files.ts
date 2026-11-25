@@ -4,9 +4,9 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { readdirSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { toPosix } from '../utils/fs.ts'
+import { isFile, toPosix } from '../utils/fs.ts'
 import { WALK_SKIP } from './ignores.ts'
 
 const realpath = (path: string): string => {
@@ -64,15 +64,24 @@ const gitFiles = (root: string, [command, ...args]: [string, ...string[]]): stri
  * Files changed against HEAD, plus untracked ones. In a repository with no commit yet,
  * that is every file. Undefined outside a git repository, where nothing can say what changed:
  * the caller then looks at every file, because an empty list would pass a check without running it.
+ *
+ * While git runs the hooks of a commit, which it tells with `GIT_INDEX_FILE`, they are the files the
+ * commit changes: an untracked file, or a change that is not staged, is not part of it, and must
+ * not stop it.
  */
-export const changedFiles = (root: string): string[] | undefined => {
+export const changedFiles = (
+  root: string,
+  env: Readonly<Record<string, string | undefined>> = process.env
+): string[] | undefined => {
   let files: string[]
 
   try {
-    files = [
-      ...gitFiles(root, ['diff', '--name-only', '--diff-filter=d', 'HEAD', '--relative']),
-      ...gitFiles(root, ['ls-files', '--others', '--exclude-standard'])
-    ]
+    files = env.GIT_INDEX_FILE
+      ? gitFiles(root, ['diff', '--cached', '--name-only', '--diff-filter=d', '--relative'])
+      : [
+          ...gitFiles(root, ['diff', '--name-only', '--diff-filter=d', 'HEAD', '--relative']),
+          ...gitFiles(root, ['ls-files', '--others', '--exclude-standard'])
+        ]
   } catch {
     try {
       files = gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard'])
@@ -81,7 +90,7 @@ export const changedFiles = (root: string): string[] | undefined => {
     }
   }
 
-  return [...new Set(files)].filter(file => existsSync(join(root, file)))
+  return [...new Set(files)].filter(file => isFile(join(root, file)))
 }
 
 /** Why `changedSince` could not tell which files changed. */
@@ -95,11 +104,10 @@ export class SinceError extends Error {
 }
 
 /**
- * Files changed since the current branch left `ref`: the commits on the branch,
- * what is not committed yet, and untracked files. Throws a `SinceError` when git
- * cannot answer, because an empty list would pass the check without running it.
+ * The commit the current branch left `ref` at: where `--since` compares from. Throws a
+ * `SinceError` when git cannot answer.
  */
-export const changedSince = (root: string, ref: string): string[] => {
+export const sinceBase = (root: string, ref: string): string => {
   if (!isGitRepo(root))
     throw new SinceError(`--since ${ref} needs a git repository.`, 'Run the check inside the repository.')
 
@@ -131,6 +139,16 @@ export const changedSince = (root: string, ref: string): string[] => {
       'Fetch the full history. In GitHub Actions, set "fetch-depth: 0" on actions/checkout.'
     )
 
+  return base
+}
+
+/**
+ * Files changed since the current branch left `ref`: the commits on the branch,
+ * what is not committed yet, and untracked files. Throws a `SinceError` when git
+ * cannot answer, because an empty list would pass the check without running it.
+ */
+export const changedSince = (root: string, ref: string): string[] => {
+  const base = sinceBase(root, ref)
   let files: string[] | undefined
 
   try {
@@ -148,14 +166,35 @@ export const changedSince = (root: string, ref: string): string[] => {
       'Run "git status" to see what is wrong with the repository.'
     )
 
-  return [...new Set(files)].filter(file => existsSync(join(root, file)))
+  return [...new Set(files)].filter(file => isFile(join(root, file)))
+}
+
+/** A file of the project as it was at a commit, or undefined when it did not exist there. */
+export const fileAt = (root: string, commit: string, file: string): string | undefined => {
+  try {
+    // "./" makes the path relative to the project folder, wherever the repository root is.
+    return gitOutput(root, ['show', `${commit}:./${file}`])
+  } catch {
+    return undefined
+  }
+}
+
+/** The values of one trailer on the commits from `base` to HEAD, such as "accept" for `Pawl-Baseline: accept`. */
+export const trailersSince = (root: string, base: string, key: string): string[] => {
+  try {
+    return git(root, ['log', `--format=%(trailers:key=${key},valueonly,separator=%x0A)`, `${base}..HEAD`]).map(value =>
+      value.trim()
+    )
+  } catch {
+    return []
+  }
 }
 
 /** Every project file: what git tracks or would track, else a directory walk. */
 export const listFiles = (root: string): string[] => {
   try {
     return gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard']).filter(file =>
-      existsSync(join(root, file))
+      isFile(join(root, file))
     )
   } catch {
     return walk(root, root)

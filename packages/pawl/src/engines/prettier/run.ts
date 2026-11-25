@@ -2,12 +2,15 @@ import { listFiles } from '../../project/files.ts'
 import { makeIgnore, toEslintIgnores } from '../../project/ignores.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
-import { EngineError, type EngineRun, type RunOptions, resolveBin, runChunked, runNode } from '../engine.ts'
+import { binVersion, EngineError, type EngineRun, type RunOptions, resolveBin, runChunked, runNode } from '../engine.ts'
 
 const BIN = { packageName: 'prettier', bin: 'prettier', fallback: 'bin/prettier.cjs' }
 
 /** Prettier is installed in the project. Pawl never brings its own. */
 export const prettierInstalled = (root: string): boolean => resolveBin(root, BIN) !== undefined
+
+/** The version of the Prettier that would run. */
+export const prettierVersion = (root: string): string | undefined => binVersion(root, BIN)
 
 export interface PrettierParseErrors {
   /** One finding for each file Prettier could not parse. */

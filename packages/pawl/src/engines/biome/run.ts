@@ -1,9 +1,11 @@
 import { guardOfMessage } from '../../catalog/guards.ts'
 import { getRuleByBiome, scopedName } from '../../catalog/rules.ts'
+import { projectPath } from '../../project/files.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
 import {
+  binVersion,
   EngineError,
   type EngineRun,
   parseReport,
@@ -19,21 +21,25 @@ const BIN = { packageName: '@biomejs/biome', bin: 'biome', fallback: 'bin/biome'
 /** Biome is installed in the project, or beside pawl itself. */
 export const biomeInstalled = (root: string): boolean => resolveBin(root, BIN) !== undefined
 
+/** The version of the Biome that would run. */
+export const biomeVersion = (root: string): string | undefined => binVersion(root, BIN)
+
 interface BiomeDiagnostic {
   severity: string
   message: string
   category: string
-  location?: { path?: string; start?: { line: number; column: number } }
+  location?: { path?: string | null; start?: { line: number; column: number } | null } | null
 }
 
 interface BiomeReport {
   diagnostics: BiomeDiagnostic[]
 }
 
-const toFinding = (diagnostic: BiomeDiagnostic): Finding | undefined => {
+const toFinding = (root: string, diagnostic: BiomeDiagnostic): Finding | undefined => {
   if (diagnostic.severity !== 'error' && diagnostic.severity !== 'warning') return undefined
 
-  const file = toPosix(diagnostic.location?.path ?? '')
+  const rawPath = diagnostic.location?.path ?? ''
+  const file = rawPath ? (projectPath(root, rawPath) ?? toPosix(rawPath)) : ''
   const line = Math.max(1, diagnostic.location?.start?.line ?? 1)
   const column = Math.max(1, diagnostic.location?.start?.column ?? 1)
   const severity = diagnostic.severity === 'error' ? 'error' : 'warn'
@@ -83,7 +89,32 @@ const toFinding = (diagnostic: BiomeDiagnostic): Finding | undefined => {
   return { ...base, engineRule: category, rule: scopedName('biome', category), fixable: false }
 }
 
-const isReport = (value: unknown): value is BiomeReport => isRecord(value) && Array.isArray(value.diagnostics)
+const isPosition = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.line === 'number' &&
+  Number.isSafeInteger(value.line) &&
+  value.line >= 0 &&
+  typeof value.column === 'number' &&
+  Number.isSafeInteger(value.column) &&
+  value.column >= 0
+
+const isLocation = (value: unknown): boolean =>
+  isRecord(value) &&
+  (value.path === undefined || value.path === null || typeof value.path === 'string') &&
+  (value.start === undefined || value.start === null || isPosition(value.start))
+
+const BIOME_SEVERITIES = new Set(['fatal', 'error', 'warning', 'info', 'information', 'hint'])
+
+const isDiagnostic = (value: unknown): value is BiomeDiagnostic =>
+  isRecord(value) &&
+  typeof value.severity === 'string' &&
+  BIOME_SEVERITIES.has(value.severity) &&
+  typeof value.message === 'string' &&
+  typeof value.category === 'string' &&
+  (value.location === undefined || value.location === null || isLocation(value.location))
+
+const isReport = (value: unknown): value is BiomeReport =>
+  isRecord(value) && Array.isArray(value.diagnostics) && value.diagnostics.every(isDiagnostic)
 
 /** Run Biome and turn its report into findings. */
 export const runBiome = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
@@ -104,8 +135,34 @@ export const runBiome = async ({ root, files, write = false }: RunOptions): Prom
       ...shown,
       ...targets
     ])
-    const report = parseReport(result, 'Biome', '{', isReport)
 
-    return report.diagnostics.map(toFinding).filter((finding): finding is Finding => finding !== undefined)
+    if (result.code > 1) {
+      throw new EngineError(result.stderr.trim() || result.stdout.trim() || `Biome exited with code ${result.code}.`, {
+        command: result.command
+      })
+    }
+
+    const report = parseReport(result, 'Biome', '{', isReport)
+    const fatal = report.diagnostics.find(diagnostic => diagnostic.severity === 'fatal')
+
+    if (fatal) {
+      throw new EngineError(fatal.message.trim() || 'Biome reported a fatal error.', { command: result.command })
+    }
+
+    const findings = report.diagnostics
+      .map(diagnostic => toFinding(root, diagnostic))
+      .filter((finding): finding is Finding => finding !== undefined)
+    const hasErrors = findings.some(finding => finding.severity === 'error')
+
+    if ((result.code === 1) !== hasErrors) {
+      throw new EngineError(
+        'Biome exit status disagrees with its JSON diagnostics; the check did not complete safely.',
+        {
+          command: result.command
+        }
+      )
+    }
+
+    return findings
   })
 }

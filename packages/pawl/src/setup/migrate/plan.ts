@@ -1,5 +1,5 @@
 import { readFileSync, renameSync } from 'node:fs'
-import { extname, join } from 'node:path'
+import { extname, join, relative } from 'node:path'
 import { getPack, PACKS } from '../../catalog/packs.ts'
 import { canonicalName, defaultLevel, getRule, type RuleDef } from '../../catalog/rules.ts'
 import { importFromProject } from '../../engines/eslint/load.ts'
@@ -9,10 +9,10 @@ import { findConfigFile, resolvePolicy, resolveSpecifier } from '../../policy/lo
 import { ESLINT_CONFIG_FILES, firstExisting } from '../../project/config-files.ts'
 import { allTechnologies, type Detection, detect } from '../../project/detect.ts'
 import { type Level, type Policy, type PolicyInput } from '../../types.ts'
-import { writeText } from '../../utils/fs.ts'
+import { toPosix, writeText } from '../../utils/fs.ts'
 import { isRecord, sameJson } from '../../utils/json.ts'
 import { plural } from '../../utils/text.ts'
-import { PACKAGE_NAME } from '../../version.ts'
+import { PACKAGE_NAME, PEER_RANGES } from '../../version.ts'
 import { type SetupAction } from '../plan.ts'
 import { ESLINT_CONFIG, policyFile } from '../templates.ts'
 import { MIGRATION_REPORT, type MigrateOptions, type MigratePlan, type RuleChange } from './migration.ts'
@@ -71,7 +71,7 @@ const findSource = (root: string): Source => {
   const existing = findConfigFile(root)
 
   if (existing)
-    throw new Error(`${existing.slice(root.length + 1)} already exists. Move it away to migrate from ${sourceName}.`)
+    throw new Error(`${toPosix(relative(root, existing))} already exists. Move it away to migrate from ${sourceName}.`)
 
   return { name: sourceName, path: sourcePath, legacy: legacyName }
 }
@@ -359,7 +359,10 @@ const planEslintFile = (
     })
     notes.push(`${legacyName} is no longer read. Delete it when you are happy with the result.`)
 
-    if (major < 9) notes.push(`Pawl needs ESLint 9.22 or newer. This project has ESLint ${major}: upgrade it.`)
+    if (major < 9)
+      notes.push(
+        `Pawl needs ESLint ${PEER_RANGES.eslint?.replace(/^>=/, '')} or newer. This project has ESLint ${major}: upgrade it.`
+      )
   } else if (backup) {
     actions.push({
       path: target,

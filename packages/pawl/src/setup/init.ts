@@ -10,12 +10,12 @@ import { loadProject } from '../policy/project.ts'
 import { ESLINT_CONFIG_FILES, hasAny } from '../project/config-files.ts'
 import { type Detection, describe, filePacks, needsEslint } from '../project/detect.ts'
 import { LANGUAGE_INFO, type Language, languagesOf } from '../project/languages.ts'
-import { type EngineName, type FormatterName, type Policy, type PolicyInput } from '../types.ts'
+import { type EngineName, type Finding, type FormatterName, type Policy, type PolicyInput } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
 import { plural } from '../utils/text.ts'
 import { PACKAGE_NAME } from '../version.ts'
 import { planEngineConfigs } from './engine-configs.ts'
-import { installCommand, listed } from './install.ts'
+import { installCommand, listed, missingPlugins } from './install.ts'
 import { planAgents, planEditor, planHook, planScripts, planTurboTasks, planWorkflow } from './integrations.ts'
 import { assertPacks, describeActions, legacyNote, planPolicyFile, type SetupAction, type SetupPlan } from './plan.ts'
 import { ESLINT_CONFIG } from './templates.ts'
@@ -76,14 +76,22 @@ interface Choice {
   typeAware: boolean
 }
 
-/** The tools for a project: what the options name, else what the mode keeps or brings in. */
-const chooseTools = (options: InitOptions, detection: Detection): Choice => {
+/**
+ * The tools for a project: what the options name, else what the policy names, as after an earlier
+ * `init`, else what the mode keeps or brings in.
+ */
+const chooseTools = (options: InitOptions, detection: Detection, policy: Policy): Choice => {
   const { root, mode = 'auto' } = options
   const { tools } = detection
   const keep = mode === 'keep' && !tools.biome
   const kept: EngineName | undefined = (tools.oxlint && 'oxlint') || (tools.eslint && 'eslint') || undefined
-  const linter: EngineName = options.engine ?? (keep && kept ? kept : 'biome')
-  const formatter: FormatterName = options.formatter ?? (keep && tools.prettier ? 'prettier' : 'biome')
+  const named = {
+    linter: policy.engine === 'auto' ? undefined : policy.engine,
+    formatter: policy.formatter === 'auto' ? undefined : policy.formatter
+  }
+  const linter: EngineName = options.engine ?? named.linter ?? (keep && kept ? kept : 'biome')
+  const formatter: FormatterName =
+    options.formatter ?? named.formatter ?? (keep && tools.prettier ? 'prettier' : 'biome')
   const eslint =
     linter === 'eslint' ||
     (options.packs?.length ?? 0) > 0 ||
@@ -166,7 +174,9 @@ const missingPackages = (
     ...(linter === 'biome' || formatter === 'biome' ? ['@biomejs/biome'] : []),
     ...(linter === 'oxlint' ? ['oxlint', ...(choice.typeAware ? [TYPE_AWARE_PACKAGE] : [])] : []),
     ...(choice.eslint ? ['eslint'] : []),
-    ...(linter === 'eslint' ? ['@eslint/js', ...(detection.typescript ? ['typescript-eslint'] : [])] : []),
+    ...(linter === 'eslint' ? ['@eslint/js'] : []),
+    // ESLint lints the scripts too, also next to Biome, and reads TypeScript only with typescript-eslint.
+    ...(choice.eslint && detection.typescript ? ['typescript-eslint'] : []),
     ...(formatter === 'prettier' ? ['prettier'] : []),
     ...packs.flatMap(name => getPack(name)?.plugin ?? []),
     ...more
@@ -237,7 +247,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
 
   const { policy: loaded, detection } = await loadProject(root)
   const { tools } = detection
-  const choice = chooseTools(options, detection)
+  const choice = chooseTools(options, detection, loaded)
   const { linter, formatter } = choice
   const named = requested.filter(name => onlyWhenNamed(name) && !loaded.packs.includes(name))
   const pinned = pinnedChoice(root, choice, detection, named.length > 0 ? [...loaded.packs, ...named] : [])
@@ -274,7 +284,12 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
   }
 
   const present = listed(root)
-  const packages = missingPackages(root, choice, detection, requested, present, options.packages)
+  const needed = missingPackages(root, choice, detection, requested, present, options.packages)
+  // The plugins ESLint needs besides: with ESLint as the linter, the standard's own rules take some, as unicorn's.
+  const plugins = (
+    choice.eslint && existsSync(join(root, 'package.json')) ? await missingPlugins(root, policy) : []
+  ).filter(name => !needed.includes(name) && !present.has(name))
+  const packages = [...needed, ...plugins]
   const suggestion = packSuggestions(detection, policy, requested, present)
 
   if (suggestion) notes.push(suggestion)
@@ -305,7 +320,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
     formatter,
     actions: actions.filter((action): action is SetupAction => action !== undefined),
     notes,
-    install: install && packages.length > 0 ? installCommand(detection, packages) : undefined,
+    install: install && packages.length > 0 ? installCommand(detection, needed, plugins) : undefined,
     packages,
     policy
   }
@@ -332,7 +347,17 @@ export const formatWritten = async (root: string, paths: readonly string[]): Pro
  * Needs pawl installed in the project, because the engine configs point at it.
  * Returns the number recorded, or undefined when disabled or a baseline already exists.
  */
-export const recordBaseline = async (root: string, plan: InitPlan): Promise<number | undefined> => {
+export const recordBaseline = async (root: string, plan: InitPlan): Promise<number | undefined> =>
+  (await recordInitBaseline(root, plan))?.baselined
+
+/**
+ * Record the baseline as `recordBaseline` does, and say what it left out: the parse errors of the
+ * files that did not parse, which keep failing the check until each file parses.
+ */
+export const recordInitBaseline = async (
+  root: string,
+  plan: InitPlan
+): Promise<{ baselined: number; unparsed: Finding[] } | undefined> => {
   if (plan.baseline === false || existsSync(join(root, BASELINE_FILE))) return undefined
 
   const result = await check({ root, updateBaseline: true, policy: plan.policy })
@@ -340,7 +365,7 @@ export const recordBaseline = async (root: string, plan: InitPlan): Promise<numb
 
   if (failure) throw new Error(failure.message)
 
-  return result.baselined
+  return { baselined: result.baselined, unparsed: result.findings }
 }
 
 /** Describe a plan for people. The header is left out when a menu has already shown it. */

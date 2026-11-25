@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from '../project/files.ts'
 import { type Finding, type SetupIssue } from '../types.ts'
-import { readJson, sortKeys, writeJson } from '../utils/json.ts'
+import { isFile } from '../utils/fs.ts'
+import { isRecord, readJson, sortKeys, writeJson } from '../utils/json.ts'
 import { type TestCounts } from './tests.ts'
 
 export const BASELINE_FILE = '.pawl/baseline.json'
@@ -102,13 +103,45 @@ export const blankJsonStrings = (text: string): string => {
   return out
 }
 
-export const readBaseline = (root: string): Baseline | undefined => {
-  const baseline = readJson<Baseline>(join(root, BASELINE_FILE))
+const isCount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 
-  return baseline?.version === 1
-    ? { ...baseline, findings: baseline.findings ?? {}, suppressions: baseline.suppressions ?? {} }
-    : undefined
+const isCountMap = (value: unknown): value is Record<string, number> =>
+  isRecord(value) && Object.values(value).every(isCount)
+
+const isFindingsMap = (value: unknown): value is Record<string, Record<string, number>> =>
+  isRecord(value) && Object.values(value).every(isCountMap)
+
+const isTestCounts = (value: unknown): value is TestCounts =>
+  isRecord(value) &&
+  isCount(value.assertions) &&
+  isCount(value.skipped) &&
+  (value.masks === undefined || isCount(value.masks))
+
+const isTestsMap = (value: unknown): value is Record<string, TestCounts> =>
+  isRecord(value) && Object.values(value).every(isTestCounts)
+
+/** A baseline from its JSON, or undefined when it is not one this version of pawl knows. */
+export const parseBaseline = (baseline: unknown): Baseline | undefined => {
+  if (
+    !isRecord(baseline) ||
+    baseline.version !== 1 ||
+    (baseline.findings !== undefined && !isFindingsMap(baseline.findings)) ||
+    (baseline.suppressions !== undefined && !isCountMap(baseline.suppressions)) ||
+    (baseline.tests !== undefined && !isTestsMap(baseline.tests))
+  )
+    return undefined
+
+  return {
+    version: 1,
+    findings: baseline.findings ?? {},
+    suppressions: baseline.suppressions ?? {},
+    ...(baseline.tests === undefined ? {} : { tests: baseline.tests })
+  }
 }
+
+export const readBaseline = (root: string): Baseline | undefined =>
+  parseBaseline(readJson<unknown>(join(root, BASELINE_FILE)))
 
 /**
  * True when there is a baseline file that cannot be used: it is not valid JSON, as after a merge
@@ -140,7 +173,7 @@ export const scanSuppressions = (
   for (const file of files ?? listFiles(root)) {
     const pattern = suppressionPattern(file)
 
-    if (!pattern || ignored(file) || !existsSync(join(root, file))) continue
+    if (!pattern || ignored(file) || !isFile(join(root, file))) continue
 
     const text = readFileSync(join(root, file), 'utf8')
     const lines = (JSON_FILE.test(file) ? blankJsonStrings(text) : text).split('\n')
@@ -167,6 +200,13 @@ const countBy = (suppressions: readonly Suppression[]): Record<string, number> =
 const ownValue = <T>(record: Readonly<Record<string, T>>, key: string): T | undefined =>
   Object.hasOwn(record, key) ? record[key] : undefined
 
+/**
+ * A finding that says an engine could not parse a file, such as `eslint:parse`: the engine checked
+ * nothing else in it. The baseline never accepts one, or the file would go unchecked for good.
+ */
+export const isParseError = (finding: Finding): boolean => finding.engine !== 'pawl' && finding.engineRule === 'parse'
+
+/** Count findings per file and rule. A parse error is left out: it keeps failing until the file parses. */
 export const createBaseline = (
   findings: readonly Finding[],
   suppressions: readonly Suppression[],
@@ -174,7 +214,7 @@ export const createBaseline = (
 ): Baseline => {
   const byFile = new Map<string, Map<string, number>>()
 
-  for (const { file, rule } of findings) {
+  for (const { file, rule } of findings.filter(finding => !isParseError(finding))) {
     const rules = byFile.get(file) ?? new Map<string, number>()
 
     rules.set(rule, (rules.get(rule) ?? 0) + 1)
@@ -204,7 +244,8 @@ export interface BaselineResult {
  * Split findings into those the baseline covers and those it does not.
  *
  * When a file has more of a rule than the baseline allows, every one of them is reported,
- * because counts cannot tell which one is new.
+ * because counts cannot tell which one is new. A parse error is always new, even where a baseline
+ * an earlier pawl wrote counts it.
  */
 export const applyBaseline = (findings: readonly Finding[], baseline: Baseline | undefined): BaselineResult => {
   if (!baseline) return { fresh: [...findings], baselined: 0, canShrink: false }
@@ -227,7 +268,7 @@ export const applyBaseline = (findings: readonly Finding[], baseline: Baseline |
     if (!first) continue
 
     const rules = ownValue(baseline.findings, first.file)
-    const allowed = (rules ? ownValue(rules, first.rule) : undefined) ?? 0
+    const allowed = isParseError(first) ? 0 : ((rules ? ownValue(rules, first.rule) : undefined) ?? 0)
 
     if (group.length <= allowed) {
       baselined += group.length
@@ -255,7 +296,7 @@ export const newSuppressions = (suppressions: readonly Suppression[], baseline: 
 
   for (const suppression of suppressions) {
     const allowed = ownValue(baseline.suppressions, suppression.file) ?? 0
-    const found = counts[suppression.file] ?? 0
+    const found = ownValue(counts, suppression.file) ?? 0
 
     if (found <= allowed) continue
 

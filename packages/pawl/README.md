@@ -20,7 +20,7 @@ npx @santi020k/pawl init
 | `keep`           | Stay on the engine the repo uses today and add the ratchet on top.  |
 | `biome`          | Biome only. Pawl stops running ESLint.                              |
 
-Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check, and the doctor report as an artifact), `--agents` (hooks that fix each edit for Claude Code, and for Cursor, Codex and Copilot where the repo uses them; instructions in `AGENTS.md` that Claude Code and Gemini CLI read too; a pawl skill), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`.
+Useful flags: `--yes`, `--dry-run`, `--mode <mode>`, `--workflow` (GitHub Actions: the check with annotations on the pull request, and the doctor report as an artifact), `--agents` (hooks that fix each edit for Claude Code, and for Cursor, Codex and Copilot where the repo uses them; a guard on the baseline for Claude Code and Codex; instructions in `AGENTS.md` that Claude Code and Gemini CLI read too; a pawl skill), `--hooks` (a pre-commit hook), `--no-editor`, `--no-install`.
 
 `init` writes:
 
@@ -58,6 +58,7 @@ pawl check --since origin/main  # only files the branch changed
 pawl fix                # apply safe fixes and format
 pawl baseline           # accept the current findings as the new baseline
 pawl sync               # rewrite biome.json after the policy changed
+pawl upgrade            # install the tool versions this pawl works with, then sync
 pawl explain no-console # what a rule does, and its level in this repo
 pawl doctor             # check the setup and the tool versions
 pawl doctor --format json  # the same, as one JSON document for CI
@@ -100,9 +101,9 @@ A coding agent gets this format without asking: pawl knows Claude Code, Cursor, 
 
 In a terminal, `pawl check` shows each finding with the line of code it points at, a mark under the part it means and how to fix it, then a summary. `pawl init` asks its questions and shows its plan step by step, and `pawl doctor` marks each part of the setup. In a pipe or a log, the same facts print as plain lines.
 
-`--format editor` prints `src/a.ts:3:7: error: message [rule]` lines, which VS Code's problem matchers, Vim's quickfix list and Emacs's compilation mode read. The tasks `init` writes for VS Code use it. `--format json` prints the whole result as one document, with `reportVersion: 1`. The public `readCheckReport` helper validates captured output against the actual process status; malformed output and setup failures never count as clean checks.
+`--format editor` prints `src/a.ts:3:7: error: message [rule]` lines, which VS Code's problem matchers, Vim's quickfix list and Emacs's compilation mode read. The tasks `init` writes for VS Code use it. In GitHub Actions, `--format github` puts each finding on its line in the pull request as an annotation, and is the default there when no format is given, and `--format sarif` prints SARIF 2.1.0 for code scanning. `--format json` prints the whole result as one document, with `reportVersion: 1`. The public `readCheckReport` helper validates captured output against the actual process status; malformed output and setup failures never count as clean checks.
 
-In a coding agent's post-edit hook, `pawl fix --hook` reads the files the agent edited from the hook's input, fixes and checks only those, and hands what is left back to the agent in the shape its tool reads: Claude Code, Codex and Copilot put it in front of the model, Cursor reads nothing back. In the agent's stop hook, `pawl check --hook` checks every file the agent edited in the session and sends it back while new errors are left, Cursor included. `pawl init --agents` writes these hooks, with `npx --no pawl` so a repo that has not installed pawl yet never downloads the unscoped `pawl` package, which is someone else's. See [Coding agents](https://pawl.santi020k.com/guide/agents/).
+In a coding agent's post-edit hook, `pawl fix --hook` reads the files the agent edited from the hook's input, fixes and checks only those, and hands what is left back to the agent in the shape its tool reads: Claude Code, Codex and Copilot put it in front of the model, Cursor reads nothing back. In the agent's stop hook, `pawl check --hook` checks every file the agent edited in the session and sends it back while new errors are left, Cursor included. In a hook before each tool, the same command is a guard: Claude Code asks you before the agent edits the baseline, the policy or an engine config, or runs `pawl baseline`, and Codex refuses a change to the baseline. `pawl init --agents` writes these hooks, with `npx --no pawl` so a repo that has not installed pawl yet never downloads the unscoped `pawl` package, which is someone else's. See [Coding agents](https://pawl.santi020k.com/guide/agents/).
 
 ## The policy
 
@@ -175,14 +176,15 @@ Repos extend it. A repo can still tighten any rule, but an attempt to loosen a l
 - Findings within those counts are allowed.
 - Anything beyond them fails the check.
 - A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`.
-- A test file that loses assertions or gains a skipped test fails with `pawl/no-weaker-tests`. The baseline counts the assertions that pin a value, so swapping one for `toBeTruthy()` lowers the count. See [Tests that get weaker](https://pawl.santi020k.com/guide/ratchet/#tests-that-get-weaker).
+- A test file that loses assertions or gains a skipped test fails with `pawl/no-weaker-tests`. The baseline counts the assertions that pin a value, so swapping one for `toBeTruthy()` lowers the count. It also counts retries, raised timeouts and fixed sleeps, which can make a flaky test pass now and then. See [Tests that get weaker](https://pawl.santi020k.com/guide/ratchet/#tests-that-get-weaker).
+- With `--since <ref>`, a branch whose baseline allows more than the one on `<ref>` fails with `pawl/no-baseline-growth`, unless a commit on the branch has a `Pawl-Baseline: accept` trailer. See [A baseline that allows more](https://pawl.santi020k.com/guide/ratchet/#a-baseline-that-allows-more).
 - When the code improves, `pawl check` says so. Run `pawl baseline` to lock the improvement in.
 
 Counts are per file and rule, not per line, so moving code around does not break the baseline. The cost is that when a file goes over its count, every finding of that rule in the file is shown.
 
 ## Rules
 
-The standard has 201 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome or Oxlint can enforce without a plugin is here, at the level it had.
+The standard has 202 rules, named with ESLint's names. They started from `@santi020k/eslint-config-basic`: every rule it set that Biome or Oxlint can enforce without a plugin is here, at the level it had.
 
 - Rules for React, Qwik, Vue, Svelte and Turborepo apply only where that technology is used.
 - For each technology a project uses, pawl also turns on the rules Biome itself recommends for it: React, Next.js, React Native, Qwik, Solid, Vue, Svelte, Astro, Tailwind CSS, TanStack Query, Drizzle, Playwright and Turborepo.
@@ -232,11 +234,11 @@ pawl init --engine eslint --formatter prettier # say it up front
 
 Or in the policy: `engine: 'eslint'`, `formatter: 'prettier'`. Any mix works: Biome can lint while Prettier formats, and ESLint can lint while Biome formats.
 
-Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases. `pawl doctor` checks the installed Biome against it, and Node, ESLint, Oxlint, Prettier and the pack plugins against the versions pawl declares.
+Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases. `pawl doctor` checks the installed Biome against it, and Node, ESLint, Oxlint, Prettier and the pack plugins against the versions pawl declares. `pawl upgrade` installs the versions pawl takes.
 
 Biome also lints and formats CSS and GraphQL, sorts `package.json` fields in the usual order, and parses Tailwind's at-rules in projects that use Tailwind.
 
-Oxlint enforces 162 of the standard's 201 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Nine more need type information and run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects. Pawl writes them where the project depends on it.
+Oxlint enforces 162 of the standard's 202 rules under their ESLint names. It refuses a config that names a rule it does not have, so pawl writes `.oxlintrc.json` in full and keeps it in step with `pawl sync`. Nine more need type information and run through `oxlint-tsgolint`, which `pawl init` adds to TypeScript projects. Pawl writes them where the project depends on it.
 
 ## Packs
 
@@ -369,5 +371,5 @@ focused/skipped-test rules or locked floors.
 
 `pawl check --eslint-cache` is an explicit opt-in requiring a deterministic-input
 declaration; full input hashing can cost more than the work it saves. See the
-[adoption and integration guides](https://pawl.santi020k.com/guide/strict-adoption/)
+[adoption and integration guides](https://pawl.santi020k.com/guide/existing-repos/#adopt-without-a-baseline)
 for contracts, limitations and examples.

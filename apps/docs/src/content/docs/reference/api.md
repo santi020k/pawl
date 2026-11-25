@@ -41,7 +41,7 @@ export default eslint({ root: import.meta.dirname })
 | Packs     | `PACKS`, `getPack`, `suggestedPacks`                                                                                                                 |
 | Ignores   | `ALWAYS_IGNORED`, `DEFAULT_IGNORES`                                                                                                                  |
 | Baseline  | `createBaseline`, `readBaseline`, `applyBaseline`, `scanSuppressions`, `BASELINE_FILE`                                                               |
-| Output    | `format`, `formatPretty`, `formatAgent`, `formatEditor`, `formatJson`, `CHECK_REPORT_VERSION`, `readCheckReport`                                     |
+| Output    | `format`, `formatPretty`, `formatAgent`, `formatEditor`, `formatGithub`, `formatSarif`, `formatJson`, `CHECK_REPORT_VERSION`, `readCheckReport`      |
 | Biome     | `biomeConfig`, `biomeProjectConfig`, `biomePackageConfig`, `biomeTechConfig`, `biomeTechPreset`, `checkBiomeConfig`, `BIOME_PRESET`, `BIOME_VERSION` |
 | ESLint    | `eslint`, `eslintPlan`, `eslintPlanFor`                                                                                                              |
 | Oxlint    | `oxlintConfig`, `oxlintCovers`, `checkOxlintConfig`, `OXLINT_RULES`, `OXLINT_VERSION`                                                                |
@@ -80,14 +80,14 @@ Technology presets live under `@santi020k/pawl/biome/<technology>`: `react`, `ne
 
 `eslint(options)` and `eslintPlanFor(root, policy?, integration?)` accept public
 plugin roots, explicit plugin bindings, shared base configuration, untyped processor
-files and pack scopes. See [Shared ESLint configs](/guide/shared-eslint/) for the
+files and pack scopes. See [Shared ESLint configs](/guide/existing-eslint/#shared-eslint-plugins) for the
 composition order and locked-floor guarantees.
 
 `planInit({ root, baseline: false })` omits automatic baseline creation.
 `check({ root, eslintCache: true })` opts into the declared deterministic cache
-contract; see [ESLint caching](/guide/eslint-cache/).
+contract; see [ESLint caching](/guide/speed/#cache-eslint-checks).
 
 `formatJson` adds `reportVersion: 1` without moving existing result fields. Use
 `readCheckReport(stdout, status, { ci })` at a subprocess boundary and treat
 invalid output or operational failure as failure. See the
-[JSON report contract](/guide/report-contract/).
+[JSON report contract](/reference/report/).

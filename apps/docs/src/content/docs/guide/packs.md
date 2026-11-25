@@ -28,10 +28,24 @@ pawl doctor                    # shows which packs are active
 - A pack for something your project depends on switches on as soon as its plugin is installed. `init` tells you which ones fit.
 - The rule packs and formats are opt-in: `pawl add` records them under `packs` in the policy.
 - A pack starts from the plugin's own recommended rules, then applies the standard's levels, then your policy's `rules`.
-- The `typescript` pack starts from typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets, so it needs type information: promises that nobody awaits, values of type `any` that reach typed code and assertions that change nothing are errors.
-- Where Biome is the linter, it keeps the rules it already enforces, so nothing is reported twice.
+- The `typescript` pack starts from typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets, so it needs type information: promises that nobody awaits, values of type `any` that reach typed code and assertions that change nothing are errors. The config files of pawl and of ESLint and Oxlint, such as `pawl.config.ts`, get its other rules without type information, so they parse when the `tsconfig.json` leaves them out, as Vite's and Svelte's templates do.
+- Where Biome is the linter, it keeps the rules it already enforces, so nothing is reported twice. That goes for the rules of a plugin's own preset too: Vue's multi-word component names, and the JSON pack's duplicate keys in the `.json` and `.jsonc` files Biome reads. A rule the standard holds back in Biome as unstable stays the plugin's.
+- The `vue`, `svelte` and `astro` packs carry the standard's rules for scripts into the components they read, through the framework's parser: a `debugger`, a `var` or an `==` in a `<script setup>` fails as it does in a `.ts` file, and in a TypeScript project typescript-eslint's rules run there too. A component has no TypeScript program, so the rules that need type information stay on the `.ts` files. Where Biome is the linter, those rules stay Biome's.
 - The `jsx-a11y` standard is in the catalog, so Biome and Oxlint enforce it without the plugin. Under ESLint its rules come with the pack, and are not reported as missing while the pack is off.
 - A rule the installed plugin does not have is left out and listed by `pawl doctor`, so an older plugin does not break the run.
+
+## Key order in data files
+
+The `jsonc` pack leaves the order of keys alone. `package.json`, `tsconfig.json` and editor files such as `.vscode/tasks.json` are written in an order people read them in, and `jsonc/sort-keys` would make `pawl fix` rewrite it. The `yaml` and `toml` packs do not sort keys either. Turn sorting on in an override, for the files where the order means nothing:
+
+```ts title="pawl.config.ts"
+import { definePolicy } from '@santi020k/pawl'
+
+export default definePolicy({
+  packs: ['jsonc'],
+  overrides: [{ files: ['src/locales/**/*.json'], rules: { 'jsonc/sort-keys': 'warn' } }]
+})
+```
 
 ## Starting from a plugin's preset
 

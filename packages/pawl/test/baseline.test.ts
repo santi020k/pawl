@@ -309,4 +309,22 @@ describe('the baseline file, with the real Biome', { timeout: 60_000 }, () => {
     expect(baselineUnreadable(root)).toBe(true)
     expect(baselineUnreadable(fixture())).toBe(false)
   })
+
+  it('counts malformed v1 baselines as unreadable and skips directories passed to scanSuppressions', () => {
+    for (const invalid of [
+      { version: 1, findings: [], suppressions: {} },
+      { version: 1, findings: { 'a.ts': { 'no-var': -1 } }, suppressions: {} },
+      { version: 1, findings: {}, suppressions: 'bad' },
+      { version: 1, findings: {}, suppressions: {}, tests: { 'a.test.ts': { assertions: 'bad', skipped: 0 } } }
+    ]) {
+      const root = fixture({ [BASELINE_FILE]: invalid })
+
+      expect(readBaseline(root)).toBeUndefined()
+      expect(baselineUnreadable(root)).toBe(true)
+    }
+
+    const withDir = project({ 'src/dir.ts/placeholder.ts': 'export const a = 1\n' })
+
+    expect(scanSuppressions(withDir, () => false, ['src/dir.ts'])).toEqual([])
+  })
 })

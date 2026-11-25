@@ -1,8 +1,22 @@
+// cspell:ignore Asuspicious Aformat Aengine Aout Abiome
+import { mkdirSync, symlinkSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { codeFrame, formatAgent, formatEditor, formatPretty, type RichOptions } from '../src/check/output.ts'
+import { check } from '../src/check/check.ts'
+import { formatGithub, formatSarif } from '../src/check/ci-output.ts'
+import {
+  codeFrame,
+  formatAgent,
+  format as formatAs,
+  formatEditor,
+  formatPretty,
+  type RichOptions
+} from '../src/check/output.ts'
 import { type CheckResult, exitCode } from '../src/check/result.ts'
+import { defaultFormat, workspaceBase } from '../src/cli/commands/check.ts'
 import { type Finding } from '../src/types.ts'
 import { createStyle, stripAnsi, symbols } from '../src/utils/terminal.ts'
+import { link, project } from './helpers.ts'
 
 const result = (findings: Finding[], extra: Partial<CheckResult> = {}): CheckResult => ({
   findings,
@@ -209,6 +223,352 @@ describe('editor output', () => {
       'src/a.ts:3:7: warning: First line. Second line. [biome:suspicious/noExplicitAny]',
       'src/a.ts:3:7: warning: Unexpected any. [biome:suspicious/noExplicitAny]'
     ])
+  })
+})
+
+describe('GitHub annotations', () => {
+  it('puts each finding on its line, with its rule as the title and its fix under the message', () => {
+    expect(formatGithub(result([any, format])).split('\n')).toEqual([
+      '::warning file=src/a.ts,line=3,col=7,title=biome%3Asuspicious/noExplicitAny::Unexpected any.%0AUse a specific type, or unknown and narrow it.',
+      '::error file=src/a.ts,line=1,col=1,title=biome%3Aformat::File is not formatted.%0ARun "pawl fix".'
+    ])
+    expect(formatGithub(result([]))).toBe('')
+  })
+
+  it('escapes what would end a value or the message, and names files from the root of the repository', () => {
+    const odd: Finding = { ...any, file: 'a,b%.ts', line: 0, column: 0, message: '100% sure:\n  not any' }
+
+    expect(formatGithub(result([odd]), { base: 'packages/web/' })).toBe(
+      '::warning file=packages/web/a%2Cb%25.ts,line=1,col=1,title=biome%3Asuspicious/noExplicitAny::100%25 sure: not any%0AUse a specific type, or unknown and narrow it.'
+    )
+    expect(
+      formatGithub(result([], { setup: [{ code: 'engine-failed', message: 'Biome failed:\r\nout of memory' }] }))
+    ).toBe('::error title=pawl/setup%3Aengine-failed::Biome failed:%0D%0Aout of memory')
+  })
+
+  it('shows setup problems and the warning limit on the run, as errors when CI fails on them', () => {
+    const drifted = result([any, any], {
+      setup: [{ code: 'biome-config-stale', message: 'biome.json is out of date.', fix: 'Run "pawl sync".' }],
+      maxWarnings: 1
+    })
+    const lines = formatGithub(drifted).split('\n')
+
+    expect(lines.slice(0, 2)).toEqual([
+      '::warning title=pawl/setup%3Abiome-config-stale::biome.json is out of date.%0ARun "pawl sync".',
+      '::error title=pawl/max-warnings::The limit is 1 warning, so the warnings fail the check.'
+    ])
+    expect(formatGithub(drifted, { ci: true }).split('\n')[0]).toMatch(
+      /^::error title=pawl\/setup%3Abiome-config-stale::/
+    )
+  })
+
+  it('folds the annotations into a group and follows them with the plain report for the log', () => {
+    const text = formatAs(result([format]), 'github')
+
+    expect(text.startsWith('::group::Annotations\n::error file=src/a.ts,')).toBe(true)
+    expect(text).toContain('\n::endgroup::\n')
+    expect(text).toContain(formatPretty(result([format])))
+    expect(formatAs(result([]), 'github')).toBe(formatPretty(result([])))
+  })
+
+  it('neutralizes workflow commands in appended human output while preserving intended annotations', () => {
+    const crafted = [
+      { ...any, file: 'src/a.ts', message: '::error::injected' },
+      { ...any, file: 'src/b.ts', message: 'note ##[error]injected' },
+      { ...any, file: 'src/c.ts', message: 'ok\n::endgroup::\n::error::injected' },
+      { ...any, file: 'src/d.ts', message: 'ok\r::warning::injected' },
+      { ...any, file: 'src/e.ts', message: '::::error::quad' },
+      { ...any, file: 'src/f.ts', message: '###[warning]triple' },
+      { ...any, file: 'src/g.ts', message: '\u0085::error::injected' },
+      { ...any, file: '::error::file.ts', message: 'bad name' }
+    ]
+    const output = formatAs(result(crafted, { commands: ['echo ##[error]cmd'] }), 'github', {
+      color: true,
+      verbose: true
+    })
+    const marker = '::endgroup::\n'
+    const endgroup = output.indexOf(marker)
+
+    expect(endgroup).toBeGreaterThan(0)
+
+    const header = output.slice(0, endgroup + marker.length)
+    const appended = output.slice(endgroup + marker.length)
+
+    expect(header.startsWith('::group::Annotations\n')).toBe(true)
+    expect(header).toContain('::warning file=src/a.ts,')
+    expect(header).toContain(
+      '::warning file=src/c.ts,line=3,col=7,title=biome%3Asuspicious/noExplicitAny::ok ::endgroup:: ::error::injected%0AUse a specific type, or unknown and narrow it.'
+    )
+    expect(appended).not.toContain('::')
+    expect(appended).not.toContain('##[')
+    expect(stripAnsi(appended)).not.toContain('::')
+    expect(stripAnsi(appended)).not.toContain('##[')
+
+    const cleanOnly = formatAs(result([], { commands: ['echo ::error::cmd && echo ##[warning]cmd'] }), 'github', {
+      verbose: true
+    })
+
+    expect(cleanOnly).not.toContain('::')
+    expect(cleanOnly).not.toContain('##[')
+  })
+
+  it('preserves dot directories and parent prefixes while stripping redundant leading ./ and / separators', () => {
+    expect(formatGithub(result([any]), { base: '.config' })).toContain('file=.config/src/a.ts,')
+    expect(formatGithub(result([any]), { base: './.config/' })).toContain('file=.config/src/a.ts,')
+    expect(formatGithub(result([any]), { base: '.github/scripts' })).toContain('file=.github/scripts/src/a.ts,')
+    expect(formatGithub(result([any]), { base: '.' })).toContain('file=src/a.ts,')
+    expect(formatGithub(result([any]), { base: 'packages/web///' })).toContain('file=packages/web/src/a.ts,')
+    // Many slashes take no longer than a few: the trailing ones are trimmed by a scan, not a regular expression.
+    expect(formatGithub(result([any]), { base: `${'/'.repeat(100_000)}x` })).toContain('src/a.ts,')
+    expect(formatGithub(result([any]), { base: './' })).toContain('file=src/a.ts,')
+    expect(formatGithub(result([any]), { base: './/' })).toContain('file=src/a.ts,')
+    expect(formatGithub(result([any]), { base: '..' })).toContain('file=../src/a.ts,')
+    expect(formatGithub(result([{ ...any, file: './/src/a.ts' }]), { base: './/packages/app' })).toContain(
+      'file=packages/app/src/a.ts,'
+    )
+    expect(formatGithub(result([{ ...any, file: './//evil.com/a.ts' }]))).toContain('file=evil.com/a.ts,')
+    expect(formatGithub(result([{ ...any, file: './/.' }]))).toBe(
+      '::warning line=3,col=7,title=biome%3Asuspicious/noExplicitAny::Unexpected any.%0AUse a specific type, or unknown and narrow it.'
+    )
+    expect(formatGithub(result([{ ...any, file: '' }]))).toBe(
+      '::warning line=3,col=7,title=biome%3Asuspicious/noExplicitAny::Unexpected any.%0AUse a specific type, or unknown and narrow it.'
+    )
+  })
+})
+
+describe('SARIF', () => {
+  const parse = (text: string) => JSON.parse(text)
+
+  it('reports each new finding as a result of the rule that found it, from the root of the repository', () => {
+    const sarif = parse(formatSarif(result([any, format, { ...any, line: 9 }]), { base: 'apps/web' }))
+    const [run] = sarif.runs
+
+    expect(sarif).toMatchObject({ version: '2.1.0', $schema: 'https://json.schemastore.org/sarif-2.1.0.json' })
+    expect(run.tool.driver).toMatchObject({ name: 'pawl', informationUri: 'https://pawl.santi020k.com' })
+    expect(run.tool.driver.rules).toEqual([
+      {
+        id: 'biome:suspicious/noExplicitAny',
+        shortDescription: { text: 'No explicit any.' },
+        help: { text: 'Use a specific type, or unknown and narrow it.' },
+        helpUri: 'https://pawl.santi020k.com/reference/rules/',
+        properties: { tags: ['typescript', 'guardrail'] }
+      },
+      {
+        id: 'biome:format',
+        shortDescription: { text: 'The file is not formatted to the standard.' },
+        help: { text: 'Run "pawl fix".' },
+        helpUri: 'https://pawl.santi020k.com/reference/rules/',
+        properties: { tags: ['pawl'] }
+      }
+    ])
+    expect(run.results.map((each: { ruleIndex: number }) => each.ruleIndex)).toEqual([0, 1, 0])
+    expect(run.results[0]).toEqual({
+      ruleId: 'biome:suspicious/noExplicitAny',
+      ruleIndex: 0,
+      level: 'warning',
+      message: { text: 'Unexpected any. Use a specific type, or unknown and narrow it.' },
+      locations: [
+        {
+          physicalLocation: {
+            artifactLocation: { uri: 'apps/web/src/a.ts', uriBaseId: '%SRCROOT%' },
+            region: { startLine: 3, startColumn: 7 }
+          }
+        }
+      ]
+    })
+    expect(run.results[1].level).toBe('error')
+    expect(run.invocations).toEqual([{ executionSuccessful: true }])
+  })
+
+  it('names an engine rule outside the catalog by itself, and keeps what the baseline allowed', () => {
+    const own: Finding = {
+      ...any,
+      rule: 'eslint:no-restricted-syntax',
+      engine: 'eslint',
+      engineRule: 'no-restricted-syntax',
+      overBaseline: { allowed: 1, found: 2 }
+    }
+    const [run] = parse(formatSarif(result([own]))).runs
+
+    expect(run.tool.driver.rules).toEqual([
+      { id: 'eslint:no-restricted-syntax', shortDescription: { text: 'eslint:no-restricted-syntax' } }
+    ])
+    expect(run.results[0].properties).toEqual({ overBaseline: { allowed: 1, found: 2 } })
+    expect(run.results[0].message.text).toBe('Unexpected any.')
+  })
+
+  it("describes pawl's own rules as it does those of the catalog", async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'biome.json': { extends: ['@santi020k/pawl/biome'] },
+      'AGENTS.md': '# Agents\n\nFollow\u200b the rules.\n',
+      'docs/guide.md': '# Guide\n\nSee [the docs]().\n',
+      Dockerfile: 'FROM node:latest\nUSER node\n',
+      'src/a.test.js': "import { expect, it } from 'vitest'\n\nit('adds', () => {\n  expect(1 + 1).toBe(2)\n})\n",
+      '.pawl/baseline.json': {
+        version: 1,
+        findings: {},
+        suppressions: {},
+        tests: { 'src/a.test.js': { assertions: 2, skipped: 0, masks: 0 } }
+      }
+    })
+
+    link(root)
+
+    const checked = await check({ root })
+    const [run] = parse(formatSarif(checked)).runs
+    const rules = new Map(run.tool.driver.rules.map((rule: { id: string }) => [rule.id, rule]))
+
+    expect(rules.get('pawl/no-hidden-characters')).toEqual({
+      id: 'pawl/no-hidden-characters',
+      shortDescription: { text: 'A character that does not show on screen is in the text.' },
+      help: { text: expect.stringContaining('Delete it') },
+      helpUri: 'https://pawl.santi020k.com/guide/guards/#hidden-characters',
+      properties: { tags: ['pawl'] }
+    })
+    expect(rules.get('pawl/markdown-no-empty-links')).toMatchObject({
+      shortDescription: { text: 'A link has no destination.' },
+      help: { text: 'Add the URL the link points to, or remove the link.' },
+      helpUri: 'https://pawl.santi020k.com/guide/guards/#markdown-files'
+    })
+    expect(rules.get('pawl/docker-pin-image')).toMatchObject({
+      shortDescription: { text: 'A base image has no version, or uses "latest".' },
+      help: { text: 'Name a version, such as node:22-slim, so builds repeat.' },
+      helpUri: 'https://pawl.santi020k.com/guide/guards/#dockerfiles-and-compose-files'
+    })
+    expect(rules.get('pawl/no-weaker-tests')).toMatchObject({
+      shortDescription: { text: expect.stringContaining('assertions') },
+      help: { text: expect.any(String) },
+      helpUri: 'https://pawl.santi020k.com/reference/rules/'
+    })
+    const own = run.results.filter((each: { ruleId: string }) => each.ruleId.startsWith('pawl/'))
+
+    expect(own.map((each: { ruleId: string; level: string }) => `${each.ruleId} ${each.level}`).sort()).toEqual([
+      'pawl/docker-pin-image warning',
+      'pawl/markdown-no-empty-links error',
+      'pawl/no-hidden-characters error',
+      'pawl/no-weaker-tests error'
+    ])
+  })
+
+  it('reports setup problems and the warning limit as notifications, and a check that did not complete', () => {
+    const blocked = result([any, any], {
+      setup: [{ code: 'biome-missing', message: 'Biome is not installed.', fix: 'Install @biomejs/biome.' }],
+      maxWarnings: 0
+    })
+    const [run] = parse(formatSarif(blocked)).runs
+
+    expect(run.invocations).toEqual([
+      {
+        executionSuccessful: false,
+        toolExecutionNotifications: [
+          {
+            level: 'error',
+            message: { text: 'Biome is not installed. Install @biomejs/biome.' },
+            descriptor: { id: 'pawl/setup:biome-missing' }
+          },
+          {
+            level: 'error',
+            message: { text: 'The limit is 0 warnings, so the warnings fail the check.' },
+            descriptor: { id: 'pawl/max-warnings' }
+          }
+        ]
+      }
+    ])
+    expect(parse(formatSarif(result([]))).runs[0].results).toEqual([])
+    expect(formatAs(result([]), 'sarif')).toBe(formatSarif(result([])))
+  })
+
+  it('encodes SARIF artifactLocation URI segments while preserving separators, backslashes, and dot directories', () => {
+    const special = [
+      { ...any, file: 'src/a#b?.ts' },
+      { ...any, file: 'app/[...slug]/100% ok/café/日本語.ts' },
+      { ...any, file: 'src/a\\b.ts' },
+      { ...any, file: 'src/bad\uD800file.ts' },
+      { ...any, file: 'foo:1.ts' },
+      { ...any, file: './//evil.com/a.ts' },
+      { ...any, file: './/.' }
+    ]
+    const [run] = parse(formatSarif(result(special), { base: '.config' })).runs
+    const uris = [
+      run.results[0].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[1].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[2].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[3].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[4].locations[0].physicalLocation.artifactLocation.uri,
+      run.results[5].locations[0].physicalLocation.artifactLocation.uri
+    ]
+
+    expect(uris).toEqual([
+      '.config/src/a%23b%3F.ts',
+      '.config/app/%5B...slug%5D/100%25%20ok/caf%C3%A9/%E6%97%A5%E6%9C%AC%E8%AA%9E.ts',
+      '.config/src/a%5Cb.ts',
+      '.config/src/bad%EF%BF%BDfile.ts',
+      '.config/foo%3A1.ts',
+      '.config/evil.com/a.ts'
+    ])
+
+    const resolved0 = new URL(uris[0] as string, 'file:///repo/')
+    const resolved1 = new URL(uris[1] as string, 'file:///repo/')
+    const resolved2 = new URL(uris[2] as string, 'file:///repo/')
+
+    expect(resolved0.hash).toBe('')
+    expect(resolved0.search).toBe('')
+    expect(decodeURIComponent(resolved0.pathname)).toBe('/repo/.config/src/a#b?.ts')
+    expect(decodeURIComponent(resolved1.pathname)).toBe('/repo/.config/app/[...slug]/100% ok/café/日本語.ts')
+    expect(decodeURIComponent(resolved2.pathname)).toBe('/repo/.config/src/a\\b.ts')
+    expect(run.results[6].locations).toBeUndefined()
+
+    const [rootSlashRun] = parse(
+      formatSarif(
+        result([
+          { ...any, file: '/src/a.ts' },
+          { ...any, file: './//evil.com/a.ts' }
+        ])
+      )
+    ).runs
+
+    expect(rootSlashRun.results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('src/a.ts')
+    expect(rootSlashRun.results[1].locations[0].physicalLocation.artifactLocation.uri).toBe('evil.com/a.ts')
+  })
+})
+
+describe('the folder pawl runs in, under GitHub Actions', () => {
+  it('is the path from the checked-out repository, preserves ..tools, resolves symlinks, and is empty outside it', () => {
+    const actions = { GITHUB_WORKSPACE: '/work/repo' }
+
+    expect(workspaceBase('/work/repo/packages/web', actions)).toBe('packages/web')
+    expect(workspaceBase('/work/repo/..tools', actions)).toBe('..tools')
+    expect(workspaceBase('/work/repo/..foo/sub', actions)).toBe('..foo/sub')
+    expect(workspaceBase('/work/repo/.config', actions)).toBe('.config')
+    expect(workspaceBase('/work/repo', actions)).toBe('')
+    expect(workspaceBase('/work/repo/', actions)).toBe('')
+    expect(workspaceBase('/work/repo/../outside', actions)).toBe('')
+    expect(workspaceBase('/work/repo-other', actions)).toBe('')
+    expect(workspaceBase('/work', actions)).toBe('')
+    expect(workspaceBase('/elsewhere', actions)).toBe('')
+    expect(workspaceBase('/work/repo', {})).toBe('')
+
+    const root = project()
+    const real = join(root, 'real')
+    const pkg = join(real, 'packages/web')
+    const link = join(root, 'workspace-link')
+
+    mkdirSync(pkg, { recursive: true })
+    symlinkSync(real, link)
+    expect(workspaceBase(pkg, { GITHUB_WORKSPACE: link })).toBe('packages/web')
+    expect(workspaceBase(real, { GITHUB_WORKSPACE: link })).toBe('')
+  })
+})
+
+describe('the format when none is asked for', () => {
+  it('is github in a GitHub Actions job, agent for a coding agent anywhere, and pretty elsewhere', () => {
+    expect(defaultFormat(undefined, { GITHUB_ACTIONS: 'true' })).toBe('github')
+    expect(defaultFormat('Claude Code', { GITHUB_ACTIONS: 'true' })).toBe('agent')
+    expect(defaultFormat('Claude Code', {})).toBe('agent')
+    expect(defaultFormat(undefined, {})).toBe('pretty')
+    expect(defaultFormat(undefined, { GITHUB_ACTIONS: '' })).toBe('pretty')
+    expect(defaultFormat(undefined, { GITHUB_ACTIONS: 'false' })).toBe('pretty')
   })
 })
 

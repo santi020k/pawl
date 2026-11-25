@@ -5,22 +5,38 @@ import { checkLanguages } from '../engines/languages/check.ts'
 import { activeEngines } from '../engines/registry.ts'
 import { lockIssues } from '../policy/merge.ts'
 import { loadProject } from '../policy/project.ts'
-import { changedFiles, changedSince, listFiles, projectPath, SinceError } from '../project/files.ts'
+import {
+  changedFiles,
+  changedSince,
+  fileAt,
+  listFiles,
+  projectPath,
+  SinceError,
+  sinceBase,
+  trailersSince
+} from '../project/files.ts'
 import { configIgnores, ignoreMatcher } from '../project/ignores.ts'
 import { runScans, scansReadIgnored } from '../scans/registry.ts'
-import { scanIgnores } from '../scans/scan.ts'
+import { levelForFile, scanIgnores } from '../scans/scan.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
 import { mapAsync } from '../utils/list.ts'
+import { olderThan } from '../utils/semver.ts'
 import {
   applyBaseline,
+  BASELINE_FILE,
+  type Baseline,
   createBaseline,
+  isParseError,
   newSuppressions,
+  parseBaseline,
   readBaseline,
   scanSuppressions,
   unreadableBaseline,
   writeBaseline
 } from './baseline.ts'
+import { ACCEPT_TRAILER, accepts, BASELINE_GROWTH, baselineGrowth, growthFinding } from './baseline-growth.ts'
+import { engineTitle } from './output.ts'
 import { type CheckResult, isBlocked } from './result.ts'
 import { scanTests, testCounts, weakerTests } from './tests.ts'
 
@@ -39,7 +55,10 @@ export interface CheckOptions {
   files?: readonly string[]
   /** Apply safe fixes and formatting before reporting. */
   fix?: boolean
-  /** Record everything found as the new baseline and report nothing. */
+  /**
+   * Record everything found as the new baseline and report nothing but the parse errors, which the
+   * baseline never takes: a file that does not parse was not checked.
+   */
   updateBaseline?: boolean
   /** Reuse a policy that is already loaded. */
   policy?: Policy
@@ -70,6 +89,23 @@ interface EngineOutcome {
   findings: Finding[]
   setup: SetupIssue[]
   commands: string[]
+}
+
+/**
+ * The setup problem for an engine older than this pawl works with, or undefined. Such an engine
+ * stops on the config pawl gives it, with pages of errors about rules and options it does not know,
+ * so it does not run, and one line says what to do. A newer one runs; the doctor reports it.
+ */
+const outdated = (engine: Engine, root: string): SetupIssue | undefined => {
+  const installed = engine.version(root)
+
+  if (engine.range === undefined || installed === undefined || !olderThan(installed, engine.range)) return undefined
+
+  return {
+    code: 'engine-failed',
+    message: `${engineTitle(engine.name)} did not run: ${engine.packageName} ${installed} is installed, older than the versions this pawl works with (${engine.range}).`,
+    fix: 'Run "pawl upgrade" to install a version pawl works with.'
+  }
 }
 
 /** Run one engine. An engine that cannot run is a setup problem, so the other engines still report. */
@@ -121,7 +157,7 @@ const gitScope = (root: string, options: CheckOptions, setup: SetupIssue[]): Sco
  * The files and folders a caller named, as project paths. The engines walk a folder themselves;
  * pawl's own checks need its files listed. Naming the root is the same as naming nothing.
  */
-const namedScope = (root: string, named: readonly string[]): Scope | undefined => {
+const namedScope = (root: string, named: readonly string[], repoFiles: () => string[]): Scope | undefined => {
   const targets = [...new Set(named.flatMap(file => projectPath(root, file) ?? []))]
 
   if (targets.includes('.')) return undefined
@@ -130,9 +166,43 @@ const namedScope = (root: string, named: readonly string[]): Scope | undefined =
 
   if (folders.length === 0) return { targets, files: targets }
 
-  const inFolders = listFiles(root).filter(file => folders.some(folder => file.startsWith(`${folder}/`)))
+  const inFolders = repoFiles().filter(file => folders.some(folder => file.startsWith(`${folder}/`)))
 
   return { targets, files: [...new Set([...targets.filter(target => !folders.includes(target)), ...inFolders])] }
+}
+
+/**
+ * The baseline compared with the one where the branch left `ref`: a finding when it allows more,
+ * unless a commit on the branch accepts it with a `Pawl-Baseline: accept` trailer.
+ */
+const growthSince = (root: string, ref: string, baseline: Baseline | undefined, policy: Policy): Finding[] => {
+  const severity = levelForFile(policy, BASELINE_GROWTH, BASELINE_FILE, 'error')
+
+  if (severity === 'off') return []
+
+  let base: string
+
+  try {
+    base = sinceBase(root, ref)
+  } catch {
+    // The scope already reported why git could not answer.
+    return []
+  }
+
+  if (trailersSince(root, base, ACCEPT_TRAILER).some(accepts)) return []
+
+  const text = fileAt(root, base, BASELINE_FILE)
+  let before: Baseline | undefined
+
+  try {
+    before = text === undefined ? undefined : parseBaseline(JSON.parse(text))
+  } catch {
+    before = undefined
+  }
+
+  const lines = baselineGrowth(before, baseline)
+
+  return lines.length === 0 ? [] : [growthFinding(ref, lines, severity)]
 }
 
 /** Run every active engine, then pawl's own checks, and compare with the baseline. */
@@ -145,7 +215,9 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   const ignored = ignoreMatcher(root, policy, detection.ignores)
   // Pawl's own scans also read agent rules files in the folders the default ignores skip.
   const ownIgnored = scanIgnores(root, policy, detection.ignores, scansReadIgnored)
-  const asked = options.files ? namedScope(root, options.files) : gitScope(root, options, setup)
+  let cachedFiles: string[] | undefined
+  const repoFiles = (): string[] => (cachedFiles ??= listFiles(root))
+  const asked = options.files ? namedScope(root, options.files, repoFiles) : gitScope(root, options, setup)
   const scoped = asked && {
     targets: asked.targets.filter(file => !ignored(file)),
     files: asked.files.filter(file => !ownIgnored(file))
@@ -160,17 +232,24 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   if (unreadable) setup.push(unreadable)
 
   setup.push(...lockIssues(policy))
-  if (!idle) {
+
+  const active = activeEngines(project.tools)
+  // An engine that is too old cannot read the config pawl gives it, so nothing asks it anything.
+  const tooOld = new Map(
+    active.map(engine => [engine.name, engine.installed(root) ? outdated(engine, root) : undefined])
+  )
+
+  if (!idle && project.tools.biome && project.tools.eslint && !tooOld.get('eslint')) {
     const ownership = await formatterOwnership(
       project,
-      (scoped?.files ?? listFiles(root)).filter(file => !ignored(file))
+      (scoped?.files ?? repoFiles()).filter(file => !ignored(file))
     )
     setup.push(...ownership)
     if (ownership.length > 0) idle = true
   }
 
   const findings: Finding[] = []
-  const own = scoped ? { files: scoped.files } : {}
+  const own = scoped ? { files: scoped.files } : { projectFiles: repoFiles() }
   const run: RunOptions = {
     root,
     eslintCache: options.eslintCache === true,
@@ -180,8 +259,6 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     ignore: configIgnores(policy, detection.ignores),
     gitignore: policy.gitignore
   }
-
-  const active = activeEngines(project.tools)
 
   engines.push(...active.flatMap(engine => (engine.name === 'prettier' ? [] : [engine.name])))
 
@@ -194,6 +271,10 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
       const state = engine.inspect(project)
 
       if (!engine.installed(root)) return { findings: [], setup: [...state.issues, engine.missing], commands: [] }
+
+      const old = tooOld.get(engine.name)
+
+      if (old) return { findings: [], setup: [...state.issues, old], commands: [] }
 
       if (idle || noTargets || !state.runnable) return { findings: [], setup: state.issues, commands: [] }
 
@@ -220,7 +301,9 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
 
     // The other languages the policy names, each with its own tools.
     // The tools of other languages get only the files past every ignore.
-    const languageFiles = scoped ? { files: scoped.files.filter(file => !ignored(file)) } : {}
+    const languageFiles = scoped
+      ? { files: scoped.files.filter(file => !ignored(file)) }
+      : { projectFiles: repoFiles() }
     const languages = await checkLanguages({
       root,
       policy,
@@ -242,19 +325,22 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   // The policy's ignore list applies at once, even before the engine config is synced. Pawl's own
   // findings follow the ignores of its scans, which read agent rules files the engines skip.
   const kept = findings.filter(finding => !(finding.engine === 'pawl' ? ownIgnored : ignored)(finding.file))
-  const suppressions = idle ? [] : scanSuppressions(root, ignored, scoped?.files)
-  const tests = idle ? [] : scanTests(root, ignored, scoped?.files)
+  const scopedOrRepo = scoped ? scoped.files : repoFiles()
+  const suppressions = idle ? [] : scanSuppressions(root, ignored, scopedOrRepo)
+  const tests = idle ? [] : scanTests(root, ignored, scopedOrRepo)
 
   if (options.updateBaseline) {
     // A check that did not complete knows only some of the findings. Recorded as the baseline,
     // they would make every finding it missed fail later as new, so the file is left as it is.
     const complete = !isBlocked(setup)
+    // A file an engine could not parse was not checked, so its parse errors stay new and are reported.
+    const unparsed = complete ? kept.filter(isParseError).sort(byPosition) : []
 
     if (complete) writeBaseline(root, createBaseline(kept, suppressions, testCounts(tests)))
 
     return {
-      findings: [],
-      baselined: complete ? kept.length : 0,
+      findings: unparsed,
+      baselined: complete ? kept.length - unparsed.length : 0,
       setup,
       engines,
       commands,
@@ -277,8 +363,13 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     finding => !(finding.rule === 'vitest/no-disabled-tests' && skips.has(`${finding.file}:${finding.line}`))
   )
 
+  const growth =
+    options.since === undefined || isBlocked(setup) ? [] : growthSince(root, options.since, baseline, policy)
+
   return {
-    findings: [...engineFresh, ...newSuppressions(suppressions, baseline), ...ratchet.findings].sort(byPosition),
+    findings: [...engineFresh, ...newSuppressions(suppressions, baseline), ...ratchet.findings, ...growth].sort(
+      byPosition
+    ),
     baselined,
     setup,
     engines,

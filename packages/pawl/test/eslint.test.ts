@@ -4,6 +4,7 @@ import { exitCode } from '../src/check/result.ts'
 import { readReport } from '../src/engines/engine.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
+import { type Level } from '../src/types.ts'
 import { link, project } from './helpers.ts'
 
 const block = (config: Record<string, unknown>[], name: string): Record<string, unknown> | undefined =>
@@ -19,7 +20,9 @@ const withPlugins = (): string =>
     'node_modules/typescript-eslint/index.js':
       "export default { parser: { name: 'ts-parser' }, plugin: { rules: {} } }\n",
     'node_modules/eslint-plugin-react-hooks/package.json': manifest('eslint-plugin-react-hooks'),
-    'node_modules/eslint-plugin-react-hooks/index.js': 'export default { rules: {} }\n'
+    // The rules of the standard it implements: the plan leaves out a rule the plugin does not have.
+    'node_modules/eslint-plugin-react-hooks/index.js':
+      "const rule = { create: () => ({}) }\nexport default { rules: { 'rules-of-hooks': rule, 'exhaustive-deps': rule } }\n"
   })
 
 describe('eslintPlan', () => {
@@ -71,7 +74,44 @@ describe('eslintPlan', () => {
       rule: 'unused-imports/no-unused-imports',
       needs: 'eslint-plugin-unused-imports'
     })
-    expect(plan.notEnforced).toContainEqual({ rule: 'vitest/no-disabled-tests', needs: '@vitest/eslint-plugin' })
+    // The project does not test with Vitest, so it is not asked to install Vitest's plugin.
+    expect(plan.notEnforced.filter(({ rule }) => rule.startsWith('vitest/'))).toEqual([])
+  })
+
+  it.each([
+    ['depends on Vitest', { dependencies: ['vitest'] }, {}],
+    ['declares Vitest as its test runner', {}, { testRunners: { vitest: ['test/**/*.test.ts'] } }],
+    [
+      'tests with Jest but names a Vitest rule',
+      { dependencies: ['jest'] },
+      { rules: { 'vitest/valid-expect': 'error' as const } }
+    ]
+  ])('asks for the Vitest plugin where the project %s', async (_, given, input) => {
+    const plan = await eslintPlan({
+      root: withPlugins(),
+      policy: mergeLayers([{ source: 'repo', input }]),
+      biomeActive: false,
+      typescript: false,
+      ...given
+    })
+
+    expect(plan.notEnforced).toContainEqual(
+      expect.objectContaining({ rule: 'vitest/valid-expect', needs: '@vitest/eslint-plugin' })
+    )
+  })
+
+  it.each([['jest'], ['node:test']])('leaves the Vitest rules out where the tests run on %s', async runner => {
+    const plan = await eslintPlan({
+      root: withPlugins(),
+      policy: defaultPolicy(),
+      biomeActive: false,
+      typescript: false,
+      dependencies: runner === 'jest' ? ['jest'] : []
+    })
+    const rules = plan.config.flatMap(block => Object.keys((block.rules as Record<string, unknown> | undefined) ?? {}))
+
+    expect(rules.filter(rule => rule.startsWith('vitest/'))).toEqual([])
+    expect(plan.notEnforced.map(item => item.needs)).not.toContain('@vitest/eslint-plugin')
   })
 
   it('leaves to Biome every rule Biome covers', async () => {
@@ -141,6 +181,70 @@ describe('eslintPlan', () => {
 
     expect(block(plan.config, 'pawl/typescript')).toBeUndefined()
     expect(JSON.stringify(plan.config)).not.toContain('react-hooks')
+  })
+
+  it('leaves the rules Biome enforces off where the javascript and typescript presets turn them on', async () => {
+    // `migrate` names both packs, and Biome stays the linter: ESLint would report each finding again,
+    // at the preset's level instead of the policy's.
+    const root = project({
+      'package.json': { name: 'fixture' },
+      'node_modules/typescript-eslint/package.json': manifest('typescript-eslint'),
+      'node_modules/typescript-eslint/index.js': [
+        "const rules = { '@typescript-eslint/no-non-null-assertion': 'error', '@typescript-eslint/no-unused-vars': 'error' }",
+        "export default { parser: { name: 'ts-parser' }, plugin: { rules: {} }, configs: { strictTypeChecked: [{ rules }], stylisticTypeChecked: [] } }"
+      ].join('\n'),
+      'node_modules/@eslint/js/package.json': manifest('@eslint/js'),
+      'node_modules/@eslint/js/index.js':
+        "export default { configs: { recommended: { rules: { 'no-debugger': 'error', 'no-unused-vars': 'error' } } } }\n"
+    })
+    const policy = mergeLayers([
+      {
+        source: 'repo',
+        input: { packs: ['javascript', 'typescript'], rules: { '@typescript-eslint/no-non-null-assertion': 'off' } }
+      }
+    ])
+    const plan = await eslintPlan({ root, policy, biomeActive: true, typescript: true, technologies: [] })
+    const on = (name: string): string[] =>
+      Object.entries(block(plan.config, name)?.rules ?? {}).flatMap(([rule, value]) =>
+        (Array.isArray(value) ? value[0] : value) === 'off' ? [] : [rule]
+      )
+
+    expect(on('pawl/base')).not.toContain('no-debugger')
+    expect(on('pawl/base')).not.toContain('no-unused-vars')
+    expect(on('pawl/typescript')).not.toContain('@typescript-eslint/no-non-null-assertion')
+    expect(on('pawl/typescript')).not.toContain('@typescript-eslint/no-unused-vars')
+  })
+
+  it('keeps the preset level of a rule the standard holds back in Biome as unstable', async () => {
+    // no-floating-promises maps to a Biome nursery rule, which the standard leaves off outside strict
+    // mode: Biome does not run it, so the typescript pack's preset level stands unless the policy sets one.
+    const root = project({
+      'package.json': { name: 'fixture' },
+      'node_modules/typescript-eslint/package.json': manifest('typescript-eslint'),
+      'node_modules/typescript-eslint/index.js': [
+        "const names = ['no-floating-promises', 'no-unsafe-return', 'no-non-null-assertion', 'require-await']",
+        "const rules = Object.fromEntries(names.map(name => ['@typescript-eslint/' + name, 'error']))",
+        'const plugin = { rules: Object.fromEntries(names.map(name => [name, { create: () => ({}) }])) }',
+        "export default { parser: { name: 'ts-parser' }, plugin, configs: { strictTypeChecked: [{ rules }], stylisticTypeChecked: [] } }"
+      ].join('\n')
+    })
+    const levelOf = async (rules: Record<string, Level>, name: string): Promise<unknown> => {
+      const policy = mergeLayers([{ source: 'repo', input: { packs: ['typescript'], rules } }])
+      const plan = await eslintPlan({ root, policy, biomeActive: true, typescript: true, technologies: [] })
+      const value = block(plan.config, 'pawl/typescript')?.rules as Record<string, unknown> | undefined
+
+      return value?.[name]
+    }
+    const floating = '@typescript-eslint/no-floating-promises'
+
+    expect(await levelOf({}, floating)).toBe('error')
+    expect(await levelOf({}, '@typescript-eslint/no-unsafe-return')).toBe('error')
+    // A rule Biome runs stays Biome's, and a level the policy sets wins over the preset.
+    expect(await levelOf({}, '@typescript-eslint/no-non-null-assertion')).toBe('off')
+    // A rule the standard turns off on purpose, not as unstable, stays off in ESLint too.
+    expect(await levelOf({}, '@typescript-eslint/require-await')).toBe('off')
+    expect(await levelOf({ [floating]: 'off' }, floating)).toBe('off')
+    expect(await levelOf({ [floating]: 'error' }, floating)).toBe('off')
   })
 
   it('says why when a plugin is installed but cannot load', async () => {
@@ -222,6 +326,25 @@ describe('eslintPlan', () => {
       expect(plan.availablePacks).toEqual(['zod'])
       expect(plan.notEnforced).toEqual([])
       expect(plan.config.map(entry => entry.name)).toEqual(['pawl/ignores', 'pawl/base'])
+    })
+
+    it('stops the check when the plugin of a pack the project depends on is installed but cannot load', async () => {
+      const root = project({
+        'package.json': { name: 'fixture' },
+        'node_modules/eslint-plugin-zod/package.json': manifest('eslint-plugin-zod'),
+        'node_modules/eslint-plugin-zod/index.js': "throw new Error('Cannot find package zod-peer.')\n"
+      })
+      const plan = await eslintPlan({ ...options, root, dependencies: ['zod'] })
+
+      expect(plan.activePacks).toEqual([])
+      expect(plan.availablePacks).toEqual([])
+      expect(plan.notEnforced).toEqual([
+        {
+          rule: 'The Zod pack',
+          needs: 'eslint-plugin-zod, which is installed but failed to load: Cannot find package zod-peer.',
+          required: true
+        }
+      ])
     })
 
     it('reports a pack the policy names when its plugin is not installed', async () => {

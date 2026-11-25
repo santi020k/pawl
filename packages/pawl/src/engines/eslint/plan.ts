@@ -8,6 +8,7 @@ import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { findProjectRoot } from '../../policy/load.ts'
 import { loadProject } from '../../policy/project.ts'
 import { testRunnerFiles } from '../../policy/test-runners.ts'
+import { ESLINT_CONFIG_FILES, OXLINT_CONFIG_FILES, PAWL_CONFIG_FILES } from '../../project/config-files.ts'
 import { allTechnologies, packageTechnologies, technologies as repoTechnologies } from '../../project/detect.ts'
 import {
   ALWAYS_IGNORED,
@@ -25,6 +26,7 @@ import { oxlintCovers, tsgolintInstalled } from '../oxlint/config.ts'
 import {
   follow,
   importFromProject,
+  importRulePlugin,
   importVia,
   type Loaded,
   needs,
@@ -60,6 +62,28 @@ const globalsFor = async (root: string, runtimes: readonly Runtime[]): Promise<R
 }
 
 const TS_FILES = ['**/*.{ts,mts,cts,tsx}']
+
+/**
+ * The packs whose preset's parser hands each `<script>` to `parserOptions.parser`, which reads
+ * JavaScript only unless the config names another. In a TypeScript project they get typescript-eslint's.
+ */
+const SCRIPT_HOSTS: ReadonlySet<string> = new Set(['vue', 'svelte'])
+
+/**
+ * The packs whose parser reads the scripts of a component: a `.vue`, `.svelte` or `.astro` file.
+ * The standard's rules for scripts reach those scripts through it.
+ */
+const COMPONENT_HOSTS: ReadonlySet<string> = new Set(['vue', 'svelte', 'astro'])
+
+/**
+ * Rules of a pack's plugin that are the same check as a rule of the standard, by the standard's
+ * rule, in the files Biome lints. Where Biome is the linter and runs that rule, they are off in
+ * those files, so a finding is not reported twice. Biome's noDuplicateObjectKeys reads JSON too,
+ * but not JSON5.
+ */
+const BIOME_TWINS: Readonly<Record<string, { files: string[]; rules: Record<string, string> }>> = {
+  jsonc: { files: ['**/*.{json,jsonc}'], rules: { 'jsonc/no-dupe-keys': 'no-dupe-keys' } }
+}
 
 export interface EslintPlan {
   config: FlatConfig[]
@@ -299,12 +323,14 @@ const loadPacks = async (build: Build): Promise<void> => {
       loaded = supplied === undefined ? await importVia(root, pluginRoots, pack.plugin) : suppliedPlugin(supplied)
 
     if (!loaded.module) {
+      // A plugin that is not installed only suggests its pack. One that is installed but cannot load
+      // would have switched the pack on, so the check stops rather than pass without its rules.
       if (reason === 'suggested' && !loaded.error) availablePacks.push(pack.name)
       else
         notEnforced.push({
           rule: `The ${pack.title} pack`,
           needs: needs(pack.plugin, loaded),
-          ...(entryFor(policy.packs, pack) === undefined ? {} : { required: true })
+          ...(entryFor(policy.packs, pack) === undefined && !loaded.error ? {} : { required: true })
         })
 
       continue
@@ -360,6 +386,16 @@ const placeRules = async (build: Build): Promise<void> => {
     if (covered(name)) {
       if (level !== 'off') coveredByBiome.push(name)
 
+      // The javascript and typescript packs start from presets that may turn it on in ESLint too.
+      // A rule off only because the standard holds it back, as it does an unstable one, does not run
+      // in the fast linter, so the preset's level stands unless the policy sets one.
+      if (level === 'off' && def?.nursery === true && policy.rules[name] === undefined) continue
+
+      for (const alias of [scopedRule(name, 'eslint') ?? name, ...(def?.aliases ?? [])]) {
+        if (alias in coreRules) coreRules[alias] = 'off'
+        if (alias in tsRules) tsRules[alias] = 'off'
+      }
+
       continue
     }
 
@@ -409,18 +445,29 @@ const placeRules = async (build: Build): Promise<void> => {
     if (policy.rules[name] === undefined && PACKS.some(pack => pack.prefix === prefix && pack.withPack === true))
       continue
 
+    // The plugin of a library the project does not use, such as Vitest's where the tests run on
+    // Jest or node:test, is not asked for unless the policy names the rule. A rule for a technology,
+    // such as React's, already applies only where the project uses it.
+    if (policy.rules[name] === undefined && !(def && isGated(def.tag)) && !usesLibraryOf(prefix, options)) continue
+
     if (!plugins.has(prefix))
       plugins.set(
         prefix,
         options.plugins?.[prefix] === undefined
-          ? await importVia(root, pluginRoots, pluginPackage(prefix))
+          ? await importRulePlugin(root, pluginRoots, prefix)
           : suppliedPlugin(options.plugins[prefix])
       )
 
     const loaded = plugins.get(prefix) as Loaded
 
     if (!loaded.module) {
-      notEnforced.push({ rule: name, needs: needs(pluginPackage(prefix), loaded) })
+      notEnforced.push({ rule: name, needs: needs(loaded.packageName ?? pluginPackage(prefix), loaded) })
+
+      continue
+    }
+
+    if (lacks(loaded, eslintName, prefix)) {
+      notEnforced.push({ rule: name, needs: `a version of ${loaded.packageName ?? pluginPackage(prefix)} that has it` })
 
       continue
     }
@@ -433,6 +480,25 @@ const placeRules = async (build: Build): Promise<void> => {
     }
   }
 }
+
+/**
+ * False when the rules of a plugin are for a library the project does not use: its pack switches on
+ * for some dependencies, the project has none of them, and the policy declares no test runner of
+ * that name.
+ */
+const usesLibraryOf = (prefix: string, { policy, dependencies = [] }: EslintPlanOptions): boolean => {
+  const packs = PACKS.filter(pack => pack.prefix === prefix && pack.when.length > 0)
+  const runners: Readonly<Record<string, unknown>> = policy.testRunners
+
+  return (
+    packs.length === 0 ||
+    packs.some(pack => pack.when.some(name => dependencies.includes(name)) || runners[pack.name] !== undefined)
+  )
+}
+
+/** The plugin in use lists its rules, and not this one: ESLint would refuse the config. */
+const lacks = (loaded: Loaded, rule: string, prefix: string): boolean =>
+  isRecord(loaded.module?.rules) && !(rule.slice(prefix.length + 1) in loaded.module.rules)
 
 /** The guards: imports and code patterns to stay away from, for the libraries the project uses. */
 const applyGuards = ({ options, coreRules, coveredByBiome }: Build): void => {
@@ -483,6 +549,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
   ]
   const config: FlatConfig[] = [{ name: 'pawl/ignores', ignores }]
   const tseslint = ts.module
+  const globals = await globalsFor(root, options.runtimes ?? ['node', 'browser'])
   const otherPlugins = Object.fromEntries(
     [...plugins].flatMap(([prefix, loaded]) => (prefix !== TS_PREFIX && loaded.module ? [[prefix, loaded.module]] : []))
   )
@@ -493,7 +560,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: await globalsFor(root, options.runtimes ?? ['node', 'browser']),
+      globals,
       parserOptions: { ecmaFeatures: { jsx: true } }
     },
     linterOptions: { reportUnusedDisableDirectives: 'warn' },
@@ -516,12 +583,101 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
     notEnforced.push({ rule: 'TypeScript files', needs: needs('typescript-eslint', ts) })
   }
 
+  config.push(...componentConfigs(build, otherPlugins, globals))
+
   return config
 }
 
+/** The component files a pack's parser reads, within the files the integration gives the pack. */
+const componentFiles = (pack: Pack, options: EslintPlanOptions): Array<string | string[]> => {
+  const explicit = options.packFiles?.[pack.name]?.map(toEngineGlob)
+  const own = pack.files ?? []
+
+  return explicit ? own.flatMap(file => explicit.map(pattern => [file, pattern])) : own
+}
+
+/** The component files of the packs that are on, which ESLint reads through the framework's parser. */
+const activeComponentFiles = (packs: readonly string[], options: EslintPlanOptions): Array<string | string[]> =>
+  PACKS.filter(pack => COMPONENT_HOSTS.has(pack.name) && packs.includes(pack.name)).flatMap(pack =>
+    componentFiles(pack, options)
+  )
+
+/** `@typescript-eslint/X` and the core rule it stands in for in TypeScript files. */
+const coreTwin = (name: string): string | undefined =>
+  name.startsWith(`${TS_PREFIX}/`) ? (getRule(name)?.name ?? name.slice(TS_PREFIX.length + 1)) : undefined
+
+const isOff = (value: RuleValue): boolean => {
+  const level: unknown = Array.isArray(value) ? value[0] : value
+
+  return level === 'off' || level === 0
+}
+
+/**
+ * The standard's rules for scripts, in the scripts of the components the framework packs read: the
+ * same rules as a script, and in a TypeScript project those of a TypeScript file. The block names no
+ * parser, so the pack's parser, which comes after it, reads the file, and the pack's own presets can
+ * still turn off a core rule that misfires there. No TypeScript program reaches these files, so the
+ * rules that need type information stay out, and a core rule their twin stood in for comes back.
+ */
+const componentConfigs = (
+  { options, ts, coreRules, pluginRules, tsRules, activePacks }: Build,
+  otherPlugins: Record<string, unknown>,
+  globals: Record<string, unknown>
+): FlatConfig[] => {
+  const files = activeComponentFiles(activePacks, options)
+
+  if (files.length === 0) return []
+
+  const tseslint = ts.module
+  const plugins: Record<string, unknown> = { ...otherPlugins, ...(tseslint ? { [TS_PREFIX]: tseslint.plugin } : {}) }
+  const typescriptRules = tseslint ? tsRules : {}
+  const typed = (name: string): boolean => needsTypeInformation(name, plugins)
+  const standIns = new Set(
+    Object.entries(typescriptRules).flatMap(([name, value]) =>
+      typed(name) && !isOff(value) ? [coreTwin(name) ?? name] : []
+    )
+  )
+  const rules: Rules = Object.fromEntries(
+    Object.entries({ ...coreRules, ...pluginRules }).filter(([name]) => !typed(name))
+  )
+
+  for (const [name, value] of Object.entries(typescriptRules)) {
+    if (typed(name) || (isOff(value) && standIns.has(name))) continue
+
+    rules[name] = value
+  }
+
+  if (Object.keys(rules).length === 0) return []
+
+  const used = Object.fromEntries(
+    Object.entries(plugins).filter(([prefix]) => Object.keys(rules).some(name => splitRule(name) === prefix))
+  )
+  return [
+    {
+      name: 'pawl/components',
+      files,
+      languageOptions: { globals },
+      ...(Object.keys(used).length > 0 ? { plugins: used } : {}),
+      rules
+    }
+  ]
+}
+
 /** One block per active pack, with the rules the installed plugin has. */
-const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: Build): FlatConfig[] => {
+const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options }: Build): FlatConfig[] => {
   const config: FlatConfig[] = []
+  const { policy, typescript, technologies = [] } = options
+  const levels = effectiveRules(policy, { typescript, technologies })
+  // The fast linter runs a rule of the standard it has, unless the rule is off only because the
+  // standard holds it back, as it does an unstable one: then the level a pack's preset gives it stands.
+  const runsElsewhere = (name: string): boolean => {
+    const canonical = canonicalName(name)
+
+    return (
+      covered(name) &&
+      (levels.get(canonical) !== 'off' || getRule(canonical)?.nursery !== true || policy.rules[canonical] !== undefined)
+    )
+  }
 
   for (const { pack, plugin, fromPlugin, dirs } of packBlocks) {
     const rules = packRules.get(pack.name) ?? {}
@@ -560,22 +716,54 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
     const files = explicitFiles ?? pack.files
     if (pack.spread) {
       const preset = toList(presetOf(pack, plugin) as FlatConfig | readonly FlatConfig[] | undefined)
-      config.push(
-        ...preset.map(block => {
-          if (!explicitFiles || Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
-          const original = Array.isArray(block.files) ? block.files : ['**/*']
-          return {
-            ...block,
-            files: original.flatMap(file =>
-              explicitFiles.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])
-            )
-          }
-        })
+      const blocks = preset.map(block => {
+        if (Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
+        // A block of the preset with no files would reach every file ESLint lints. One that sets a
+        // parser, a language or a processor keeps to the pack's own files, or it would parse the
+        // scripts as HTML. One with rules only keeps to the scripts and the pack's own files, away
+        // from the Markdown, JSON or YAML another pack hands to its own language, where it crashes.
+        if (!explicitFiles) {
+          if (Array.isArray(block.files) || !pack.files) return block
+
+          return { ...block, files: parses(block) ? pack.files : [...SCRIPT_FILES, ...pack.files] }
+        }
+        const original = Array.isArray(block.files) ? block.files : ['**/*']
+        return {
+          ...block,
+          files: original.flatMap(file =>
+            explicitFiles.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])
+          )
+        }
+      })
+      config.push(...blocks)
+      // A rule of the preset the fast linter runs stays the fast linter's, as one the pack names does.
+      // Only under its own name: another name the catalog files with it, such as vue/no-unused-vars
+      // for the variables of a template, can check what the fast linter does not read.
+      for (const [name, value] of Object.entries(presetRules(blocks)))
+        if (!(name in rules) && !isOff(value) && getRule(name)?.name === name && runsElsewhere(name))
+          rules[name] = 'off'
+      // The preset's parser reads each <script> with parserOptions.parser, which is espree unless the
+      // config names another, so a component with `lang="ts"` would not parse. The same goes for every
+      // file the preset hands to that parser, such as Svelte's `.svelte.ts` modules.
+      const scriptParser = SCRIPT_HOSTS.has(pack.name) ? ts.module?.parser : undefined
+      const parsed = blocks.flatMap(block =>
+        isRecord(block.languageOptions) && block.languageOptions.parser !== undefined && Array.isArray(block.files)
+          ? (block.files as unknown[])
+          : []
       )
+      if (scriptParser !== undefined && parsed.length > 0)
+        config.push({
+          name: `pawl/pack/${pack.name}/typescript`,
+          files: parsed,
+          languageOptions: { parserOptions: { parser: scriptParser } }
+        })
+      // The plugin object the preset registers, which a plugin with both a CommonJS and an ES module
+      // build may not share with the module pawl imported. ESLint refuses two objects under one name.
+      const own = preset.map(block => (isRecord(block.plugins) ? block.plugins[pack.prefix] : undefined)).find(Boolean)
       config.push({
         name: `pawl/pack/${pack.name}`,
         ...(files ? { files } : {}),
-        plugins: { [pack.prefix]: plugin },
+        plugins: { [pack.prefix]: own ?? plugin },
         rules
       })
     } else {
@@ -603,6 +791,18 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
           })
       } else config.push(block)
     }
+
+    // A check of the plugin that a rule of the standard Biome runs makes too, in the files Biome lints.
+    const twins = BIOME_TWINS[pack.name]
+    const biome = Object.entries(twins?.rules ?? {}).flatMap(([name, standard]) =>
+      options.biomeActive && runsElsewhere(standard) ? [[name, 'off']] : []
+    )
+    if (twins && biome.length > 0)
+      config.push({
+        name: `pawl/pack/${pack.name}/biome`,
+        files: explicitFiles ? twins.files.flatMap(file => explicitFiles.map(pattern => [file, pattern])) : twins.files,
+        rules: Object.fromEntries(biome)
+      })
   }
 
   return config
@@ -620,9 +820,17 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
     ),
     ...packBlocks.map(({ pack, plugin }): [string, unknown] => [pack.prefix, plugin])
   ])
+  const packageNames = new Map<string, string>([
+    ...[...plugins].flatMap(([prefix, loaded]): [string, string][] =>
+      loaded.packageName ? [[prefix, loaded.packageName]] : []
+    ),
+    ...packBlocks.map(({ pack }): [string, string] => [pack.prefix, pack.plugin])
+  ])
+  const components = tseslint ? activeComponentFiles(build.activePacks, options) : []
   for (const [index, override] of policy.overrides.entries()) {
     const rules: Rules = {}
     const twins: Rules = {}
+    const componentTwins: Rules = {}
     const used: Record<string, unknown> = {}
     const entries = overrideRules(override, { typescript, technologies }, policy)
 
@@ -639,16 +847,28 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
         if (!loadedPlugins.has(prefix)) {
           const loaded =
             options.plugins?.[prefix] === undefined
-              ? await importVia(root, pluginRoots, pluginPackage(prefix))
+              ? await importRulePlugin(root, pluginRoots, prefix)
               : suppliedPlugin(options.plugins[prefix])
 
           if (!loaded.module) {
-            notEnforced.push({ rule: name, needs: needs(pluginPackage(prefix), loaded) })
+            notEnforced.push({ rule: name, needs: needs(loaded.packageName ?? pluginPackage(prefix), loaded) })
 
             continue
           }
 
           loadedPlugins.set(prefix, loaded.module)
+          if (loaded.packageName) packageNames.set(prefix, loaded.packageName)
+        }
+
+        const plugin = loadedPlugins.get(prefix)
+
+        if (isRecord(plugin) && lacks({ module: plugin }, eslintName, prefix)) {
+          notEnforced.push({
+            rule: name,
+            needs: `a version of ${packageNames.get(prefix) ?? pluginPackage(prefix)} that has it`
+          })
+
+          continue
         }
 
         used[prefix] = loadedPlugins.get(prefix)
@@ -662,6 +882,12 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
       if (twin && tseslint) {
         twins[eslintName] = 'off'
         twins[twin] = value
+
+        // Component scripts have no TypeScript program: a twin that needs one leaves the core rule there.
+        if (!needsTypeInformation(twin, { [TS_PREFIX]: tseslint.plugin })) {
+          componentTwins[eslintName] = 'off'
+          componentTwins[twin] = value
+        }
       }
     }
 
@@ -686,11 +912,26 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
           rules: twins
         })
       }
+      if (tseslint && components.length > 0 && Object.keys(componentTwins).length > 0) {
+        config.push({
+          name: `pawl/override/${index}${suffix}/components`,
+          files: files.flatMap(glob => components.map(kind => [glob, ...toList(kind)])),
+          ...ignores,
+          plugins: { [TS_PREFIX]: tseslint.plugin },
+          rules: componentTwins
+        })
+      }
     }
   }
 
   return config
 }
+
+/** A flat config block that decides how files are read: a parser, a language or a processor. */
+const parses = (block: FlatConfig): boolean =>
+  block.language !== undefined ||
+  block.processor !== undefined ||
+  (isRecord(block.languageOptions) && block.languageOptions.parser !== undefined)
 
 /** Explicit aliases must provide real rule implementations, not just a matching namespace. */
 const suppliedPlugin = (value: unknown): Loaded =>
@@ -704,13 +945,25 @@ const validateSuppliedRules = (config: FlatConfig[], options: EslintPlanOptions,
     ...Object.keys(options.policy.rules),
     ...options.policy.overrides.flatMap(override => Object.keys(override.rules))
   ])
+  // ESLint merges the plugins of every block that applies to a file, so a rule may name a plugin
+  // another block registers. A plugin's own flat preset does that: one block registers the plugin,
+  // and the blocks after it set its rules.
+  const registeredAnywhere: Record<string, unknown> = {}
+
+  for (const block of config) {
+    if (!isRecord(block.plugins)) continue
+
+    for (const [prefix, plugin] of Object.entries(block.plugins)) registeredAnywhere[prefix] ??= plugin
+  }
+
   for (const block of config) {
     if (!isRecord(block.rules)) continue
 
     for (const [name, value] of Object.entries(block.rules)) {
       const prefix = splitRule(name)
       const supplied = prefix ? options.plugins?.[prefix] : undefined
-      const registered = prefix && isRecord(block.plugins) ? block.plugins[prefix] : undefined
+      const own = prefix && isRecord(block.plugins) ? block.plugins[prefix] : undefined
+      const registered = own ?? (prefix ? registeredAnywhere[prefix] : undefined)
       const plugin = supplied ?? registered
       const level: unknown = Array.isArray(value) ? value[0] : value
 
@@ -744,6 +997,15 @@ const configBlocks = (values: readonly unknown[]): FlatConfig[] =>
   })
 
 const PROCESSOR_FILES = ['**/?*.astro/**', '**/?*.md/**', '**/?*.mdx/**']
+
+/**
+ * The config files of pawl and of the linters it drives that are TypeScript. A project's tsconfig
+ * often leaves them out, as Vite's and Svelte's templates do, and typescript-eslint's project service
+ * cannot parse a file no tsconfig includes, so they are linted without a TypeScript program.
+ */
+const TOOL_CONFIG_FILES = [...PAWL_CONFIG_FILES, ...ESLINT_CONFIG_FILES, ...OXLINT_CONFIG_FILES]
+  .filter(name => /\.[cm]?ts$/.test(name))
+  .map(name => `**/${name}`)
 
 /** Only a path below a non-script host filename may opt out of project-aware linting. */
 const processorPattern = (pattern: string): { files: string; host: string } => {
@@ -822,6 +1084,7 @@ const needsTypeInformation = (name: string, plugins: Readonly<Record<string, unk
 /** Keep the host parser, but never attach a TypeScript project to processor fragments. */
 const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan: EslintPlan): FlatConfig[] => {
   const virtual = processorFiles(options.root, options.untypedFiles ?? [])
+  const untyped = [...virtual, ...TOOL_CONFIG_FILES]
   const all = [...config, ...configBlocks(options.baseConfig ?? [])]
   const plugins: Record<string, unknown> = Object.assign(
     {},
@@ -847,11 +1110,11 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
     if (!typed) return [block]
     const files = Array.isArray(block.files) ? block.files : ['**/*']
     return [
-      { ...block, ignores: [...(Array.isArray(block.ignores) ? block.ignores : []), ...virtual] },
+      { ...block, ignores: [...(Array.isArray(block.ignores) ? block.ignores : []), ...untyped] },
       {
         ...block,
         name: `${typeof block.name === 'string' ? block.name : 'pawl/shared'}/untyped`,
-        files: files.flatMap(file => virtual.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])),
+        files: files.flatMap(file => untyped.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])),
         languageOptions: { ...language, parserOptions: { ...parser, project: null, projectService: false } },
         rules: isRecord(block.rules)
           ? Object.fromEntries(Object.entries(block.rules).filter(([name]) => !needsTypeInformation(name, plugins)))
@@ -862,19 +1125,31 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
   const result = routed.flat()
 
   if (Object.keys(typeRules).length > 0)
-    result.push({
-      name: 'pawl/processor-fragments',
-      files: virtual,
-      languageOptions: { parserOptions: { project: null, projectService: false } },
-      rules: typeRules
-    })
+    result.push(
+      {
+        name: 'pawl/processor-fragments',
+        files: virtual,
+        languageOptions: { parserOptions: { project: null, projectService: false } },
+        rules: typeRules
+      },
+      {
+        name: 'pawl/tool-configs',
+        files: TOOL_CONFIG_FILES,
+        languageOptions: { parserOptions: { project: null, projectService: false } },
+        rules: typeRules
+      }
+    )
 
   // A local shared-config exception must not replay a locked key after the policy.
   // Rule-only blocks preserve the host parser, processor, resolver and virtual-module settings.
-  const physical = options.technologies?.includes('astro') ? [...SCRIPT_FILES, '**/*.astro'] : SCRIPT_FILES
+  // The components the framework packs read hold scripts too, and get the floors through their parser.
+  const components = activeComponentFiles(plan.activePacks, options)
+  const hosts = [...(options.technologies?.includes('astro') ? ['**/*.astro'] : []), ...components]
+  const physical = [...SCRIPT_FILES, ...hosts.filter((file, index) => hosts.indexOf(file) === index)]
   const rules: Rules = {}
   const typedRules: Rules = {}
   const twins: Rules = {}
+  const componentTwins: Rules = {}
   const levels = effectiveRules(options.policy, {
     typescript: options.typescript,
     technologies: options.technologies ?? []
@@ -908,6 +1183,11 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
       twins[eslintName] = 'off'
       const twinTarget = needsTypeInformation(twin, plugins) ? typedRules : twins
       twinTarget[twin] = target[eslintName]
+      // As in the base: a twin that needs a TypeScript program leaves the core rule in component scripts.
+      if (twinTarget === twins) {
+        componentTwins[eslintName] = 'off'
+        componentTwins[twin] = target[eslintName]
+      }
     }
   }
   const used = (values: Rules): Record<string, unknown> =>
@@ -921,11 +1201,18 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
   if (Object.keys(rules).length > 0) locked.push({ name: 'pawl/locked', files: physical, plugins: used(rules), rules })
   if (Object.keys(twins).length > 0)
     locked.push({ name: 'pawl/locked/typescript-twins', files: TS_FILES, plugins: used(twins), rules: twins })
+  if (components.length > 0 && Object.keys(componentTwins).length > 0)
+    locked.push({
+      name: 'pawl/locked/components',
+      files: components,
+      plugins: used(componentTwins),
+      rules: componentTwins
+    })
   if (Object.keys(typedRules).length > 0)
     locked.push({
       name: 'pawl/locked/typescript',
       files: TS_FILES,
-      ignores: virtual,
+      ignores: untyped,
       plugins: used(typedRules),
       rules: typedRules
     })

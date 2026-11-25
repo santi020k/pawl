@@ -52,7 +52,7 @@ A file that gains `biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignor
 
 ## Weaker tests fail
 
-A test file that loses assertions, swaps one for a check that passes for almost any value such as `toBeTruthy()`, or gains a skipped test fails with `pawl/no-weaker-tests`. Weakening the test that caught a problem is not a way past it either. The baseline counts each test file's assertions and skipped tests; see [Tests that get weaker](/guide/ratchet/#tests-that-get-weaker).
+A test file that loses assertions, swaps one for a check that passes for almost any value such as `toBeTruthy()`, or gains a skipped test fails with `pawl/no-weaker-tests`. So does one that gains a retry, a raised timeout or a fixed sleep, which can make a flaky test pass now and then without fixing it. Weakening the test that caught a problem is not a way past it either. The baseline counts each test file's assertions, skipped tests and those lines; see [Tests that get weaker](/guide/ratchet/#tests-that-get-weaker).
 
 ## Hidden instructions fail
 
@@ -122,12 +122,38 @@ The hooks go in next to any hooks you already have. These are the ones for Claud
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --no pawl check --hook"
+          }
+        ]
+      }
     ]
   }
 }
 ```
 
 Codex matches `apply_patch`, the tool it makes every edit with, and runs a project's hooks only once you trust them: review pawl's in Codex's `/hooks`. Copilot runs its hooks after every tool, so pawl skips the tools that edit nothing. Under Cursor the edit hook only fixes, and what is left reaches the agent from the stop hook, which Cursor sends as the next message.
+
+### A guard on what the check allows
+
+An agent that cannot make the check pass can make it stop failing instead: run `pawl baseline`, edit `.pawl/baseline.json`, or loosen a rule or widen the ignores in the policy or an engine config. Each of those is your decision, so for Claude Code and Codex `init --agents` also adds a hook that runs before each tool and hands it to you:
+
+| Agent       | Event        | Before it                               | What pawl answers                                                                                                   |
+| ----------- | ------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | `PreToolUse` | `Edit`, `Write`, `MultiEdit`, `Bash` and `PowerShell` | Asks you, with what the call would change                                                                           |
+| Codex       | `PreToolUse` | `apply_patch` and `Bash`                | Refuses a change to the baseline and says why, since Codex cannot ask yet; an edit to a config passes               |
+| Copilot     | None         |                                         | No guard: Copilot refuses a tool when a hook before it fails, as `npx --no pawl` does in a clone before the install |
+| Cursor      | None         |                                         | No guard: Cursor has no hook before an edit that can ask                                                            |
+
+It runs the same command as the stop hook, `npx --no pawl check --hook`, and pawl reads from the hook's input which event it is. The guard reads only that input: it loads no project and runs no engine, so a tool call that changes none of those files goes through at once, with no answer. It guards the baseline, `pawl baseline` however pawl is run, a command that writes the baseline file, the policy files and the configs of Biome, Oxlint, ESLint and Prettier. In CI, [`--since`](/guide/ratchet/#a-baseline-that-allows-more) catches a baseline that grew on a branch however it happened.
+
+A repo set up by an earlier version gets the guard when you run `init --agents` again. Pawl adds it next to the hooks it already wrote and leaves yours alone.
 
 When part of the check cannot run, such as an engine that is not installed, the hooks tell you and not the agent: they print the problem and exit with 1, which the agent's tool shows you and goes past. An agent told that Biome is missing would go and install it.
 
@@ -165,13 +191,15 @@ Codex, Copilot, Cursor and most other agents read `AGENTS.md` on their own. Two 
 
 ### A skill
 
-Pawl writes a skill, the same file in `.claude/skills/pawl/SKILL.md` for Claude Code and in `.agents/skills/pawl/SKILL.md`, where Codex and Copilot look. An agent loads it when it needs it: what to run after an edit, what the stop hook asks of it, how to read the findings and the exit codes, how to look up a rule with `pawl explain`, and what not to do, such as adding a disable comment or running `pawl baseline`. Running `init --agents` again updates pawl's copy. To keep a version of your own, delete the line that says pawl wrote it.
+Pawl writes a skill, the same file in `.claude/skills/pawl/SKILL.md` for Claude Code and in `.agents/skills/pawl/SKILL.md`, where Codex and Copilot look. An agent loads it when it needs it: what to run after an edit, what the stop hook asks of it, how to read the findings and the exit codes, how to look up a rule with `pawl explain`, and what not to do, such as adding a disable comment, running `pawl baseline` or widening the ignores. Running `init --agents` again updates pawl's copy. To keep a version of your own, delete the line that says pawl wrote it.
 
 ## The hook from your own setup
 
 `--hook` works in any agent's post-edit hook, not only the ones `init` writes. It reads the file paths Claude Code, Codex, Copilot, VS Code, Cursor and Windsurf send, and answers each in its own shape: `hookSpecificOutput.additionalContext` for a `PostToolUse` hook, `additionalContext` for Copilot, nothing for Cursor. A file outside the project, a file that is gone, and a payload pawl cannot read all mean nothing to do. `pawl check --hook` reports without fixing.
 
 The same command in a stop hook reads the stop instead: `Stop` from Claude Code, Codex and VS Code, Copilot's `agentStop` and Cursor's `stop`. It answers `{ "decision": "block", "reason": ... }`, or Cursor's `followup_message`, and lets the agent finish when Cursor says the turn was cancelled. It knows a session by the `session_id`, `sessionId` or `conversation_id` the payloads carry, and it checks only the files the edit hook recorded for that session, in a private per-user state directory (under the system temporary folder on Unix, or your home folder on Windows). Pawl refuses unsafe state directories and linked state files. Without an edit hook, it has nothing to check.
+
+Before a tool, `pawl check --hook` is the guard. It reads `PreToolUse` from Claude Code and Codex, and Copilot's `preToolUse`, so you can add the guard to Copilot's hooks yourself where pawl is always installed before Copilot runs. It answers Claude Code and Copilot with `permissionDecision: "ask"`, and Codex with `"deny"` for a change to the baseline. `pawl fix --hook` does not read Copilot's input before a tool, because Copilot's input after a tool can look the same.
 
 ## Running init under an agent
 

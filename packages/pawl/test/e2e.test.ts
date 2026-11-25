@@ -9,8 +9,9 @@ import { check } from '../src/check/check.ts'
 import { formatAgent } from '../src/check/output.ts'
 import { exitCode } from '../src/check/result.ts'
 import { BIOME_PRESET, biomeTechPreset } from '../src/engines/biome/config.ts'
+import { doctor } from '../src/report/doctor.ts'
 import { planAdd } from '../src/setup/add.ts'
-import { formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
+import { describePlan, formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
 import { applyPlan } from '../src/setup/plan.ts'
 import { VERSION } from '../src/version.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
@@ -226,6 +227,22 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     })
   })
 
+  it('keeps the linter and formatter the policy names when init runs again', async () => {
+    const root = project({ 'package.json': { name: 'fixture', private: true }, '.husky/pre-commit': 'pnpm test\n' })
+
+    link(root)
+    applyPlan(await planInit({ root, engine: 'oxlint', formatter: 'prettier', install: false, editor: false }))
+
+    // Run again for the pre-commit hook only, as "pawl init --hooks" does.
+    const again = await planInit({ root, install: false, editor: false, hooks: true })
+
+    expect(again.engines).toEqual(['oxlint'])
+    expect(again.formatter).toBe('prettier')
+    expect(describePlan(again)).toEqual(expect.arrayContaining(['Lint:     Oxlint', 'Format:   Prettier']))
+    expect(again.actions.map(action => action.path)).toEqual(['.husky/pre-commit'])
+    expect(again.packages).toEqual([])
+  })
+
   it('does not count a legacy .eslintrc as ESLint running, and points to migrate', async () => {
     const root = project({
       'package.json': { name: 'fixture', private: true, type: 'module', devDependencies: { eslint: '^9.0.0' } },
@@ -319,6 +336,9 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       '.agents/skills/pawl/SKILL.md'
     ])
     expect(plan.notes.join(' ')).toContain('covers all 1 package.')
+    expect(plan.actions.find(action => action.path === '.github/workflows/pawl.yml')?.summary).toContain(
+      '"pawl check --ci --format github"'
+    )
 
     applyPlan(plan)
     expect(readFileSync(join(root, 'eslint.config.js'), 'utf8')).toContain("import { eslint } from '@santi020k/pawl'")
@@ -327,6 +347,7 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
     expect(workflow).toContain('pnpm install --frozen-lockfile')
     // Every action is pinned to a commit, and the doctor report is kept even when the check fails.
     expect(workflow.match(/uses: \S+/g)?.every(line => /@[0-9a-f]{40}$/.test(line))).toBe(true)
+    expect(workflow).toContain('run: npx --no pawl check --ci --format github\n')
     expect(workflow).toContain('run: npx --no pawl doctor --format json > pawl-doctor.json')
     expect(workflow).toContain('path: pawl-doctor.json')
     expect(workflow.match(/if: always\(\)/g)).toHaveLength(2)
@@ -398,7 +419,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         cwd: root,
         encoding: 'utf8',
         // A person's run in a pipe, even when the tests run under a coding agent.
-        env: { ...process.env, CI: '', NO_COLOR: '1', PAWL_AGENT: '0', PAWL_FORMAT: '' }
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', PAWL_AGENT: '0', PAWL_FORMAT: '' }
       })
 
       return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr }
@@ -666,6 +687,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'explain', 'not-a-rule')).toMatchObject({ code: 1, stderr: '' })
       // The names of an engine's own diagnostics, with no rule of the catalog behind them.
       expect(run(root, 'explain', 'eslint:parse').stdout).toContain('ESLint cannot parse the file')
+      expect(run(root, 'explain', 'eslint:unused-disable-directive').stdout).toContain('switches off no finding')
       expect(run(root, 'explain', 'oxlint:parse').stdout).toContain('Oxlint cannot parse the file')
       expect(run(root, 'explain', 'biome:fs/cantRead')).toMatchObject({ code: 0 })
       expect(run(root, 'explain', 'biome:style/noDefaultExport').stdout).toContain(
@@ -717,7 +739,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'fix', '--format', 'nope')).toEqual({
         code: 2,
         stdout: '',
-        stderr: 'pawl: Unknown format "nope". Use pretty, agent, editor or json.\n'
+        stderr: 'pawl: Unknown format "nope". Use pretty, agent, editor, github, sarif or json.\n'
       })
       expect(run(root, 'fix', '--max-warnings', 'none').code).toBe(2)
       expect(readFileSync(join(root, 'src/a.js'), 'utf8')).toBe(unformatted)
@@ -737,7 +759,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       const inCi = (value: string): number | null =>
         spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), 'check'], {
           cwd: root,
-          env: { ...process.env, CI: value, NO_COLOR: '1' }
+          env: { ...process.env, CI: value, GITHUB_ACTIONS: '', NO_COLOR: '1' }
         }).status
 
       for (const value of ['true', '1', 'True']) expect(inCi(value), value).toBe(2)
@@ -830,7 +852,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
         const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'dist/cli.js'), ...args], {
           cwd: root,
           encoding: 'utf8',
-          env: { ...env, CI: '', NO_COLOR: '1', ...extra }
+          env: { ...env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', ...extra }
         })
 
         return { code: result.status ?? -1, stdout: result.stdout }
@@ -1057,6 +1079,34 @@ describe('hooks and agent instructions', () => {
   })
 })
 
+describe('dry runs', () => {
+  const cli = (root: string, ...args: string[]) =>
+    spawnSync(process.execPath, [join(PACKAGE_ROOT, 'src/cli.ts'), ...args], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', PAWL_AGENT: '0' }
+    })
+
+  it('says there is nothing to sync, with no blank lines before it', async () => {
+    const root = project({ 'package.json': { name: 'fixture', private: true } })
+
+    link(root)
+    applyPlan(await planInit({ root, install: false, editor: false, baseline: false }))
+
+    const sync = cli(root, 'sync', '--dry-run')
+
+    expect(sync.status, sync.stderr).toBe(0)
+    expect(sync.stdout).toBe('Config files are up to date.\n\nDry run. Nothing was changed.\n')
+
+    const upgrade = cli(root, 'upgrade', '--dry-run')
+
+    expect(upgrade.status, upgrade.stderr).toBe(0)
+    expect(upgrade.stdout).toBe(
+      'Note: "pawl sync --dry-run" shows the config files a sync would write.\n\nDry run. Nothing was changed.\n'
+    )
+  })
+})
+
 describe('Biome rule domains, with the real Biome', { timeout: 60_000 }, () => {
   const page = 'export default function Page() {\n  return <img src="/a.png" alt="a" />\n}\n'
 
@@ -1196,6 +1246,82 @@ describe("the tools are the project's choice", { timeout: 60_000 }, () => {
       devDependencies: { eslint: '^10.0.0', 'eslint-plugin-zod': '^5.0.0', 'eslint-plugin-unicorn': '^77.0.0' }
     })
     await expect(planAdd(root, ['nope'])).rejects.toThrow(/Unknown pack: nope/)
+  })
+
+  it('installs every plugin ESLint needs as the linter, so the doctor finds none missing', async () => {
+    const files = {
+      'package.json': {
+        name: 'fixture',
+        private: true,
+        type: 'module',
+        devDependencies: { typescript: '^5.9.0', vitest: '^4.0.0' }
+      },
+      'tsconfig.json': { include: ['src'] }
+    }
+    const root = project(files)
+    // The rules of the standard that Biome would run take a plugin each when ESLint runs them.
+    const plugins = [
+      'eslint-plugin-unicorn',
+      'eslint-plugin-promise',
+      'eslint-plugin-unused-imports',
+      // Not eslint-plugin-import: its peer range leaves out ESLint 10, so npm would refuse it.
+      'eslint-plugin-import-x',
+      'eslint-plugin-no-only-tests',
+      // The project tests with Vitest.
+      '@vitest/eslint-plugin'
+    ]
+    const plan = await planInit({ root, engine: 'eslint', editor: false })
+
+    expect(plan.packages).toEqual(expect.arrayContaining(['eslint', '@eslint/js', 'typescript-eslint', ...plugins]))
+    expect(plan.install).toContain(' eslint-plugin-unicorn ')
+
+    const written = await planInit({ root, engine: 'eslint', editor: false, install: false })
+
+    applyPlan(written)
+    link(root)
+
+    // Each plugin the doctor would ask for is one init installs, and package.json takes it at the pack's floor.
+    const missing = (await doctor(root)).engines.eslint?.notEnforced.map(item => item.needs) ?? []
+
+    expect(missing).toEqual(expect.arrayContaining(plugins))
+    expect(missing.filter(name => !written.packages.includes(name))).toEqual([])
+    expect(json(root, 'package.json')).toMatchObject({
+      devDependencies: {
+        'eslint-plugin-unicorn': '^77.0.0',
+        'eslint-plugin-promise': '^7.0.0',
+        '@vitest/eslint-plugin': '^1.0.0'
+      }
+    })
+
+    // "pawl add" in a project that ESLint lints installs them too.
+    const linted = project({ ...files, 'pawl.config.json': { engine: 'eslint' } })
+
+    expect((await planAdd(linted, ['regexp'])).packages).toEqual(
+      expect.arrayContaining(['eslint', 'eslint-plugin-regexp', ...plugins])
+    )
+  })
+
+  it('installs typescript-eslint with ESLint next to Biome in a TypeScript project, so its scripts parse', async () => {
+    // ESLint lints the scripts for any pack, and without typescript-eslint's parser it fails on every type.
+    const root = project({
+      'package.json': { name: 'fixture', private: true, devDependencies: { typescript: '^5.9.0' } },
+      'tsconfig.json': { include: ['src'] }
+    })
+
+    expect((await planAdd(root, ['yaml'])).install).toBe('npm install -D eslint typescript-eslint eslint-plugin-yml')
+    expect((await planInit({ root, packs: ['markdown'] })).install).toBe(
+      'npm install -D --save-exact @biomejs/biome@2.6.8 && npm install -D @santi020k/pawl eslint typescript-eslint @eslint/markdown'
+    )
+
+    // Biome does not fully lint Vue, so the default init runs ESLint next to it.
+    const vue = project({
+      'package.json': { name: 'fixture', private: true, dependencies: { vue: '^3.5.0' } },
+      'tsconfig.json': { include: ['src'] }
+    })
+
+    expect((await planInit({ root: vue })).install).toBe(
+      'npm install -D --save-exact @biomejs/biome@2.6.8 && npm install -D @santi020k/pawl eslint typescript-eslint'
+    )
   })
 })
 

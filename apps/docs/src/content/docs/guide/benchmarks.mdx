@@ -1,0 +1,35 @@
+---
+title: Benchmarks
+description: How long pawl takes on a real codebase, on Biome, Oxlint and ESLint, what it adds on top of the engine, and how long the edit hook makes an agent wait. Measured with a script anyone can run.
+---
+
+import Benchmarks from '../../../components/Benchmarks.astro'
+
+Pawl says it is fast, so here is what that means in numbers, and how to get the same numbers on your machine.
+
+<Benchmarks />
+
+## What each case is
+
+- **Biome alone** runs the command `pawl check --verbose` says it runs, with the `biome.json` that `pawl init` wrote, on the same files. It is the floor: what the engine costs without pawl.
+- **`pawl check`, Biome** is the same check through pawl. The difference from Biome alone is what pawl adds: starting Node, reading the policy, its own scans for hidden characters, Docker and Markdown, the disable comments and test counts the ratchet reads, and comparing with the baseline.
+- **`pawl check`, Oxlint** and **`pawl check`, ESLint** check the same standard with that engine linting and Biome formatting. ESLint runs the TypeScript pack's rules with type information, which is most of its time: it is the engine to pick when you need one of its plugins, not for speed. Oxlint runs its own type-aware rules through `oxlint-tsgolint`.
+- **`pawl fix --hook`** is what a coding agent waits for after each edit: pawl reads the hook's input, fixes and checks only the file the agent edited, and answers. It is the number that matters most for an agent, because it runs after every edit.
+
+## How to read them
+
+These come from one machine, a small cloud VM, so read them as relative to each other more than as times you will see. A laptop is usually faster. The corpus is pawl's own source and tests, a TypeScript codebase of the size in the line under the table; time grows with the files a check reads, and a check of only what a pull request changed (`--since`) or of the files an agent edited reads far fewer.
+
+The page does not compare pawl with other tools. Pawl runs these engines, so its speed is theirs plus what the table shows it adds. Where an engine has a faster mode pawl does not use, the gap shows up in the first two rows.
+
+## Run them yourself
+
+```sh
+pnpm install
+pnpm --filter @santi020k/pawl run build
+node scripts/bench.ts             # print the table
+node scripts/bench.ts --runs 20   # more runs per case
+node scripts/bench.ts --write     # write apps/docs/src/data/benchmarks.json, which this page reads
+```
+
+The script copies pawl's source and tests into a new folder for each engine, runs `pawl init` there with the workspace's own engines, and runs each case once to warm the file cache before it measures. The page shows the median, the fastest and the slowest run.

@@ -8,151 +8,318 @@
   "tests": {
     "apps/docs/src/history.test.ts": {
       "assertions": 12,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl-policy/test/policy.test.ts": {
       "assertions": 13,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/agents.test.ts": {
-      "assertions": 32,
-      "skipped": 0
+      "assertions": 38,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/architecture.test.ts": {
       "assertions": 4,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/baseline.test.ts": {
-      "assertions": 32,
-      "skipped": 0
+      "assertions": 47,
+      "skipped": 0,
+      "masks": 1
     },
     "packages/pawl/test/biome-languages.test.ts": {
       "assertions": 12,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 2
     },
     "packages/pawl/test/biome-options.test.ts": {
       "assertions": 17,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/biome-ownership.test.ts": {
+      "assertions": 54,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/biome-policy-scopes.test.ts": {
+      "assertions": 55,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/biome.test.ts": {
       "assertions": 32,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/compat.test.ts": {
       "assertions": 3,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/detect.test.ts": {
       "assertions": 62,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/doctor-tasks.test.ts": {
+      "assertions": 7,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/doctor.test.ts": {
       "assertions": 52,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 1
     },
     "packages/pawl/test/e2e.test.ts": {
-      "assertions": 190,
-      "skipped": 0
+      "assertions": 232,
+      "skipped": 0,
+      "masks": 8
+    },
+    "packages/pawl/test/editor.test.ts": {
+      "assertions": 29,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/engine-glob-contract.test.ts": {
+      "assertions": 4,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/eslint-cache-types.test.ts": {
+      "assertions": 10,
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/eslint-cache.test.ts": {
+      "assertions": 27,
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/eslint-framework.test.ts": {
+      "assertions": 31,
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/eslint-integration.test.ts": {
+      "assertions": 8,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/eslint-report.test.ts": {
+      "assertions": 2,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/eslint-runners.test.ts": {
+      "assertions": 8,
+      "skipped": 3,
+      "masks": 0
     },
     "packages/pawl/test/eslint.test.ts": {
       "assertions": 65,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/formatter-ownership.test.ts": {
+      "assertions": 18,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/framework-coverage.test.ts": {
+      "assertions": 10,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/guards-engines.test.ts": {
       "assertions": 12,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 1
     },
     "packages/pawl/test/guards.test.ts": {
       "assertions": 33,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/hidden.test.ts": {
-      "assertions": 27,
-      "skipped": 0
+      "assertions": 30,
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/hook-state.test.ts": {
+      "assertions": 22,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/hook.test.ts": {
-      "assertions": 34,
-      "skipped": 0
+      "assertions": 74,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/ignores.test.ts": {
       "assertions": 58,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 2
     },
     "packages/pawl/test/json.test.ts": {
       "assertions": 6,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/languages.test.ts": {
       "assertions": 112,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/lint-traversal-engine.test.ts": {
+      "assertions": 5,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/lint-traversal.test.ts": {
+      "assertions": 13,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/list.test.ts": {
       "assertions": 9,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/markdown.test.ts": {
       "assertions": 23,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/migrate-overrides.test.ts": {
+      "assertions": 26,
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/migrate-parent-overrides.test.ts": {
+      "assertions": 22,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/migrate.test.ts": {
       "assertions": 68,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 4
     },
     "packages/pawl/test/monorepo-scope.test.ts": {
       "assertions": 22,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/output.test.ts": {
-      "assertions": 20,
-      "skipped": 0
+      "assertions": 82,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/overrides.test.ts": {
       "assertions": 26,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 1
     },
     "packages/pawl/test/oxlint.test.ts": {
       "assertions": 73,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 2
     },
     "packages/pawl/test/policy.test.ts": {
       "assertions": 68,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/prettier.test.ts": {
       "assertions": 51,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 2
+    },
+    "packages/pawl/test/public-resolution.test.ts": {
+      "assertions": 32,
+      "skipped": 0,
+      "masks": 5
+    },
+    "packages/pawl/test/report-contract.test.ts": {
+      "assertions": 30,
+      "skipped": 0,
+      "masks": 1
     },
     "packages/pawl/test/rules.test.ts": {
       "assertions": 23,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/run.test.ts": {
       "assertions": 33,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 2
     },
     "packages/pawl/test/runtime.test.ts": {
       "assertions": 20,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 1
     },
     "packages/pawl/test/schema.test.ts": {
       "assertions": 5,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/scope.test.ts": {
       "assertions": 22,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 1
     },
     "packages/pawl/test/since.test.ts": {
       "assertions": 16,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/strict-init.test.ts": {
+      "assertions": 24,
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/task-cache-inputs.test.ts": {
+      "assertions": 7,
+      "skipped": 0,
+      "masks": 1
+    },
+    "packages/pawl/test/task-reachability.test.ts": {
+      "assertions": 23,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/terminal.test.ts": {
+      "assertions": 57,
+      "skipped": 0,
+      "masks": 0
+    },
+    "packages/pawl/test/test-runners.test.ts": {
+      "assertions": 19,
+      "skipped": 0,
+      "masks": 0
     },
     "packages/pawl/test/tests-ratchet.test.ts": {
-      "assertions": 34,
-      "skipped": 11
+      "assertions": 50,
+      "skipped": 11,
+      "masks": 13
+    },
+    "scripts/dependency-security.test.ts": {
+      "assertions": 3,
+      "skipped": 0,
+      "masks": 0
     },
     "scripts/release.test.ts": {
       "assertions": 37,
-      "skipped": 0
+      "skipped": 0,
+      "masks": 0
     }
   }
 }

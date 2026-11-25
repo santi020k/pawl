@@ -103,8 +103,12 @@ describe('the help', () => {
     const rich = stripAnsi(helpText(undefined, createStyle(1)))
 
     expect(plain).toContain('  pawl init             Set up this repo\n')
-    expect(plain).toContain('  --format <kind>       pretty, agent, editor or json (see Output below)\n')
+    expect(plain).toContain('  --format <kind>       pretty, agent, editor, github, sarif or json (see Output below)\n')
     expect(plain).toContain('  PAWL_AGENT=0|1        Say whether a coding agent is running pawl')
+    expect(plain).toContain("For a coding agent's hooks: after an edit, when it stops, and before")
+    expect(plain).toContain('except for a coding agent and in GitHub Actions')
+    expect(plain).toContain('The default when a coding agent runs pawl, in GitHub Actions too')
+    expect(plain).not.toContain('post-edit hook')
     expect(rich).toContain('Commands\n  init                  Set up this repo\n')
     expect(rich).toContain('Run pawl <command> --help for the options of a command.')
     expect(rich).not.toContain('--max-warnings')

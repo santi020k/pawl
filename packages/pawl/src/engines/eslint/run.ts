@@ -1,8 +1,10 @@
 import { scopedName } from '../../catalog/rules.ts'
+import { projectPath } from '../../project/files.ts'
 import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
 import {
+  binVersion,
   EngineError,
   type EngineRun,
   parseReport,
@@ -32,8 +34,13 @@ const BIN = { packageName: 'eslint', bin: 'eslint', fallback: 'bin/eslint.js' }
 /** ESLint is installed in the project. Pawl never brings its own. */
 export const eslintInstalled = (root: string): boolean => resolveBin(root, BIN) !== undefined
 
+/** The version of the ESLint that would run. */
+export const eslintVersion = (root: string): string | undefined => binVersion(root, BIN)
+
+// Zero is a position too: ESLint passes on a parse error's column as the parser counts it, and the
+// YAML and GraphQL parsers count from 0. The finding moves it to 1.
 const position = (value: unknown): boolean =>
-  value === undefined || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
+  value === undefined || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
 
 const isMessage = (value: unknown): value is EslintMessage =>
   isRecord(value) &&
@@ -70,6 +77,13 @@ const isResult = (value: unknown): value is EslintResult => {
 }
 
 const isReport = (value: unknown): value is EslintResult[] => Array.isArray(value) && value.every(isResult)
+
+/**
+ * The name of a message ESLint reports with no rule. An `eslint-disable` or `eslint-enable` comment
+ * that switches nothing has its own, so it does not read as a file ESLint could not parse.
+ */
+const ruleless = (message: EslintMessage): string =>
+  /^Unused eslint-(?:disable|enable) directive\b/.test(message.message) ? 'unused-disable-directive' : 'parse'
 
 /** Run the project's ESLint and turn its report into findings. */
 export const runEslint = async ({
@@ -124,16 +138,18 @@ export const runEslint = async ({
         const findings: Finding[] = []
 
         for (const { filePath, messages } of results) {
-          const file = toPosix(filePath.startsWith(root) ? filePath.slice(root.length + 1) : filePath)
+          const file = projectPath(root, filePath) ?? toPosix(filePath)
 
           for (const message of messages) {
+            const own = ruleless(message)
+
             findings.push({
               file,
               line: Math.max(1, message.line ?? 1),
               column: Math.max(1, message.column ?? 1),
               engine: 'eslint',
-              engineRule: message.ruleId ?? 'parse',
-              rule: message.ruleId ?? scopedName('eslint', 'parse'),
+              engineRule: message.ruleId ?? own,
+              rule: message.ruleId ?? scopedName('eslint', own),
               severity: message.severity === 2 ? 'error' : 'warn',
               message: message.message,
               fixable: message.fix !== undefined

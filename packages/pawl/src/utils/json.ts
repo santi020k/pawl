@@ -20,14 +20,31 @@ export const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) =
 export const sortKeys = <T>(record: Readonly<Record<string, T>>): Record<string, T> =>
   Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)))
 
+const setOwn = (target: JsonRecord, key: string, value: unknown): void => {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true
+  })
+}
+
+const cloneOwn = (source: JsonRecord): JsonRecord => {
+  const out: JsonRecord = {}
+
+  for (const [key, value] of Object.entries(source)) setOwn(out, key, value)
+
+  return out
+}
+
 /** Merge `patch` into `target`, keeping every key `patch` does not mention. */
 export const mergeDeep = (target: JsonRecord, patch: JsonRecord): JsonRecord => {
-  const out: JsonRecord = { ...target }
+  const out = cloneOwn(target)
 
   for (const [key, value] of Object.entries(patch)) {
-    const current = out[key]
+    const current = Object.hasOwn(out, key) ? out[key] : undefined
 
-    out[key] = isRecord(current) && isRecord(value) ? mergeDeep(current, value) : value
+    setOwn(out, key, isRecord(current) && isRecord(value) ? mergeDeep(current, value) : value)
   }
 
   return out

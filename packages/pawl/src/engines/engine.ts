@@ -50,6 +50,8 @@ export interface Engine {
   /** It runs in a project with these tools. */
   active: (tools: Toolset) => boolean
   installed: (root: string) => boolean
+  /** The version of the engine that would run, from its package.json. Undefined when it does not say. */
+  version: (root: string) => string | undefined
   /** The setup problem when the project runs the engine but has not installed it. */
   missing: SetupIssue
   /** Compare the engine's config files with what the policy calls for. */
@@ -322,19 +324,24 @@ export interface BinLookup {
   besidePawl?: boolean
 }
 
-/** The path of a tool's bin as the project would run it, or undefined when it is not installed. */
-export const resolveBin = (
-  root: string,
-  { packageName, bin, fallback, besidePawl = false }: BinLookup
-): string | undefined => {
+interface FoundBin {
+  path: string
+  /** The version in the package.json of the package that ships it. */
+  version: string | undefined
+}
+
+/** A tool's bin as the project would run it, with its package's version. */
+const findBin = (root: string, { packageName, bin, fallback, besidePawl = false }: BinLookup): FoundBin | undefined => {
   for (const from of [join(root, 'package.json'), ...(besidePawl ? [import.meta.filename] : [])]) {
     try {
       const manifestPath = createRequire(from).resolve(`${packageName}/package.json`)
-      const field = readJson<{ bin?: string | Record<string, string> }>(manifestPath)?.bin
+      const manifest = readJson<{ bin?: string | Record<string, string>; version?: unknown }>(manifestPath)
+      const field = manifest?.bin
       const entry = (typeof field === 'string' ? field : field?.[bin]) ?? fallback
       const path = join(dirname(manifestPath), entry)
 
-      if (existsSync(path)) return path
+      if (existsSync(path))
+        return { path, version: typeof manifest?.version === 'string' ? manifest.version : undefined }
     } catch {
       // Not installed there. Try the next place.
     }
@@ -342,3 +349,9 @@ export const resolveBin = (
 
   return undefined
 }
+
+/** The path of a tool's bin as the project would run it, or undefined when it is not installed. */
+export const resolveBin = (root: string, lookup: BinLookup): string | undefined => findBin(root, lookup)?.path
+
+/** The version of the tool `resolveBin` finds, the one that would run, or undefined when there is none. */
+export const binVersion = (root: string, lookup: BinLookup): string | undefined => findBin(root, lookup)?.version

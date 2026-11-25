@@ -27,6 +27,8 @@ export interface Loaded {
   module?: Record<string, unknown>
   /** Why the package could not be used, when it is installed but fails to load. */
   error?: string
+  /** The package it came from, or the one to install, where a rule prefix has more than one. */
+  packageName?: string
 }
 
 /** Import a package the way the project itself would, not the way pawl would. */
@@ -79,6 +81,30 @@ export const importVia = async (root: string, others: readonly string[], specifi
   }
 
   return loaded
+}
+
+/**
+ * The packages the rules of a prefix can come from, in the order a project's own wins. ESLint 10 is
+ * outside eslint-plugin-import's peer range, so npm refuses to install it next to ESLint 10: a
+ * project that has it keeps it, and one that has neither gets its fork eslint-plugin-import-x,
+ * registered under `import`. The plan checks that the one in use implements each rule it names.
+ */
+const PLUGIN_CHOICES: Readonly<Record<string, readonly string[]>> = {
+  import: ['eslint-plugin-import', 'eslint-plugin-import-x']
+}
+
+/** Import the plugin for a rule prefix: the first of its packages the project, then each other folder, has. */
+export const importRulePlugin = async (root: string, others: readonly string[], prefix: string): Promise<Loaded> => {
+  const choices = PLUGIN_CHOICES[prefix] ?? [pluginPackage(prefix)]
+
+  for (const [index, dir] of [root, ...others].entries())
+    for (const packageName of choices) {
+      const loaded = index === 0 ? await importPlugin(dir, packageName) : await importFromProject(dir, packageName)
+
+      if (loaded.module || loaded.error) return { ...loaded, packageName }
+    }
+
+  return { packageName: choices.at(-1) ?? pluginPackage(prefix) }
 }
 
 /** What a missing or broken plugin needs, in words a person can act on. */

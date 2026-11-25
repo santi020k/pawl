@@ -1,8 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from '../project/files.ts'
 import { chosenIgnoreMatcher, ignoreMatcher, makeIgnore } from '../project/ignores.ts'
 import { type Finding, type Level, type Override, type Policy } from '../types.ts'
+import { isFile } from '../utils/fs.ts'
 
 /**
  * One of pawl's own rules. No engine pawl drives reads the files these are for, so pawl checks
@@ -52,6 +53,8 @@ export type Report = (rule: string, line: number, column: number, detail?: strin
 export interface Scan {
   /** The files it reads, in words, such as "Markdown files". */
   reads: string
+  /** The page of pawl's docs about its rules, from the root of the site, such as `/guide/guards/#markdown-files`. */
+  docs: string
   rules: readonly OwnRule[]
   matches: (file: string) => boolean
   /**
@@ -89,22 +92,24 @@ export interface ScanOptions {
   policy: Policy
   /** Only look at these files, relative to the root. */
   files?: readonly string[]
+  /** Cached project files to reuse when checking the whole project. Keeps alsoLists active. */
+  projectFiles?: readonly string[]
   /** Patterns to skip that detection found, such as the target folder of a Rust project. */
   ignores?: readonly string[]
 }
 
 /** Run a scan over the project's files, or the ones given, and turn what it reports into findings. */
-export const runScan = (scan: Scan, { root, policy, files, ignores }: ScanOptions): Finding[] => {
+export const runScan = (scan: Scan, { root, policy, files, projectFiles, ignores }: ScanOptions): Finding[] => {
   const ignored = scanIgnores(root, policy, ignores, scan.readsIgnored)
   const rules = new Map(scan.rules.map(rule => [rule.name, rule]))
   const findings: Finding[] = []
 
-  const listed = files ?? [...new Set([...listFiles(root), ...(scan.alsoLists?.(root) ?? [])])]
+  const listed = files ?? [...new Set([...(projectFiles ?? listFiles(root)), ...(scan.alsoLists?.(root) ?? [])])]
 
   for (const file of listed.filter(name => scan.matches(name) && !ignored(name))) {
     const path = join(root, file)
 
-    if (!existsSync(path)) continue
+    if (!isFile(path)) continue
 
     const report: Report = (short, line, column, detail) => {
       const def = rules.get(`pawl/${short}`)

@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { scopedName } from '../../catalog/rules.ts'
+import { projectPath } from '../../project/files.ts'
 import { type Finding } from '../../types.ts'
 import { ancestors, toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
 import {
+  binVersion,
   EngineError,
   type EngineRun,
   parseReport,
@@ -20,13 +22,16 @@ const BIN = { packageName: 'oxlint', bin: 'oxlint', fallback: 'bin/oxlint', besi
 /** Oxlint is installed in the project, or beside pawl itself. */
 export const oxlintInstalled = (root: string): boolean => resolveBin(root, BIN) !== undefined
 
+/** The version of the Oxlint that would run. */
+export const oxlintVersion = (root: string): string | undefined => binVersion(root, BIN)
+
 interface OxlintDiagnostic {
   message: string
-  code?: string
+  code?: string | null
   severity: string
-  filename?: string
-  help?: string
-  labels?: Array<{ span?: { line?: number; column?: number } }>
+  filename?: string | null
+  help?: string | null
+  labels?: Array<{ span?: { line?: number; column?: number } | null }>
 }
 
 /** The diagnostic Oxlint gives when tsgolint cannot read the project's tsconfig. */
@@ -51,14 +56,16 @@ const tsgolintEnv = (root: string): Record<string, string> | undefined => {
 const oxlintName = (scope: string, rule: string): string =>
   scope === 'eslint' ? rule : `${scope.replaceAll('_', '-')}/${rule}`
 
-const toFinding = (diagnostic: OxlintDiagnostic): Finding => {
+const toFinding = (root: string, diagnostic: OxlintDiagnostic): Finding => {
   // Oxlint reports a rule as "scope(rule)", such as "eslint(no-var)" or "typescript(no-explicit-any)".
   const match = /^([\w-]+)\((.+)\)$/.exec(diagnostic.code ?? '')
   const engineRule = match ? oxlintName(match[1] as string, match[2] as string) : (diagnostic.code ?? 'parse')
   const span = diagnostic.labels?.[0]?.span
+  const rawFile = diagnostic.filename ?? ''
+  const file = rawFile ? (projectPath(root, rawFile) ?? toPosix(rawFile)) : ''
 
   return {
-    file: toPosix(diagnostic.filename ?? ''),
+    file,
     line: Math.max(1, span?.line ?? 1),
     column: Math.max(1, span?.column ?? 1),
     engine: 'oxlint',
@@ -71,10 +78,30 @@ const toFinding = (diagnostic: OxlintDiagnostic): Finding => {
 }
 
 interface OxlintReport {
-  diagnostics?: OxlintDiagnostic[]
+  diagnostics: OxlintDiagnostic[]
 }
 
-const isReport = (value: unknown): value is OxlintReport => isRecord(value)
+const isSpan = (value: unknown): boolean =>
+  isRecord(value) &&
+  (value.line === undefined ||
+    (typeof value.line === 'number' && Number.isSafeInteger(value.line) && value.line >= 0)) &&
+  (value.column === undefined ||
+    (typeof value.column === 'number' && Number.isSafeInteger(value.column) && value.column >= 0))
+
+const isLabel = (value: unknown): boolean =>
+  isRecord(value) && (value.span === undefined || value.span === null || isSpan(value.span))
+
+const isDiagnostic = (value: unknown): value is OxlintDiagnostic =>
+  isRecord(value) &&
+  typeof value.message === 'string' &&
+  (value.severity === 'error' || value.severity === 'warning' || value.severity === 'advice') &&
+  (value.code === undefined || value.code === null || typeof value.code === 'string') &&
+  (value.filename === undefined || value.filename === null || typeof value.filename === 'string') &&
+  (value.help === undefined || value.help === null || typeof value.help === 'string') &&
+  (value.labels === undefined || (Array.isArray(value.labels) && value.labels.every(isLabel)))
+
+const isReport = (value: unknown): value is OxlintReport =>
+  isRecord(value) && Array.isArray(value.diagnostics) && value.diagnostics.every(isDiagnostic)
 
 /** Run the project's Oxlint and turn its report into findings. */
 export const runOxlint = async ({ root, files, write = false }: RunOptions): Promise<EngineRun> => {
@@ -91,13 +118,20 @@ export const runOxlint = async ({ root, files, write = false }: RunOptions): Pro
   return runChunked(files, ['oxlint', ...shown].join(' '), async targets => {
     const result = await runNode(
       bin,
-      ['--format', 'json', ...shown, ...targets],
+      ['--format', 'json', '--no-error-on-unmatched-pattern', ...shown, ...targets],
       root,
       'oxlint',
       [...shown, ...targets],
       tsgolintEnv(root)
     )
-    const diagnostics = parseReport(result, 'Oxlint', '{', isReport).diagnostics ?? []
+
+    if (result.code > 1) {
+      throw new EngineError(result.stderr.trim() || result.stdout.trim() || `Oxlint exited with code ${result.code}.`, {
+        command: result.command
+      })
+    }
+
+    const { diagnostics } = parseReport(result, 'Oxlint', '{', isReport)
     const tsconfig = diagnostics.find(diagnostic => diagnostic.code === TSCONFIG_ERROR)
 
     // tsgolint reports a tsconfig it cannot read as one diagnostic and then runs none of the rules
@@ -112,6 +146,15 @@ export const runOxlint = async ({ root, files, write = false }: RunOptions): Pro
       )
     }
 
-    return diagnostics.map(toFinding)
+    const hasErrors = diagnostics.some(diagnostic => diagnostic.severity === 'error')
+
+    if ((result.code === 1) !== hasErrors) {
+      throw new EngineError(
+        'Oxlint exit status disagrees with its JSON diagnostics; the check did not complete safely.',
+        { command: result.command }
+      )
+    }
+
+    return diagnostics.map(diagnostic => toFinding(root, diagnostic))
   })
 }

@@ -27,6 +27,7 @@ const COMMAND_ROWS: readonly HelpRow[] = [
   row('check [files]', 'Lint, check formatting and apply the ratchet'),
   row('fix [files]', 'Apply safe fixes and format'),
   row('sync', 'Rewrite engine config files from the policy'),
+  row('upgrade', 'Install the tool versions this pawl works with, then sync'),
   row('add <pack...>', 'Switch on optional packs and install their ESLint plugins'),
   row('migrate', 'Turn an existing ESLint config into a pawl policy, then set up'),
   row('baseline', 'Accept the current findings as the baseline'),
@@ -39,17 +40,22 @@ const SECTIONS: readonly HelpSection[] = [
     title: 'Options for check and fix',
     commands: ['check', 'fix'],
     rows: [
-      row('--changed', 'Only files changed against HEAD, plus untracked ones', '(every file outside a git repository)'),
+      row(
+        '--changed',
+        'Only files changed against HEAD, plus untracked ones',
+        "(every file outside a git repository, and the commit's files in its hooks)"
+      ),
       row('--since <ref>', 'Only files changed since the branch left <ref>, such as origin/main'),
-      row('--format <kind>', 'pretty, agent, editor or json (see Output below)'),
+      row('--format <kind>', 'pretty, agent, editor, github, sarif or json (see Output below)'),
       row('--ci', 'Also fail when the setup has drifted from the policy'),
       row('--max-warnings <n>', 'Fail when there are more than n new warnings'),
       row('--verbose', 'Show the engine commands that ran'),
       row('--eslint-cache', 'Opt in to .pawl/eslint-cache.json (checks only; fixes remain uncached)'),
       row(
         '--hook',
-        "For a coding agent's post-edit hook: read the files it edited from",
-        "the hook's input, and answer in the shape that agent reads back"
+        "For a coding agent's hooks: after an edit, when it stops, and before",
+        "each tool. Reads the event and the files from the hook's input, and",
+        'answers in the shape that agent reads back'
       )
     ]
   },
@@ -67,7 +73,7 @@ const SECTIONS: readonly HelpSection[] = [
       row('--formatter <name>', 'The formatter: biome or prettier'),
       row('--packs <a,b>', 'Optional packs to switch on'),
       row('--yes', 'Accept the plan without asking (also for migrate)'),
-      row('--dry-run', 'Show the plan and change nothing (also for add, migrate and sync)'),
+      row('--dry-run', 'Show the plan and change nothing (also for add, migrate, sync and upgrade)'),
       row('--workflow', 'Add a GitHub Actions workflow'),
       row(
         '--agents',
@@ -79,7 +85,15 @@ const SECTIONS: readonly HelpSection[] = [
       row('--hooks', 'Add a pre-commit hook that checks changed files'),
       row('--no-baseline', 'Do not record existing findings; check keeps reporting them'),
       row('--no-editor', 'Skip editor settings and tasks'),
-      row('--no-install', 'Do not run the package manager (also for add)')
+      row('--no-install', 'Do not run the package manager (also for add and upgrade)')
+    ]
+  },
+  {
+    title: 'Options for upgrade',
+    commands: ['upgrade'],
+    rows: [
+      row('--dry-run', 'Show the tools it would install and change nothing'),
+      row('--no-install', 'Do not run the package manager; only sync the config files')
     ]
   },
   {
@@ -94,17 +108,28 @@ const SECTIONS: readonly HelpSection[] = [
     title: 'Output',
     commands: ['check', 'fix'],
     rows: [
-      row('pretty', 'For people: each finding with its code and its fix. The default'),
+      row(
+        'pretty',
+        'For people: each finding with its code and its fix. The default,',
+        'except for a coding agent and in GitHub Actions'
+      ),
       row(
         'agent',
         'For coding agents: one JSON line per finding, nothing when all is well.',
-        'The default when a coding agent runs pawl'
+        'The default when a coding agent runs pawl, in GitHub Actions too'
       ),
       row(
         'editor',
         'For code editors: file:line:col: error: message [rule], the lines',
         'problem matchers, Vim and Emacs read'
       ),
+      row(
+        'github',
+        'For GitHub Actions: annotations that put each finding on its line in',
+        'the pull request, then the plain report for the log. The default in',
+        'a GitHub Actions job'
+      ),
+      row('sarif', 'SARIF 2.1.0 for code scanning, such as GitHub code scanning'),
       row('json', 'The whole result as one document, for CI and other tools'),
       row('PAWL_AGENT=0|1', 'Say whether a coding agent is running pawl, when the guess is wrong'),
       row('PAWL_FORMAT', 'The format when --format is not given, for programs that read pawl'),
@@ -123,7 +148,8 @@ const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
   add: ['pawl add react', 'pawl add react unicorn --dry-run'],
   migrate: ['pawl migrate --dry-run', 'pawl migrate --extends @acme/pawl-policy'],
   explain: ['pawl explain no-console', 'pawl explain biome:suspicious/noDebugger'],
-  doctor: ['pawl doctor', 'pawl doctor --format json']
+  doctor: ['pawl doctor', 'pawl doctor --format json'],
+  upgrade: ['pawl upgrade --dry-run', 'pawl upgrade']
 }
 
 /** The names of the commands, as typed after `pawl`. */

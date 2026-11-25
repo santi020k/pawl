@@ -34,7 +34,7 @@ jobs:
       deploy: ${{ steps.plan.outputs.deploy }}
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Leave a new version to the release
         id: plan
@@ -86,7 +86,7 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Starlight reads each page's "Last updated" date from the Git history.
           fetch-depth: 0

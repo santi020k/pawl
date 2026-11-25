@@ -37,6 +37,17 @@ catalogs:
 # Pawl's peers are all optional tools and plugins. Do not install them here just because they are listed.
 autoInstallPeers: false
 
+# The Svelte plugin and parser of the ESLint fixtures load the Svelte compiler. It comes through
+# them rather than as a dependency of the fixtures, so pawl's own check does not take the fixtures
+# for a Svelte package.
+packageExtensions:
+  eslint-plugin-svelte:
+    dependencies:
+      svelte: 5.59.1
+  svelte-eslint-parser:
+    dependencies:
+      svelte: 5.59.1
+
 # Wrangler's dependencies ship install scripts that `wrangler pages deploy` does not need.
 allowBuilds:
   esbuild: false

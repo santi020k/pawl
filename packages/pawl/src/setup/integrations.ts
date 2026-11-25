@@ -17,6 +17,7 @@ import {
   AGENTS_END,
   AGENTS_START,
   EDITOR_SETTINGS,
+  GUARD_HOOK_COMMAND,
   HOOK_COMMAND,
   legacyCommand,
   OLD_AGENT_HOOK_COMMANDS,
@@ -149,9 +150,19 @@ interface AgentHook {
   agent: string
   summary: string
   add: (existing: JsonRecord) => JsonRecord
+  /** The event the stop hook goes under. */
+  stopEvent: string
   /** Add the hook that runs when the agent stops, which sends it back while errors are left. */
   addStop: (existing: JsonRecord) => JsonRecord
+  /** The event the guard goes under, for an agent with a hook before each tool that can ask or refuse. */
+  guardEvent?: string
+  /** Add the guard, which hands a change to the baseline, the policy or an engine config to a person. */
+  addGuard?: (existing: JsonRecord) => JsonRecord
 }
+
+/** Whether an event of a hook file already runs a command, as a whole JSON string. */
+const eventRuns = (value: JsonRecord, event: string, command: string): boolean =>
+  JSON.stringify(isRecord(value.hooks) ? (value.hooks[event] ?? []) : []).includes(JSON.stringify(command))
 
 /** The hooks a key holds, as a list, whatever the file had there. */
 const hookList = (hooks: unknown, key: string): unknown[] =>
@@ -180,7 +191,11 @@ const planAgentHook = (root: string, notes: string[], hook: AgentHook): SetupAct
 
   if (!text.includes(current)) edits = old ? (JSON.parse(text.replaceAll(old, current)) as JsonRecord) : hook.add(edits)
 
-  const next = text.includes(JSON.stringify(STOP_HOOK_COMMAND)) ? edits : hook.addStop(edits)
+  const stopped = eventRuns(edits, hook.stopEvent, STOP_HOOK_COMMAND) ? edits : hook.addStop(edits)
+  const next =
+    hook.guardEvent && hook.addGuard && !eventRuns(stopped, hook.guardEvent, GUARD_HOOK_COMMAND)
+      ? hook.addGuard(stopped)
+      : stopped
 
   if (next === existing.value) return undefined
 
@@ -200,6 +215,14 @@ const stopEntry = (existing: JsonRecord): JsonRecord => {
   return { ...existing, hooks: { ...hooks, Stop: [...hookList(hooks, 'Stop'), entry] } }
 }
 
+/** A PreToolUse entry in the shape Claude Code and Codex share: the guard, before the tools that can change files. */
+const preToolUse = (existing: JsonRecord, matcher: string): JsonRecord => {
+  const hooks = isRecord(existing.hooks) ? existing.hooks : {}
+  const entry = { matcher, hooks: [{ type: 'command', command: GUARD_HOOK_COMMAND }] }
+
+  return { ...existing, hooks: { ...hooks, PreToolUse: [...hookList(hooks, 'PreToolUse'), entry] } }
+}
+
 /** A PostToolUse entry in the shape Claude Code and Codex share. */
 const postToolUse = (existing: JsonRecord, matcher: string): JsonRecord => {
   const hooks = isRecord(existing.hooks) ? existing.hooks : {}
@@ -215,7 +238,11 @@ const CLAUDE_HOOK: AgentHook = {
   summary:
     'hooks that fix each Claude Code edit, tell Claude what is left, and send it back when it stops with errors left',
   add: existing => postToolUse(existing, 'Edit|Write|MultiEdit'),
-  addStop: stopEntry
+  stopEvent: 'Stop',
+  addStop: stopEntry,
+  guardEvent: 'PreToolUse',
+  // PowerShell is the shell tool on Windows, and there the only one where Git Bash is not installed.
+  addGuard: existing => preToolUse(existing, 'Edit|Write|MultiEdit|Bash|PowerShell')
 }
 
 /** An entry under one of Cursor's events, which take a list of commands and no matcher. */
@@ -234,6 +261,7 @@ const CURSOR_HOOK: AgentHook = {
   agent: 'Cursor',
   summary: 'hooks that fix each Cursor edit, and send the agent back when it stops with errors left',
   add: existing => cursorEntry(existing, 'afterFileEdit', AGENT_HOOK_COMMAND),
+  stopEvent: 'stop',
   addStop: existing => cursorEntry(existing, 'stop', STOP_HOOK_COMMAND)
 }
 
@@ -246,7 +274,10 @@ const CODEX_HOOK: AgentHook = {
   agent: 'Codex',
   summary: 'hooks that fix each Codex edit, tell Codex what is left, and send it back when it stops with errors left',
   add: existing => postToolUse(existing, 'apply_patch'),
-  addStop: stopEntry
+  stopEvent: 'Stop',
+  addStop: stopEntry,
+  guardEvent: 'PreToolUse',
+  addGuard: existing => preToolUse(existing, 'apply_patch|Bash')
 }
 
 /**
@@ -266,7 +297,10 @@ const COPILOT_HOOK: AgentHook = {
   summary:
     'hooks that fix each Copilot edit, tell Copilot what is left, and send it back when it stops with errors left',
   add: existing => copilotEntry(existing, 'postToolUse', AGENT_HOOK_COMMAND),
+  stopEvent: 'agentStop',
   addStop: existing => copilotEntry(existing, 'agentStop', STOP_HOOK_COMMAND)
+  // No guard: Copilot denies the tool when a preToolUse hook fails, so in a clone before the
+  // install, where npx cannot find pawl, the guard would stop every tool the agent runs.
 }
 
 /** The files that say a repo uses Copilot's agents. */
@@ -609,7 +643,7 @@ export const planWorkflow = (root: string, detection: Detection): SetupAction | 
   return {
     path: '.github/workflows/pawl.yml',
     kind: 'create',
-    summary: 'run "pawl check --ci" on every pull request and keep the doctor report',
+    summary: 'run "pawl check --ci --format github" on every pull request and push to main, and keep the doctor report',
     apply: () => writeText(join(root, '.github/workflows/pawl.yml'), workflowFile(detection.packageManager ?? 'npm'))
   }
 }

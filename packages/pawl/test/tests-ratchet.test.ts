@@ -4,7 +4,15 @@ import { describe, expect, it } from 'vitest'
 import { BASELINE_FILE } from '../src/check/baseline.ts'
 import { check } from '../src/check/check.ts'
 import { formatPretty } from '../src/check/output.ts'
-import { countTests, isTestFile, type TestCounts, type TestFile, weakerTests } from '../src/check/tests.ts'
+import {
+  countTests,
+  isTestFile,
+  scanTests,
+  type TestCounts,
+  type TestFile,
+  testCounts,
+  weakerTests
+} from '../src/check/tests.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
 import { formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
 import { applyPlan } from '../src/setup/plan.ts'
@@ -95,11 +103,17 @@ describe('counting a test file', () => {
 
 describe('the ratchet', () => {
   const policy = defaultPolicy()
-  const counts = (file: string, assertions: number, skipped = 0): TestFile => ({
+  const counts = (file: string, assertions: number, skipped = 0, masks = 0): TestFile => ({
     file,
     assertions,
     skipped,
-    skips: Array.from({ length: skipped }, (_, index) => ({ line: index + 10, text: 'it.skip' }))
+    skips: Array.from({ length: skipped }, (_, index) => ({ line: index + 10, text: 'it.skip' })),
+    masks,
+    maskLines: Array.from({ length: masks }, (_, index) => ({
+      line: index + 20,
+      text: 'await sleep(500)',
+      kind: 'sleep' as const
+    }))
   })
   const baseline: Record<string, TestCounts> = {
     'src/a.test.ts': { assertions: 3, skipped: 0 },
@@ -159,6 +173,230 @@ describe('the ratchet', () => {
       { findings: [], canTighten: false }
     )
   })
+
+  it('ignores inherited prototype properties on test baselines and skips directories passed to scanTests', () => {
+    const inherited: Record<string, TestCounts> = {}
+
+    Object.setPrototypeOf(inherited, { 'src/inherited.test.ts': { assertions: 5, skipped: 0 } })
+
+    const outcome = weakerTests([counts('src/inherited.test.ts', 0)], inherited, {
+      policy,
+      whole: true,
+      ignored: () => false
+    })
+
+    expect(outcome).toEqual({ findings: [], canTighten: false })
+
+    const withDir = project({ 'dir.test.ts/nested.ts': 'export const a = 1\n' })
+
+    expect(scanTests(withDir, () => false, ['dir.test.ts'])).toEqual([])
+  })
+})
+
+describe('retries, raised timeouts and fixed sleeps', () => {
+  const policy = defaultPolicy()
+
+  it('counts each line that can hide a flaky test once, and leaves good waits alone', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('a', { retry: 3 }, async () => {",
+        '  await new Promise(resolve => setTimeout(resolve, 500))',
+        '  await page.waitForTimeout(1000)',
+        '  cy.wait(250)',
+        "  await expect(page.getByText('done')).toBeVisible({ timeout: 10_000 })",
+        '  await waitFor(() => expect(spy).toHaveBeenCalled(), { timeout: 2000 })',
+        '  // await sleep(100)',
+        '  vi.advanceTimersByTime(500)',
+        '}, 30000)',
+        'test.describe.configure({ retries: 2 })',
+        'jest.retryTimes(2)',
+        'jest.setTimeout(20000)',
+        'test.slow()'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => mask.line)).toEqual([1, 2, 3, 4, 9, 10, 11, 12, 13])
+    expect(file.masks).toBe(9)
+  })
+
+  it('counts a retry or a timeout option only on a test, wherever the line breaks, and none in a string or a comment', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('gives up after retries: 3', async () => {",
+        '  await waitFor(',
+        "    () => expect(screen.getByText('saved')).toBeVisible(),",
+        '    { timeout: 2000 }',
+        '  )',
+        "  await expect(page.getByRole('button'))",
+        '    .toBeEnabled({',
+        '      timeout: 5000',
+        '    })',
+        '  const client = createClient({ timeout: 100, retries: 2 })',
+        '  const yaml = `',
+        'retries: 2',
+        'timeout: 30',
+        '`',
+        "  await page.click('#save') // sleep(500) was flaky",
+        "  await expect(page.getByText('done')).toBeVisible({ timeout: 10_000 }); await page.waitForTimeout(500)",
+        '}, {',
+        '  timeout: 30_000',
+        '})'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => mask.line)).toEqual([16, 18])
+  })
+
+  it('counts an option passed to a test, and not test data in its body that happens to name a timeout or a retry', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('retries a request', async () => {",
+        '  const options = { timeout: 1000, retries: 3 }',
+        '  const nested = {',
+        '    policy: { retry: 2 }',
+        '  }',
+        '  if (options) {',
+        '    const more = { timeout: 50 }',
+        '  }',
+        '  expect(withRetry(options)).toEqual({ retries: 3 })',
+        '})',
+        "it('a', function () { const config = { timeout: 5 } })",
+        "test('b', { timeout: 1000 }, async () => {})",
+        "describe('c', { retry: 2 }, () => {",
+        '  const data = { timeout: 9 }',
+        '}, 5000)'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => [mask.line, mask.kind])).toEqual([
+      [12, 'timeout'],
+      [13, 'retry'],
+      [15, 'timeout']
+    ])
+  })
+
+  it('counts a number after a test function as a raised timeout, and not one after an object passed to other code', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('a', async () => {",
+        '  const client = createClient({',
+        "    endpoint: '/api'",
+        '  }, 1000)',
+        '  run(() => {',
+        '    work()',
+        '  }, 2000)',
+        '}, 5000)',
+        "it.concurrent('b', function () {",
+        '  work()',
+        '}, 10000)',
+        "describe('c', () => {",
+        '  beforeEach(async () => {',
+        '    await setUp()',
+        '  }, 3000)',
+        '})'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => [mask.line, mask.kind])).toEqual([
+      [8, 'timeout'],
+      [11, 'timeout'],
+      [15, 'timeout']
+    ])
+  })
+
+  it('counts a sleep with a function, and reads a typed test function as a function', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('a', async function (): Promise<void> {",
+        '  const options = { timeout: 1000 }',
+        '  await new Promise(resolve => setTimeout(() => {',
+        '    resolve(options)',
+        '  }, 500))',
+        '}, 5000)'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => [mask.line, mask.kind])).toEqual([
+      [5, 'sleep'],
+      [6, 'timeout']
+    ])
+  })
+
+  it('counts a retry method of the test runner, and not one on the code the test calls', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('a', async () => {",
+        "  await request.get('/api').retry(3)",
+        '  client.retries(2)',
+        '})',
+        "test.retry(2)('b', () => {})",
+        "it('c', function () {",
+        '  this.retries(2)',
+        '})',
+        "it('d', () => {}).retries(2)"
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => [mask.line, mask.kind])).toEqual([
+      [5, 'retry'],
+      [7, 'retry'],
+      [9, 'retry']
+    ])
+  })
+
+  it('fails a file with more of them than the baseline recorded, and has no floor without a count', () => {
+    const tests = [
+      {
+        ...countTests('src/a.test.ts', "test('a', async () => {\n  await sleep(500)\n  expect(1).toBe(1)\n})"),
+        file: 'src/a.test.ts'
+      }
+    ]
+    const counted = weakerTests(
+      tests,
+      { 'src/a.test.ts': { assertions: 1, skipped: 0, masks: 0 } },
+      {
+        policy,
+        whole: false,
+        ignored: () => false
+      }
+    )
+    const uncounted = weakerTests(
+      tests,
+      { 'src/a.test.ts': { assertions: 1, skipped: 0 } },
+      {
+        policy,
+        whole: false,
+        ignored: () => false
+      }
+    )
+    const fewer = weakerTests(
+      tests,
+      { 'src/a.test.ts': { assertions: 1, skipped: 0, masks: 2 } },
+      {
+        policy,
+        whole: false,
+        ignored: () => false
+      }
+    )
+
+    expect(counted.findings).toMatchObject([{ rule: 'pawl/no-weaker-tests', line: 2, file: 'src/a.test.ts' }])
+    expect(counted.findings[0]?.message).toContain('sleep(500)')
+    expect(uncounted.findings).toEqual([])
+    expect(fewer.findings).toEqual([])
+    expect(fewer.canTighten).toBe(true)
+  })
+
+  it('are kept in the baseline next to the assertions and the skips', () => {
+    const file = countTests('src/a.test.ts', "test('a', () => {\n  expect(1).toBe(1)\n}, 10000)")
+
+    expect(testCounts([file])).toEqual({ 'src/a.test.ts': { assertions: 1, skipped: 0, masks: 1 } })
+  })
 })
 
 describe('the ratchet in a check, with the real Biome', { timeout: 60_000 }, () => {
@@ -189,7 +427,7 @@ describe('the ratchet in a check, with the real Biome', { timeout: 60_000 }, () 
     const root = await setUp()
     const baseline = JSON.parse(readFileSync(join(root, BASELINE_FILE), 'utf8')) as { tests?: unknown }
 
-    expect(baseline.tests).toEqual({ 'src/sum.test.ts': { assertions: 3, skipped: 0 } })
+    expect(baseline.tests).toEqual({ 'src/sum.test.ts': { assertions: 3, skipped: 0, masks: 0 } })
     expect(rules(await check({ root }))).toEqual([])
 
     // The failing assertion becomes one that passes for any number.

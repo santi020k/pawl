@@ -93,3 +93,11 @@ A baseline recorded before 0.5 has no test counts, so `pawl/no-weaker-tests` has
 - **The guard.** Run `pawl init --agents` again to add the hook that hands a change to the baseline, the policy or an engine config to you, for Claude Code and Codex. See [A guard on what the check allows](/guide/agents/#a-guard-on-what-the-check-allows).
 - **A baseline that allows more.** `pawl check --since <ref>` now fails with `pawl/no-baseline-growth` when the branch's baseline allows more than the one on `<ref>`. A branch that records new findings on purpose, as after a plugin upgrade that adds rules, needs a commit with a `Pawl-Baseline: accept` trailer. See [A baseline that allows more](/guide/ratchet/#a-baseline-that-allows-more).
 - **Retries, raised timeouts and fixed sleeps.** A baseline from 0.5 has no count of these, so they have no floor yet. Once `pawl check` passes, run `pawl baseline` and commit `.pawl/baseline.json` to start counting. On a branch checked with `--since`, that commit needs the trailer only if the baseline allows more of something else.
+- **New findings a 0.5 baseline does not cover.** Some fixes in 0.6 make the check see more, so run `pawl check` after the upgrade and before you merge it:
+  - With ESLint as the linter, the standard's rules now reach the scripts of `.vue`, `.svelte` and `.astro` files.
+  - A project that moved back to Biome from Oxlint or Prettier has Biome's linter or formatter switched on again by `pawl sync`; before, they could stay off.
+  - The baseline no longer accepts a parse error, even one a 0.5 baseline recorded. Fix the file, or the config that cannot read it.
+  - An `eslint-disable` comment that switches off nothing is now `eslint:unused-disable-directive`, not `eslint:parse`, so a 0.5 baseline entry for it no longer matches. `pawl fix` removes the comment.
+
+  Fix what you can, then run `pawl baseline` to accept the rest. On a branch checked with `--since`, that commit needs the `Pawl-Baseline: accept` trailer.
+- **An engine older than pawl takes stops the check.** With an installed Biome, Oxlint or ESLint below the version pawl works with, `pawl check` exits 2 with one problem that names both versions, instead of running it. Run `pawl upgrade`.

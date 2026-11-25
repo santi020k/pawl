@@ -56,9 +56,11 @@ export const planAdd = async (root: string, names: readonly string[], install = 
   if (policyAction) actions.push(policyAction)
 
   const present = listed(root)
-  const packages = [
-    ...new Set([...(needsEslint ? ['eslint'] : []), ...names.flatMap(name => getPack(name)?.plugin ?? [])])
-  ].filter(name => !present.has(name))
+  // ESLint lints the scripts too, also next to Biome, and reads TypeScript only with typescript-eslint.
+  const eslint = needsEslint ? ['eslint', ...(detection.typescript ? ['typescript-eslint'] : [])] : []
+  const packages = [...new Set([...eslint, ...names.flatMap(name => getPack(name)?.plugin ?? [])])].filter(
+    name => !present.has(name)
+  )
   const manifest = install ? undefined : planScripts(root, notes, packages)
 
   if (manifest) actions.push(manifest)

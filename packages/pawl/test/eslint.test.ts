@@ -143,6 +143,38 @@ describe('eslintPlan', () => {
     expect(JSON.stringify(plan.config)).not.toContain('react-hooks')
   })
 
+  it('leaves the rules Biome enforces off where the javascript and typescript presets turn them on', async () => {
+    // `migrate` names both packs, and Biome stays the linter: ESLint would report each finding again,
+    // at the preset's level instead of the policy's.
+    const root = project({
+      'package.json': { name: 'fixture' },
+      'node_modules/typescript-eslint/package.json': manifest('typescript-eslint'),
+      'node_modules/typescript-eslint/index.js': [
+        "const rules = { '@typescript-eslint/no-non-null-assertion': 'error', '@typescript-eslint/no-unused-vars': 'error' }",
+        "export default { parser: { name: 'ts-parser' }, plugin: { rules: {} }, configs: { strictTypeChecked: [{ rules }], stylisticTypeChecked: [] } }"
+      ].join('\n'),
+      'node_modules/@eslint/js/package.json': manifest('@eslint/js'),
+      'node_modules/@eslint/js/index.js':
+        "export default { configs: { recommended: { rules: { 'no-debugger': 'error', 'no-unused-vars': 'error' } } } }\n"
+    })
+    const policy = mergeLayers([
+      {
+        source: 'repo',
+        input: { packs: ['javascript', 'typescript'], rules: { '@typescript-eslint/no-non-null-assertion': 'off' } }
+      }
+    ])
+    const plan = await eslintPlan({ root, policy, biomeActive: true, typescript: true, technologies: [] })
+    const on = (name: string): string[] =>
+      Object.entries(block(plan.config, name)?.rules ?? {}).flatMap(([rule, value]) =>
+        (Array.isArray(value) ? value[0] : value) === 'off' ? [] : [rule]
+      )
+
+    expect(on('pawl/base')).not.toContain('no-debugger')
+    expect(on('pawl/base')).not.toContain('no-unused-vars')
+    expect(on('pawl/typescript')).not.toContain('@typescript-eslint/no-non-null-assertion')
+    expect(on('pawl/typescript')).not.toContain('@typescript-eslint/no-unused-vars')
+  })
+
   it('says why when a plugin is installed but cannot load', async () => {
     const root = project({
       'package.json': { name: 'fixture' },

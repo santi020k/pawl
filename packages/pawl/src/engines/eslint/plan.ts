@@ -360,6 +360,12 @@ const placeRules = async (build: Build): Promise<void> => {
     if (covered(name)) {
       if (level !== 'off') coveredByBiome.push(name)
 
+      // The javascript and typescript packs start from presets that may turn it on in ESLint too.
+      for (const alias of [scopedRule(name, 'eslint') ?? name, ...(def?.aliases ?? [])]) {
+        if (alias in coreRules) coreRules[alias] = 'off'
+        if (alias in tsRules) tsRules[alias] = 'off'
+      }
+
       continue
     }
 

@@ -24,11 +24,6 @@ export interface Pack {
   morePresets?: string[][]
   /** The preset is a flat config that brings its own parser or file patterns, so it is used whole. */
   spread?: boolean
-  /**
-   * The preset's parser hands each `<script>` to `parserOptions.parser`, which reads JavaScript only
-   * unless told otherwise. In a TypeScript project it gets typescript-eslint's, so `lang="ts"` parses.
-   */
-  scriptParser?: boolean
   /** Limit the pack's own rules to these files. */
   files?: string[]
   /** Files among those that the pack leaves alone. */
@@ -352,7 +347,6 @@ export const PACKS: readonly Pack[] = [
     when: ['vue', 'nuxt'],
     preset: ['configs', 'flat/recommended'],
     spread: true,
-    scriptParser: true,
     files: ['**/*.vue'],
     rules: { 'vue/padding-line-between-blocks': 'warn' }
   },
@@ -365,7 +359,6 @@ export const PACKS: readonly Pack[] = [
     when: ['svelte'],
     preset: ['configs', 'flat/recommended'],
     spread: true,
-    scriptParser: true,
     files: ['**/*.svelte'],
     rules: {}
   },

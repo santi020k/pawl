@@ -61,6 +61,12 @@ const globalsFor = async (root: string, runtimes: readonly Runtime[]): Promise<R
 
 const TS_FILES = ['**/*.{ts,mts,cts,tsx}']
 
+/**
+ * The packs whose preset's parser hands each `<script>` to `parserOptions.parser`, which reads
+ * JavaScript only unless the config names another. In a TypeScript project they get typescript-eslint's.
+ */
+const SCRIPT_HOSTS: ReadonlySet<string> = new Set(['vue', 'svelte'])
+
 export interface EslintPlan {
   config: FlatConfig[]
   /** Rules left to Biome because it enforces them faster. */
@@ -589,7 +595,7 @@ const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options 
       )
       // The preset's parser reads each <script> with parserOptions.parser, which is espree unless the
       // config names another, so a component with `lang="ts"` would not parse.
-      const scriptParser = pack.scriptParser ? ts.module?.parser : undefined
+      const scriptParser = SCRIPT_HOSTS.has(pack.name) ? ts.module?.parser : undefined
       if (scriptParser !== undefined && files)
         config.push({
           name: `pawl/pack/${pack.name}/typescript`,

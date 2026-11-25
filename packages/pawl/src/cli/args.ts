@@ -49,8 +49,9 @@ const SECTIONS: readonly HelpSection[] = [
       row('--eslint-cache', 'Opt in to .pawl/eslint-cache.json (checks only; fixes remain uncached)'),
       row(
         '--hook',
-        "For a coding agent's post-edit hook: read the files it edited from",
-        "the hook's input, and answer in the shape that agent reads back"
+        "For a coding agent's hooks: after an edit, when it stops, and before",
+        "each tool. Reads the event and the files from the hook's input, and",
+        'answers in the shape that agent reads back'
       )
     ]
   },
@@ -103,11 +104,15 @@ const SECTIONS: readonly HelpSection[] = [
     title: 'Output',
     commands: ['check', 'fix'],
     rows: [
-      row('pretty', 'For people: each finding with its code and its fix. The default'),
+      row(
+        'pretty',
+        'For people: each finding with its code and its fix. The default,',
+        'except for a coding agent and in GitHub Actions'
+      ),
       row(
         'agent',
         'For coding agents: one JSON line per finding, nothing when all is well.',
-        'The default when a coding agent runs pawl'
+        'The default when a coding agent runs pawl, in GitHub Actions too'
       ),
       row(
         'editor',
@@ -117,7 +122,8 @@ const SECTIONS: readonly HelpSection[] = [
       row(
         'github',
         'For GitHub Actions: annotations that put each finding on its line in',
-        'the pull request, then the plain report for the log'
+        'the pull request, then the plain report for the log. The default in',
+        'a GitHub Actions job'
       ),
       row('sarif', 'SARIF 2.1.0 for code scanning, such as GitHub code scanning'),
       row('json', 'The whole result as one document, for CI and other tools'),

@@ -69,8 +69,8 @@ After setup, inspect the generated diff, run `pawl doctor --format json`, then c
 ## Do not
 
 - Add a disable comment: `biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck`. A new one fails the check as `pawl/no-new-disable`.
-- Weaken a test to make it pass: remove an assertion, swap one for `toBeTruthy()` or `toBeDefined()`, or skip the test. A test file with fewer assertions or more skipped tests than the baseline recorded fails as `pawl/no-weaker-tests`. Fix the code the test checks.
-- Run `pawl baseline`. It accepts every current finding as allowed, and only a person decides that. Where pawl's hooks are set up, a hook asks the person before you can, and in CI a branch whose baseline allows more fails without a person's `Pawl-Baseline: accept` trailer.
+- Weaken a test to make it pass: remove an assertion, swap one for `toBeTruthy()` or `toBeDefined()`, skip the test, or hide a flaky one with a retry, a raised timeout or a fixed sleep (`retry: 3`, `{ timeout: 30_000 }` on the test, `sleep(500)`, `waitForTimeout`). A test file with fewer assertions, more skipped tests, or more retries, raised timeouts and fixed sleeps than the baseline recorded fails as `pawl/no-weaker-tests`. Fix the code the test checks, and wait for what the test needs with an assertion that retries.
+- Run `pawl baseline`. It accepts every current finding as allowed, and only a person decides that. Where pawl's hooks are set up, Claude Code asks the person before you can and Codex refuses it (the other agents have no such hook), and in CI a branch whose baseline allows more fails without a person's `Pawl-Baseline: accept` trailer.
 - Edit `.pawl/baseline.json`, or loosen a rule or widen the ignores in the policy (`pawl.config.ts` or `pawl.config.json`) or in an engine config such as `biome.json`, unless the user asks you to.
 
 ## Preserve the ratchet and integrations

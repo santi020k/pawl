@@ -319,6 +319,9 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
       '.agents/skills/pawl/SKILL.md'
     ])
     expect(plan.notes.join(' ')).toContain('covers all 1 package.')
+    expect(plan.actions.find(action => action.path === '.github/workflows/pawl.yml')?.summary).toContain(
+      '"pawl check --ci --format github"'
+    )
 
     applyPlan(plan)
     expect(readFileSync(join(root, 'eslint.config.js'), 'utf8')).toContain("import { eslint } from '@santi020k/pawl'")

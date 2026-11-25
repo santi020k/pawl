@@ -643,7 +643,7 @@ export const planWorkflow = (root: string, detection: Detection): SetupAction | 
   return {
     path: '.github/workflows/pawl.yml',
     kind: 'create',
-    summary: 'run "pawl check --ci" on every pull request and keep the doctor report',
+    summary: 'run "pawl check --ci --format github" on every pull request and push to main, and keep the doctor report',
     apply: () => writeText(join(root, '.github/workflows/pawl.yml'), workflowFile(detection.packageManager ?? 'npm'))
   }
 }

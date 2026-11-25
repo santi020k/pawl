@@ -2,4 +2,4 @@
 '@santi020k/pawl': patch
 ---
 
-`pawl add` and `pawl init --packs` install `typescript-eslint` in a TypeScript project also when ESLint runs only for the packs, next to Biome. ESLint lints the scripts for every pack, so without it `pawl add yaml` or `pawl add markdown` made every TypeScript file with a type in it fail the check with "Parsing error: Unexpected token", and `pawl doctor` asked for `typescript-eslint` that nothing had installed.
+`pawl init` and `pawl add` install `typescript-eslint` in a TypeScript project also when ESLint runs next to Biome: for a Vue, Svelte or Astro project, which Biome does not fully lint, or for a pack. ESLint lints the scripts too, so without it every TypeScript file with a type in it failed with "Parsing error: Unexpected token": `init` recorded those in the baseline, a new typed file failed the check, and `pawl doctor` asked for `typescript-eslint` that nothing had installed.

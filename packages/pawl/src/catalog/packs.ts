@@ -384,7 +384,9 @@ export const PACKS: readonly Pack[] = [
     preset: ['configs', 'flat/recommended-with-jsonc'],
     spread: true,
     files: ['**/*.{json,jsonc,json5}'],
-    rules: { 'jsonc/sort-keys': 'warn' }
+    // No jsonc/sort-keys: the order of package.json, tsconfig.json and editor files means something
+    // to the people who read them, and a fix would rewrite it. A policy turns it on where it does not.
+    rules: {}
   },
   {
     name: 'markdown',

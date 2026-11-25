@@ -19,7 +19,9 @@ const withPlugins = (): string =>
     'node_modules/typescript-eslint/index.js':
       "export default { parser: { name: 'ts-parser' }, plugin: { rules: {} } }\n",
     'node_modules/eslint-plugin-react-hooks/package.json': manifest('eslint-plugin-react-hooks'),
-    'node_modules/eslint-plugin-react-hooks/index.js': 'export default { rules: {} }\n'
+    // The rules of the standard it implements: the plan leaves out a rule the plugin does not have.
+    'node_modules/eslint-plugin-react-hooks/index.js':
+      "const rule = { create: () => ({}) }\nexport default { rules: { 'rules-of-hooks': rule, 'exhaustive-deps': rule } }\n"
   })
 
 describe('eslintPlan', () => {
@@ -71,7 +73,44 @@ describe('eslintPlan', () => {
       rule: 'unused-imports/no-unused-imports',
       needs: 'eslint-plugin-unused-imports'
     })
-    expect(plan.notEnforced).toContainEqual({ rule: 'vitest/no-disabled-tests', needs: '@vitest/eslint-plugin' })
+    // The project does not test with Vitest, so it is not asked to install Vitest's plugin.
+    expect(plan.notEnforced.filter(({ rule }) => rule.startsWith('vitest/'))).toEqual([])
+  })
+
+  it.each([
+    ['depends on Vitest', { dependencies: ['vitest'] }, {}],
+    ['declares Vitest as its test runner', {}, { testRunners: { vitest: ['test/**/*.test.ts'] } }],
+    [
+      'tests with Jest but names a Vitest rule',
+      { dependencies: ['jest'] },
+      { rules: { 'vitest/valid-expect': 'error' as const } }
+    ]
+  ])('asks for the Vitest plugin where the project %s', async (_, given, input) => {
+    const plan = await eslintPlan({
+      root: withPlugins(),
+      policy: mergeLayers([{ source: 'repo', input }]),
+      biomeActive: false,
+      typescript: false,
+      ...given
+    })
+
+    expect(plan.notEnforced).toContainEqual(
+      expect.objectContaining({ rule: 'vitest/valid-expect', needs: '@vitest/eslint-plugin' })
+    )
+  })
+
+  it.each([['jest'], ['node:test']])('leaves the Vitest rules out where the tests run on %s', async runner => {
+    const plan = await eslintPlan({
+      root: withPlugins(),
+      policy: defaultPolicy(),
+      biomeActive: false,
+      typescript: false,
+      dependencies: runner === 'jest' ? ['jest'] : []
+    })
+    const rules = plan.config.flatMap(block => Object.keys((block.rules as Record<string, unknown> | undefined) ?? {}))
+
+    expect(rules.filter(rule => rule.startsWith('vitest/'))).toEqual([])
+    expect(plan.notEnforced.map(item => item.needs)).not.toContain('@vitest/eslint-plugin')
   })
 
   it('leaves to Biome every rule Biome covers', async () => {

@@ -87,8 +87,11 @@ export default eslint({
 })
 ```
 
-Astro physical files receive applicable locked rules without replacing their
-Astro parser. Known Astro and Markdown virtual output (`**/*.astro/**`,
+Astro physical files, and the Vue and Svelte components their packs read,
+receive applicable locked rules without replacing their parser. In a TypeScript
+project, typescript-eslint's twin of a core rule stands in for it there as in a
+`.ts` file, unless the twin needs type information: components have no
+TypeScript project, so the core rule stays. Known Astro and Markdown virtual output (`**/*.astro/**`,
 `**/*.md/**`, `**/*.mdx/**`) receives non-type-aware rules without a TypeScript
 project. `untypedFiles` accepts only positive, relative, simple globs descending
 below a non-JavaScript/TypeScript host filename, for example `**/*.vue/**`.

@@ -27,6 +27,11 @@ const OWN_RULES: Record<string, { summary: string; checkedBy: string; advice: st
     advice:
       'Fix the syntax error at the line and column given. If the file is valid, ESLint has no parser for its language: run "pawl doctor".'
   },
+  'eslint:unused-disable-directive': {
+    summary: 'An eslint-disable or eslint-enable comment that switches off no finding, so it only hides future ones.',
+    checkedBy: 'ESLint',
+    advice: 'Run "pawl fix", which removes the comment, or remove the rule it names that reports nothing there.'
+  },
   'oxlint:parse': {
     summary: 'Oxlint cannot parse the file, so none of its rules ran on it.',
     checkedBy: 'Oxlint',

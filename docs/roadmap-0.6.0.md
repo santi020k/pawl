@@ -14,7 +14,7 @@ The work planned on `release/v0.6.0`. The branch starts from `release/v0.5.0` as
 - [x] `pawl check` picks `--format github` on its own in a GitHub Actions job (`0.6.0/github-format-default`), after a coding agent's `agent` and before `pretty`.
 - [x] The flat presets of Vue, Svelte, YAML, JSONC, TOML, Storybook, Astro 3 and HTML work again (`fix/spread-pack-plugins`, based on `main` so it can ship as 0.5.1 first).
 - [x] Floors that hold (`0.6.0/peer-ranges`): ESLint `>=9.35.0`, `typescript-eslint` `>=8.15.0`, four plugin floors raised and nine plugins that took any version given one, each run against its plugin.
-- [x] Guard the baseline (`0.6.0/baseline-guard`): a hook before each tool for Claude Code, Codex and Copilot, and `pawl/no-baseline-growth` with `--since`. A person accepts growth with a `Pawl-Baseline: accept` commit trailer.
+- [x] Guard the baseline (`0.6.0/baseline-guard`): a hook before each tool for Claude Code and Codex (not Copilot, which refuses a tool when the hook fails before the install), and `pawl/no-baseline-growth` with `--since`. A person accepts growth with a `Pawl-Baseline: accept` commit trailer.
 - [x] The rest of the test ratchet (`0.6.0/flaky-test-ratchet`): retries, raised timeouts and fixed sleeps in tests.
 - [x] `pawl upgrade` (`0.6.0/upgrade-command`).
 - [x] The public API as a generated report, `packages/pawl/api.md` (`0.6.0/api-snapshot`), and the plugin's skill generated from the same guidance as the one `init` writes (`0.6.0/skill-single-source`).

@@ -4,6 +4,7 @@
  */
 
 import { getRule } from '../catalog/rules.ts'
+import { findOwnRule } from '../scans/registry.ts'
 import { type Finding, type SetupIssue } from '../types.ts'
 import { plural } from '../utils/text.ts'
 import { VERSION } from '../version.ts'
@@ -139,18 +140,33 @@ interface SarifNotification {
   descriptor: { id: string }
 }
 
-/** A rule as SARIF describes it: what the catalog says of it, or only its name for an engine's own rule. */
+/**
+ * A rule as SARIF describes it: what the catalog says of it, or what one of pawl's own scans says,
+ * such as the Docker checks. An engine's own rule has only its name.
+ */
 const sarifRule = (finding: Finding, id: string): SarifRule => {
   const rule = getRule(finding.rule)
 
-  if (!rule) return { id, shortDescription: { text: id } }
+  if (rule) {
+    return {
+      id,
+      shortDescription: { text: rule.summary },
+      ...(rule.advice ? { help: { text: rule.advice } } : {}),
+      helpUri: `${DOCS}/reference/rules/`,
+      properties: { tags: rule.guardrail ? [rule.tag, 'guardrail'] : [rule.tag] }
+    }
+  }
+
+  const own = finding.engine === 'pawl' ? findOwnRule(finding.rule) : undefined
+
+  if (!own) return { id, shortDescription: { text: id } }
 
   return {
     id,
-    shortDescription: { text: rule.summary },
-    ...(rule.advice ? { help: { text: rule.advice } } : {}),
-    helpUri: `${DOCS}/reference/rules/`,
-    properties: { tags: rule.guardrail ? [rule.tag, 'guardrail'] : [rule.tag] }
+    shortDescription: { text: own.rule.summary },
+    help: { text: own.rule.advice },
+    helpUri: `${DOCS}${own.scan.docs}`,
+    properties: { tags: ['pawl'] }
   }
 }
 

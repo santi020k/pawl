@@ -47,7 +47,7 @@ Review the baseline diff and commit it with the code fix. With the count lowered
 
 ## The baseline
 
-`.pawl/baseline.json` records how many findings of each rule each file had when the repo adopted the standard, and how many assertions and skipped tests each test file had. `pawl init` writes it. Commit it.
+`.pawl/baseline.json` records how many findings of each rule each file had when the repo adopted the standard, and, for each test file, how many assertions, skipped tests and retries, raised timeouts or fixed sleeps it had. `pawl init` writes it. Commit it.
 
 ```json title=".pawl/baseline.json"
 {
@@ -65,7 +65,7 @@ Review the baseline diff and commit it with the code fix. With the count lowered
   },
   "suppressions": {},
   "tests": {
-    "src/server.test.ts": { "assertions": 14, "skipped": 0 }
+    "src/server.test.ts": { "assertions": 14, "skipped": 0, "masks": 0 }
   }
 }
 ```
@@ -76,16 +76,17 @@ Review the baseline diff and commit it with the code fix. With the count lowered
 - Anything beyond them fails the check.
 - A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`. Pawl looks for them in scripts and components, and in the stylesheets, JSON, GraphQL, YAML and TOML files a linter reads.
 
-- A test file that loses assertions or gains a skipped test fails with `pawl/no-weaker-tests`. See [Tests that get weaker](#tests-that-get-weaker).
+- A test file that loses assertions, or gains a skipped test, a retry, a raised timeout or a fixed sleep, fails with `pawl/no-weaker-tests`. See [Tests that get weaker](#tests-that-get-weaker).
 
 The last two matter most when an agent writes the code: switching a check off, or weakening the test that caught the problem, is not a way past it.
 
 ## Tests that get weaker
 
-An agent can turn a failing test green without fixing anything: delete the assertion, swap `toEqual({ id: 7, status: 'settled' })` for `toBeTruthy()`, or skip the test. So the baseline counts, for each test file, two things:
+An agent can turn a failing test green without fixing anything: delete the assertion, swap `toEqual({ id: 7, status: 'settled' })` for `toBeTruthy()`, or skip the test. So the baseline counts, for each test file:
 
 - **Assertions that pin a value**: `expect(...)`, `expect.soft` and `expect.poll`, `expectTypeOf`, `assertType`, and `node:assert`. A check that passes for almost any value takes one away from the count: `toBeTruthy()`, `toBeFalsy()`, `toBeDefined()`, `.not.toBeNull()`, `.not.toBeUndefined()`, `expect.anything()`, `expect.any()`, and a bare `assert()` or `assert.ok()`. So weakening an assertion lowers the count, and adding a new weak one leaves it as it was.
 - **Skipped tests**: `.skip`, `.todo` and Playwright's `.fixme` on `describe`, `it`, `test` and the like, and `xit`, `xdescribe` and `xtest`. A conditional skip such as `it.skipIf` is not counted.
+- **Retries, raised timeouts and fixed sleeps**, which can make a flaky test pass now and then; see [below](#retries-raised-timeouts-and-fixed-sleeps).
 
 A test file is a `.test`, `.spec`, `.cy` or `.e2e` script, or any script under a `__tests__` folder.
 
@@ -109,13 +110,15 @@ A baseline written by a version of pawl before 0.5 has no test counts, so tests 
 
 An agent can also make a flaky test pass now and then without fixing it: retry it, give it more time, or sleep before the assertion. The baseline counts those lines per test file too, as `masks`, and a file with more of them fails as `pawl/no-weaker-tests`:
 
-| Kind            | What counts                                                                                        |
-| --------------- | -------------------------------------------------------------------------------------------------- |
-| Retry           | `retry: 3`, `retries: 2`, `test.retry(2)`, `jest.retryTimes(2)`, `this.retries(2)`                |
-| Raised timeout  | A `timeout` option, `jest.setTimeout`, `test.setTimeout`, `test.slow()`, `}, 30000)` after a test |
-| Fixed sleep     | `page.waitForTimeout(1000)`, `cy.wait(500)`, `setTimeout(resolve, 500)`, `sleep(500)`             |
+| Kind           | What counts                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------- |
+| Retry          | `retry: 3`, `retries: 2`, `test.retry(2)`, `jest.retryTimes(2)`, `this.retries(2)`                |
+| Raised timeout | A `timeout` option, `jest.setTimeout`, `test.setTimeout`, `test.slow()`, `}, 30000)` after a test |
+| Fixed sleep    | `page.waitForTimeout(1000)`, `cy.wait(500)`, `setTimeout(resolve, 500)`, `sleep(500)`             |
 
-A `timeout` on an assertion that retries, such as `await expect(button).toBeVisible({ timeout: 10_000 })`, or on `waitFor`, waits for the thing itself, so it does not count. Each line counts once. A baseline written before pawl counted these has no floor for them until `pawl baseline` runs again.
+A `timeout` on an assertion that retries, such as `await expect(button).toBeVisible({ timeout: 10_000 })`, or on `waitFor`, waits for the thing itself, so it does not count. Each line counts once. When a file goes over its count, every such line in it is shown, because pawl cannot tell which one is new.
+
+A baseline written before 0.6 has no `masks` count, so these have no floor yet, and a branch that adds the count is not growth. Once `pawl check` passes, run `pawl baseline` to start counting, and commit `.pawl/baseline.json`.
 
 ## Locking in improvements
 
@@ -135,10 +138,11 @@ It writes the file only when the whole check ran. When an engine is missing or f
 
 ## A baseline that allows more
 
-Recording findings makes the check allow more, and nothing else in the check would notice: the new findings are old ones now. So a check with `--since <ref>` also compares `.pawl/baseline.json` with the one where the branch left `<ref>`, and fails at the baseline file when it allows more: more findings or disable comments in a file, fewer assertions or more skipped tests in a test file, or a test file it no longer counts.
+Recording findings makes the check allow more, and nothing else in the check would notice: the new findings are old ones now. So a check with `--since <ref>` also compares `.pawl/baseline.json` with the one where the branch left `<ref>`, and fails at the baseline file when it allows more: more findings or disable comments in a file, fewer assertions, more skipped tests or more retries, raised timeouts and fixed sleeps in a test file, or a test file it no longer counts.
 
-```txt
-.pawl/baseline.json:1:1  error  The baseline allows more than it does on origin/main: src/a.ts: 2 more no-console findings. Fix the findings instead of recording them. If a person decided to accept them, add "Pawl-Baseline: accept" to a commit message on this branch.  pawl/no-baseline-growth
+```txt wrap
+.pawl/baseline.json:1:1  error  pawl    pawl/no-baseline-growth
+  The baseline allows more than it does on origin/main: src/a.ts: 2 more no-console findings. Fix the findings instead of recording them. If a person decided to accept them, add "Pawl-Baseline: accept" to a commit message on this branch.
 ```
 
 When accepting the findings is what you want, as after an upgrade that adds a rule, say so in a commit on the branch:

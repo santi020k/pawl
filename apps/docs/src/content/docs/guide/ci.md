@@ -1,7 +1,7 @@
 ---
 
 title: CI and hooks
-description: "Run pawl in CI and before each commit: --ci fails on new findings and on config drift, and init can write a GitHub Actions workflow and a pre-commit hook."
+description: "Run pawl in CI and before each commit: --ci fails on new findings and on config drift, findings show on the pull request and in code scanning, and init can write a GitHub Actions workflow and a pre-commit hook."
 head: [{ tag: title, content: "CI and hooks: GitHub Actions and pre-commit | pawl" }]
 ---
 
@@ -105,9 +105,9 @@ For pnpm and yarn it enables Corepack and installs with `--frozen-lockfile`; for
 pawl check --ci --format github
 ```
 
-`--format github` prints a GitHub Actions annotation for each new finding, with its file, line, rule and fix, so it shows on that line in the pull request's changed files. Setup problems and the warning limit show on the run. The annotations sit in a group the log folds away, and the plain report follows, so the log reads as it always did. GitHub turns at most 10 errors and 10 warnings of a step into annotations; the log keeps every finding. Findings the baseline allows get none.
+`--format github` prints a GitHub Actions annotation for each new finding, with its file, line, column, rule and fix, so it shows on that line in the pull request's changed files. Setup problems and the warning limit show on the run, and in CI every setup problem is an error. The annotations sit in a group the log folds away, and the plain report follows, so the log reads as it always did. GitHub turns at most 10 errors and 10 warnings of a step into annotations; the log keeps every finding. Findings the baseline allows get none.
 
-`pawl check` and `pawl fix` pick `--format github` on their own in a GitHub Actions job (`GITHUB_ACTIONS=true`) when neither `--format` nor `PAWL_FORMAT` names a format, unless a coding agent runs them there, which gets `agent`. Set `PAWL_FORMAT=pretty` on the step to go back to the plain report alone.
+`pawl check` and `pawl fix` pick `--format github` on their own in a GitHub Actions job (`GITHUB_ACTIONS=true`) when neither `--format` nor `PAWL_FORMAT` names a format, unless a coding agent runs them there, which gets `agent`. This is new in 0.6: before, such a job got `pretty`. If a step reads what pawl prints, give it the format it reads, or set `PAWL_FORMAT=pretty` on the step to go back to the plain report alone.
 
 When pawl runs in a folder below the root of the repository, the annotations name files from the root, as GitHub reads them, using the `GITHUB_WORKSPACE` folder the job checked out.
 
@@ -123,6 +123,7 @@ pawl check --ci --format sarif > pawl.sarif
 permissions:
   contents: read
   security-events: write
+  actions: read # only for a private repository
 
 steps:
   # ...checkout, setup and install as above
@@ -134,7 +135,7 @@ steps:
       category: pawl
 ```
 
-Pin the action to a commit, as the workflow `init` writes does. On GitHub, code scanning is free for public repositories; a private one needs GitHub Code Security. Annotations need neither.
+Uploading needs `security-events: write`, and a private repository also needs `actions: read`. `category` keeps pawl's results apart from those of other tools on the same commit. Pin the action to a commit, as the workflow `init` writes does. On GitHub, code scanning is free for public repositories; a private one needs GitHub Code Security. Annotations need neither.
 
 ## Before each commit
 

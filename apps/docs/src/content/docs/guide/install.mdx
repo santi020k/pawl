@@ -69,7 +69,7 @@ Pawl has no dependencies. Every engine, formatter and ESLint plugin is an option
 
 With nothing chosen, Biome lints and formats. [Choosing tools](/guide/tools/) covers the other mixes.
 
-Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases. `init` installs that version.
+Biome is pinned to one exact version, because pawl reads a report format Biome may change between releases. `init` installs that version. ESLint's floor is the oldest version that has every rule of the standard: pawl 0.6 raised it from 9.22.0 to 9.35.0, and `typescript-eslint`'s from 8.0.0 to 8.15.0. `pawl upgrade` installs the versions pawl takes; see [Upgrading](/guide/upgrade/).
 
 ### Oxlint as the linter
 
@@ -90,7 +90,7 @@ When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-es
 
 ### Plugins
 
-Each optional [pack](/guide/packs/) runs one ESLint plugin, and the plugin is an optional peer too. `pawl add <pack>` installs ESLint and the plugin. A pack that is wanted but whose plugin is missing, or fails to load, is listed by `pawl doctor`.
+Each optional [pack](/guide/packs/) runs one ESLint plugin, and the plugin is an optional peer too, with a floor: the oldest version that passed a run of the pack against it. `pawl add <pack>` installs ESLint and the plugin. A pack that is wanted but whose plugin is missing, fails to load or is older than its floor is listed by `pawl doctor`.
 
 ## Check the install
 

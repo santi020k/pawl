@@ -37,7 +37,7 @@ In a terminal the doctor puts these lines under Project, Tools, and Ratchet and 
 Then it lists each problem, or `No problems found.` A problem is:
 
 - a tool that is in use but not installed, pawl itself included;
-- a Node older than pawl's `engines.node`, a Biome other than the exact version pawl pins, or an ESLint, Oxlint, Prettier or pack plugin outside the range pawl declares for it;
+- a Node older than pawl's `engines.node`, a Biome other than the exact version pawl pins, or an ESLint, Oxlint, `oxlint-tsgolint`, Prettier or pack plugin outside the range pawl declares for it. `pawl upgrade` installs the versions pawl takes;
 - a Biome, Oxlint or Prettier config that is missing, out of date, or, for Biome, does not extend the pawl standard;
 - a layer that tried to loosen a locked rule;
 - a `.pawl/baseline.json` that cannot be read;
@@ -52,6 +52,7 @@ Then it lists each problem, or `No problems found.` A problem is:
 | `check`, `fix` | No new errors. Warnings alone pass, up to the limit. | At least one new error, or more new warnings than the limit | Part of the check did not run, or, with `--ci`, any setup problem |
 | `baseline`     | Baseline written                                     |                                                             | Part of the check did not run; the baseline is left as it was     |
 | `init`, `add`  | Done, a dry run, or you said no                      |                                                             | The install failed, or `init` could not record the baseline       |
+| `upgrade`      | Done, or a dry run                                   |                                                             | The install failed                                                |
 | `migrate`      | As `init`                                            |                                                             | As `init`                                                         |
 | `explain`      | The rule was found                                   | Pawl has no rule of that name                               |                                                                   |
 | `doctor`       | No problems                                          |                                                             | At least one problem                                              |
@@ -134,6 +135,23 @@ pawl sync
 
 Commit what it writes. In a monorepo, a package that starts using a new technology also needs `pawl sync`; see [Monorepos](/guide/monorepos/).
 
+### ESLint cannot find a rule of the standard
+
+ESLint stops with `Could not find "no-unassigned-vars" in plugin "@"`, or the same for `preserve-caught-error`. The installed ESLint is older than the rules of the standard, which ESLint added in 9.27 and 9.35. Pawl 0.6 takes ESLint 9.35.0 or later, and `typescript-eslint` 8.15.0 or later. `pawl doctor` names each tool below its floor; `pawl upgrade` installs newer ones.
+
+### The baseline allows more than it does on the base branch
+
+```txt wrap
+.pawl/baseline.json:1:1  error  pawl    pawl/no-baseline-growth
+  The baseline allows more than it does on origin/main: src/a.ts: 2 more no-console findings. Fix the findings instead of recording them. If a person decided to accept them, add "Pawl-Baseline: accept" to a commit message on this branch.
+```
+
+A check with `--since` compares `.pawl/baseline.json` with the one where the branch left the base, and the branch's baseline allows more. Fix the findings and record the baseline again. If a person decided to accept them, add a `Pawl-Baseline: accept` trailer to a commit on the branch. See [A baseline that allows more](/guide/ratchet/#a-baseline-that-allows-more).
+
+### The CI log starts with annotations
+
+In a GitHub Actions job, `pawl check` and `pawl fix` use `--format github` when no format is given: annotations in a folded group, then the plain report. A step that reads what pawl prints should name the format it reads, or set `PAWL_FORMAT=pretty`. See [Findings on the pull request](/guide/ci/#findings-on-the-pull-request).
+
 ### biome.json does not extend the pawl standard
 
 Biome is running with its own settings. Add `@santi020k/pawl/biome` to `extends` in `biome.json`, or run `pawl sync`.
@@ -177,7 +195,7 @@ With Oxlint as the only linter, the guards' code patterns do not run; only their
 Problem: @biomejs/biome 2.5.0 is not a version pawl works with (2.6.8). Install @biomejs/biome@2.6.8.
 ```
 
-Pawl reads Biome's JSON report, which Biome may change between releases, so it works with one exact Biome. For ESLint, Oxlint, Prettier and the pack plugins it declares a range. Install the version the message names.
+Pawl reads Biome's JSON report, which Biome may change between releases, so it works with one exact Biome. For ESLint, Oxlint, Prettier and the pack plugins it declares a range. Run `pawl upgrade` to install the versions pawl takes and sync the config, or install the version the message names yourself.
 
 ### A policy option pawl does not know
 

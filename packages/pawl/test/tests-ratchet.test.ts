@@ -308,6 +308,25 @@ describe('retries, raised timeouts and fixed sleeps', () => {
     ])
   })
 
+  it('counts a sleep with a function, and reads a typed test function as a function', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('a', async function (): Promise<void> {",
+        '  const options = { timeout: 1000 }',
+        '  await new Promise(resolve => setTimeout(() => {',
+        '    resolve(options)',
+        '  }, 500))',
+        '}, 5000)'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => [mask.line, mask.kind])).toEqual([
+      [5, 'sleep'],
+      [6, 'timeout']
+    ])
+  })
+
   it('counts a retry method of the test runner, and not one on the code the test calls', () => {
     const file = countTests(
       'src/a.test.ts',

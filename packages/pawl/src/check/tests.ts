@@ -189,13 +189,21 @@ const chainBefore = (script: string, paren: number): string => {
   return script.slice(index + 1, paren)
 }
 
-/** A `{` that opens a block, such as a function's body, and not an object: it follows `=>` or `)`. */
+/** A return type before a function's body: `): Promise<void>`, `): string[]`. */
+const RETURN_TYPE = /\)\s*:\s*[\w$.<>[\],|&\s]+$/
+
+/**
+ * A `{` that opens a block, such as a function's body, and not an object: it follows `=>`, `)`, or
+ * the return type after a function's parameters, as in `function (): Promise<void> {`.
+ */
 const opensBlock = (script: string, brace: number): boolean => {
   let index = brace - 1
 
   while (index >= 0 && /\s/.test(script[index] as string)) index--
 
-  return script[index] === ')' || (script[index] === '>' && script[index - 1] === '=')
+  if (script[index] === ')' || (script[index] === '>' && script[index - 1] === '=')) return true
+
+  return RETURN_TYPE.test(script.slice(Math.max(0, index - 200), index + 1))
 }
 
 /**
@@ -221,18 +229,20 @@ const callAround = (script: string, at: number): string => {
 const NUMBER_AFTER = /^(\s*)\}\s*,\s*\d{3,}\s*\)/
 
 /**
- * A number after a test's function, as on `}, 5000)`: a raised timeout only when the `}` closes a
- * function's body and the `)` closes a call of the test runner, not an object passed to other code.
+ * A number after a closing `}`, as on `}, 5000)`: a raised timeout when the `)` closes a call of the
+ * test runner, a fixed sleep when it closes `setTimeout`, and nothing when it closes other code,
+ * such as `createClient({ ... }, 1000)`, which is what the test checks.
  */
-const timeoutAfterTest = (script: string, start: number, line: string): boolean => {
+const numberAfterBrace = (script: string, start: number, line: string): Mask | undefined => {
   const match = NUMBER_AFTER.exec(line)
 
-  if (!match) return false
+  if (!match) return undefined
 
-  const brace = start + (match[1] ?? '').length
-  const paren = start + match[0].length - 1
+  const call = chainBefore(script, openerOf(script, start + match[0].length - 1))
 
-  return opensBlock(script, openerOf(script, brace)) && RUNNER.test(chainBefore(script, openerOf(script, paren)))
+  if (RUNNER.test(call)) return 'timeout'
+
+  return /^(?:window\.|globalThis\.)?setTimeout$/.test(call) ? 'sleep' : undefined
 }
 
 /** A retry method with a count: `test.retry(2)`, `this.retries(2)`, `it('x', fn).retries(2)`. */
@@ -257,7 +267,9 @@ const maskOf = (script: string, start: number, line: string): Mask | undefined =
 
   if (retryOfTest(script, start, line)) return 'retry'
 
-  if (timeoutAfterTest(script, start, line)) return 'timeout'
+  const after = numberAfterBrace(script, start, line)
+
+  if (after) return after
 
   const option = [...line.matchAll(OPTION)].find(match => RUNNER.test(callAround(script, start + match.index)))
 

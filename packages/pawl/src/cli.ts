@@ -4,7 +4,7 @@ import { EXIT_OK, EXIT_SETUP } from './check/result.ts'
 import { type Flags, helpText, OPTIONS, unknownCommand, usageFrom } from './cli/args.ts'
 import { terminal } from './cli/audience.ts'
 import { runAdd } from './cli/commands/add.ts'
-import { runBaseline, runCheck } from './cli/commands/check.ts'
+import { checkRoot, runBaseline, runCheck } from './cli/commands/check.ts'
 import { runDoctor } from './cli/commands/doctor.ts'
 import { runExplain } from './cli/commands/explain.ts'
 import { runInit } from './cli/commands/init.ts'
@@ -30,13 +30,14 @@ const COMMANDS: Readonly<Record<string, (invocation: Invocation) => Promise<numb
   init: ({ root, flags }) => runInit(root, flags),
   check: ({ root, args, flags }) => runCheck(root, args, flags, false),
   fix: ({ root, args, flags }) => runCheck(root, args, flags, true),
-  sync: ({ root, flags }) => runSync(root, flags),
-  upgrade: ({ root, flags }) => runUpgrade(root, flags),
-  add: ({ root, args, flags }) => runAdd(root, args, flags),
+  // Like the check, these work on the root pawl was set up in, not on a package folder inside it.
+  sync: ({ root, flags }) => runSync(checkRoot(root), flags),
+  upgrade: ({ root, flags }) => runUpgrade(checkRoot(root), flags),
+  add: ({ root, args, flags }) => runAdd(checkRoot(root), args, flags),
   migrate: ({ root, flags }) => runMigrate(root, flags),
   baseline: ({ root }) => runBaseline(root),
   explain: ({ root, args }) => runExplain(root, args[0]),
-  doctor: ({ root, flags }) => runDoctor(root, flags)
+  doctor: ({ root, flags }) => runDoctor(checkRoot(root), flags)
 }
 
 const parse = (): ReturnType<typeof parseArgs<{ options: typeof OPTIONS; allowPositionals: true }>> => {

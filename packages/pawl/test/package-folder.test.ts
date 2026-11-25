@@ -62,6 +62,15 @@ describe('a check started in a package folder', { timeout: 60_000 }, () => {
     expect(run(join(root, 'apps/admin'), 'check').status).toBe(0)
   })
 
+  it('syncs the config files at the root, and never writes a biome.json into the package', () => {
+    const root = repo()
+
+    expect(run(join(root, 'apps/web'), 'sync').status).toBe(0)
+    expect(existsSync(join(root, 'apps/web/biome.json'))).toBe(false)
+    expect(run(join(root, 'apps/web'), 'upgrade', '--dry-run').status).toBe(0)
+    expect(existsSync(join(root, 'apps/web/biome.json'))).toBe(false)
+  })
+
   it('stays in a package with its own setup, and does not leave the repository', () => {
     const root = repo()
 

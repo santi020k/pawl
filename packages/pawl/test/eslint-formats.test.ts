@@ -1,9 +1,9 @@
 import { ESLint, type Linter } from 'eslint'
 import { describe, expect, it } from 'vitest'
-import { eslintPlan, mergeLayers } from '../src/index.ts'
+import { check, eslintPlan, mergeLayers } from '../src/index.ts'
 import { type PolicyInput } from '../src/types.ts'
 import { pluginRoot } from './fixtures/eslint/plugins.ts'
-import { project } from './helpers.ts'
+import { link, project } from './helpers.ts'
 
 const planFor = (root: string, input: PolicyInput) =>
   eslintPlan({
@@ -55,4 +55,43 @@ describe('the JSON pack', () => {
     expect(ruleIds(await runner.lintFiles(['tsconfig.json']))).toContain('jsonc/sort-keys')
     expect(ruleIds(await runner.lintFiles(['package.json']))).not.toContain('jsonc/sort-keys')
   })
+
+  it.each([
+    ['biome', ['no-dupe-keys']],
+    ['eslint', ['jsonc/no-dupe-keys']]
+  ])(
+    'reports a duplicate key once where %s is the linter',
+    async (engine, rules) => {
+      const root = project({
+        'package.json': {
+          name: 'formats',
+          type: 'module',
+          devDependencies: { '@biomejs/biome': '*', eslint: '*', 'eslint-plugin-jsonc': '*' }
+        },
+        // Left on auto, Biome lints and ESLint runs next to it for the pack.
+        'pawl.config.json': { ...(engine === 'eslint' ? { engine } : {}), formatter: 'biome', packs: ['jsonc'] },
+        'biome.json': {
+          extends: ['@santi020k/pawl/biome'],
+          ...(engine === 'biome' ? {} : { linter: { enabled: false } })
+        },
+        'eslint.config.js': `import { eslint } from '@santi020k/pawl'\n\nexport default eslint({ root: import.meta.dirname, pluginRoots: [${JSON.stringify(pluginRoot)}] })\n`,
+        'config/settings.jsonc': '{\n  "alpha": 1,\n  "alpha": 2\n}\n',
+        'config/data.json5': '{\n  "alpha": 1,\n  "alpha": 2\n}\n'
+      })
+
+      link(root, { eslint: true })
+
+      const result = await check({ root })
+      const duplicates = (file: string): string[] =>
+        result.findings
+          .filter(finding => finding.file === file && finding.rule.endsWith('no-dupe-keys'))
+          .map(finding => finding.rule)
+
+      expect(result.setup).toEqual([])
+      expect(duplicates('config/settings.jsonc')).toEqual(rules)
+      // Biome does not read JSON5, so the plugin keeps the check there.
+      expect(duplicates('config/data.json5')).toEqual(['jsonc/no-dupe-keys'])
+    },
+    60_000
+  )
 })

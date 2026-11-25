@@ -619,6 +619,15 @@ const componentConfigs = (
 /** One block per active pack, with the rules the installed plugin has. */
 const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options }: Build): FlatConfig[] => {
   const config: FlatConfig[] = []
+  const { policy, typescript, technologies = [] } = options
+  const levels = effectiveRules(policy, { typescript, technologies })
+  // The fast linter runs a rule of the standard it has, unless the rule is off only because the
+  // standard holds it back, as it does an unstable one: then the level a pack's preset gives it stands.
+  const runsElsewhere = (name: string): boolean => {
+    const canonical = canonicalName(name)
+
+    return covered(name) && (levels.get(canonical) !== 'off' || policy.rules[canonical] !== undefined)
+  }
 
   for (const { pack, plugin, fromPlugin, dirs } of packBlocks) {
     const rules = packRules.get(pack.name) ?? {}
@@ -677,6 +686,12 @@ const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options 
         }
       })
       config.push(...blocks)
+      // A rule of the preset the fast linter runs stays the fast linter's, as one the pack names does.
+      // Only under its own name: another name the catalog files with it, such as vue/no-unused-vars
+      // for the variables of a template, can check what the fast linter does not read.
+      for (const [name, value] of Object.entries(presetRules(blocks)))
+        if (!(name in rules) && !isOff(value) && getRule(name)?.name === name && runsElsewhere(name))
+          rules[name] = 'off'
       // The preset's parser reads each <script> with parserOptions.parser, which is espree unless the
       // config names another, so a component with `lang="ts"` would not parse. The same goes for every
       // file the preset hands to that parser, such as Svelte's `.svelte.ts` modules.
@@ -726,6 +741,19 @@ const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options 
           })
       } else config.push(block)
     }
+
+    // A check of the plugin that a rule of the standard Biome runs makes too, in the files Biome lints.
+    const biome = Object.entries(pack.biome?.rules ?? {}).flatMap(([name, standard]) =>
+      options.biomeActive && runsElsewhere(standard) ? [[name, 'off']] : []
+    )
+    if (pack.biome && biome.length > 0)
+      config.push({
+        name: `pawl/pack/${pack.name}/biome`,
+        files: explicitFiles
+          ? pack.biome.files.flatMap(file => explicitFiles.map(pattern => [file, pattern]))
+          : pack.biome.files,
+        rules: Object.fromEntries(biome)
+      })
   }
 
   return config

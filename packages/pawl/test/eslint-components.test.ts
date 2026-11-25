@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { eslintPlan, mergeLayers } from '../src/index.ts'
 import { type PolicyInput } from '../src/types.ts'
 import { pluginRoot } from './fixtures/eslint/plugins.ts'
+import { toList } from '../src/utils/list.ts'
 import { project, write } from './helpers.ts'
 
 // The scripts of a component hold the same mistakes as any script. Each one is valid otherwise:
@@ -188,6 +189,21 @@ describe('the standard in component scripts', () => {
     },
     60_000
   )
+
+  it('leaves a rule of the Vue preset that Biome runs to Biome, and keeps the ones Biome does not run', async () => {
+    const root = componentProject('vue')
+    const plan = await planFor(root, 'vue', {}, true)
+    const runner = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: plan.config as Linter.Config[] })
+    const config = (await runner.calculateConfigForFile(join(root, COMPONENTS.vue.file))) as Linter.Config
+    const severity = (rule: string): unknown => toList(config.rules?.[rule])[0]
+
+    // Biome's useVueMultiWordComponentNames reports a one-word name: the plugin's would report it again.
+    expect(severity('vue/multi-word-component-names')).toBe(0)
+    // Biome reads the script alone, so the variables of a template stay the plugin's.
+    expect(severity('vue/no-unused-vars')).toBe(2)
+    // The standard holds Biome's version back as unstable, so Biome does not run it.
+    expect(severity('vue/no-mutating-props')).toBe(2)
+  }, 60_000)
 
   it('applies a policy override and a locked floor to component scripts once', async () => {
     const root = componentProject('vue')

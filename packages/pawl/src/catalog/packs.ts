@@ -39,6 +39,12 @@ export interface Pack {
    * ESLint takes those rules only when the pack is on, or when the policy names one.
    */
   withPack?: boolean
+  /**
+   * Rules of the plugin that are the same check as a rule of the standard, by the standard's rule, in
+   * the files Biome lints. Where Biome is the linter and runs that rule, they are off in those files,
+   * so a finding is not reported twice.
+   */
+  biome?: { files: string[]; rules: Record<string, string> }
   /** Levels the standard sets on top of the preset. */
   rules: Record<string, Level>
 }
@@ -384,6 +390,8 @@ export const PACKS: readonly Pack[] = [
     preset: ['configs', 'flat/recommended-with-jsonc'],
     spread: true,
     files: ['**/*.{json,jsonc,json5}'],
+    // Biome's noDuplicateObjectKeys reads JSON too. It does not read JSON5.
+    biome: { files: ['**/*.{json,jsonc}'], rules: { 'jsonc/no-dupe-keys': 'no-dupe-keys' } },
     // No jsonc/sort-keys: the order of package.json, tsconfig.json and editor files means something
     // to the people who read them, and a fix would rewrite it. A policy turns it on where it does not.
     rules: {}

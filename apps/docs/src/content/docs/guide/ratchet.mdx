@@ -77,6 +77,7 @@ Review the baseline diff and commit it with the code fix. With the count lowered
 - A file that gains a disable comment (`biome-ignore`, `eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) fails with `pawl/no-new-disable`. Pawl looks for them in scripts and components, and in the stylesheets, JSON, GraphQL, YAML and TOML files a linter reads.
 
 - A test file that loses assertions, or gains a skipped test, a retry, a raised timeout or a fixed sleep, fails with `pawl/no-weaker-tests`. See [Tests that get weaker](#tests-that-get-weaker).
+- A file an engine cannot parse, such as one with a syntax error, fails with that engine's parse error, `biome:parse`, `eslint:parse`, `oxlint:parse` or `prettier:parse`, whatever the baseline says. The engine checked nothing else in it, so the baseline never takes a parse error: `pawl baseline` and `init` record the other findings, name the files that did not parse, and `pawl baseline` then exits with 1.
 
 The last two matter most when an agent writes the code: switching a check off, or weakening the test that caught the problem, is not a way past it.
 

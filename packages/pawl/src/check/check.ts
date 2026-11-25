@@ -27,6 +27,7 @@ import {
   BASELINE_FILE,
   type Baseline,
   createBaseline,
+  isParseError,
   newSuppressions,
   parseBaseline,
   readBaseline,
@@ -54,7 +55,10 @@ export interface CheckOptions {
   files?: readonly string[]
   /** Apply safe fixes and formatting before reporting. */
   fix?: boolean
-  /** Record everything found as the new baseline and report nothing. */
+  /**
+   * Record everything found as the new baseline and report nothing but the parse errors, which the
+   * baseline never takes: a file that does not parse was not checked.
+   */
   updateBaseline?: boolean
   /** Reuse a policy that is already loaded. */
   policy?: Policy
@@ -329,12 +333,14 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     // A check that did not complete knows only some of the findings. Recorded as the baseline,
     // they would make every finding it missed fail later as new, so the file is left as it is.
     const complete = !isBlocked(setup)
+    // A file an engine could not parse was not checked, so its parse errors stay new and are reported.
+    const unparsed = complete ? kept.filter(isParseError).sort(byPosition) : []
 
     if (complete) writeBaseline(root, createBaseline(kept, suppressions, testCounts(tests)))
 
     return {
-      findings: [],
-      baselined: complete ? kept.length : 0,
+      findings: unparsed,
+      baselined: complete ? kept.length - unparsed.length : 0,
       setup,
       engines,
       commands,

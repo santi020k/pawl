@@ -10,7 +10,7 @@ import { loadProject } from '../policy/project.ts'
 import { ESLINT_CONFIG_FILES, hasAny } from '../project/config-files.ts'
 import { type Detection, describe, filePacks, needsEslint } from '../project/detect.ts'
 import { LANGUAGE_INFO, type Language, languagesOf } from '../project/languages.ts'
-import { type EngineName, type FormatterName, type Policy, type PolicyInput } from '../types.ts'
+import { type EngineName, type Finding, type FormatterName, type Policy, type PolicyInput } from '../types.ts'
 import { writeText } from '../utils/fs.ts'
 import { plural } from '../utils/text.ts'
 import { PACKAGE_NAME } from '../version.ts'
@@ -334,7 +334,17 @@ export const formatWritten = async (root: string, paths: readonly string[]): Pro
  * Needs pawl installed in the project, because the engine configs point at it.
  * Returns the number recorded, or undefined when disabled or a baseline already exists.
  */
-export const recordBaseline = async (root: string, plan: InitPlan): Promise<number | undefined> => {
+export const recordBaseline = async (root: string, plan: InitPlan): Promise<number | undefined> =>
+  (await recordInitBaseline(root, plan))?.baselined
+
+/**
+ * Record the baseline as `recordBaseline` does, and say what it left out: the parse errors of the
+ * files that did not parse, which keep failing the check until each file parses.
+ */
+export const recordInitBaseline = async (
+  root: string,
+  plan: InitPlan
+): Promise<{ baselined: number; unparsed: Finding[] } | undefined> => {
   if (plan.baseline === false || existsSync(join(root, BASELINE_FILE))) return undefined
 
   const result = await check({ root, updateBaseline: true, policy: plan.policy })
@@ -342,7 +352,7 @@ export const recordBaseline = async (root: string, plan: InitPlan): Promise<numb
 
   if (failure) throw new Error(failure.message)
 
-  return result.baselined
+  return { baselined: result.baselined, unparsed: result.findings }
 }
 
 /** Describe a plan for people. The header is left out when a menu has already shown it. */

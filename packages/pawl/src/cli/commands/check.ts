@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { BASELINE_FILE } from '../../check/baseline.ts'
 import { type CheckOptions, type CheckProgress, check } from '../../check/check.ts'
-import { engineTitle, format, type OutputFormat, type RichOptions } from '../../check/output.ts'
-import { type CheckResult, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
+import { engineTitle, format, type OutputFormat, type RichOptions, unparsedNote } from '../../check/output.ts'
+import { type CheckResult, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
 import { projectPath } from '../../project/files.ts'
 import { plural } from '../../utils/text.ts'
 import { assertHookFlags, type Flags, formatFromEnv, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
@@ -292,8 +292,16 @@ export const runBaseline = async (root: string): Promise<number> => {
   }
 
   const line = `Baseline updated: ${plural(result.baselined, 'finding')} recorded in ${BASELINE_FILE}.`
+  const unparsed = unparsedNote(result.findings)
 
   out(term.rich ? `${style.accent(sym.tick)} ${line}` : line)
 
-  return EXIT_OK
+  if (unparsed.length === 0) return EXIT_OK
+
+  // A file that does not parse was not checked, so its parse errors still fail the check.
+  const [header = '', ...files] = unparsed
+
+  out([term.rich ? `${style.red(sym.cross)} ${header}` : header, ...files].join('\n'))
+
+  return EXIT_FINDINGS
 }

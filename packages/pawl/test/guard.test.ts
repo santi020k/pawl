@@ -219,7 +219,9 @@ describe('the guard before an agent tool runs', () => {
       'pushd .pawl && tee baseline.json < /dev/null',
       'cd src && cd ../.pawl && truncate -s 0 baseline.json',
       "(cd src) && printf '{}' > .pawl/baseline.json",
-      'cd .pawl && git restore .'
+      'cd .pawl && git restore .',
+      'git -C .pawl restore .',
+      'git -C src -C ../.pawl checkout -- baseline.json'
     ])
       expect(finding(command)?.files, command).toContain('.pawl/baseline.json')
 

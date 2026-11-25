@@ -261,6 +261,28 @@ const gitCommand = (args: readonly string[]): { name: string; args: string[] } =
   return { name: (args[index] ?? '').toLowerCase(), args: args.slice(index + 1) }
 }
 
+/** The folder `git -C <path>` runs in, from the folder it is started in: each `-C` adds to the one before. */
+const gitFolder = (from: string, command: ShellCommand): string => {
+  const { name, args } = programOf(command.words)
+
+  if (name !== 'git') return from
+
+  let folder = from
+
+  for (let index = 0; index < args.length && (args[index] as string).startsWith('-'); index++) {
+    const path = args[index + 1]
+
+    if (args[index] === '-C' && path !== undefined) {
+      folder = resolve(folder, path)
+      index++
+    } else if (args[index] === '-c') {
+      index++
+    }
+  }
+
+  return folder
+}
+
 /** The pathspecs a git command that rewrites working-tree files names: `git restore .`, `git checkout main -- src`. */
 const gitPathspecs = (command: ShellCommand): string[] => {
   const { name, args } = programOf(command.words)
@@ -397,8 +419,10 @@ const commandWrites = (top: string, base: string, commands: readonly ShellComman
 
   for (const command of commands) {
     for (const folder of folders) {
-      files.push(...writtenBy(command).map(file => absolute(folder, file)))
-      files.push(...gitPathspecs(command).flatMap(pathspec => coveredBy(top, folder, pathspec)))
+      const from = gitFolder(folder, command)
+
+      files.push(...writtenBy(command).map(file => absolute(from, file)))
+      files.push(...gitPathspecs(command).flatMap(pathspec => coveredBy(top, from, pathspec)))
     }
 
     const next = changedDirectory(cwd, command)

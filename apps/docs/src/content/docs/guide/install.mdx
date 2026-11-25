@@ -89,7 +89,7 @@ In a TypeScript project, `init` also installs `oxlint-tsgolint`. Oxlint runs the
 
 ### ESLint as the linter
 
-When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-eslint` in a TypeScript project. These run the `javascript` and `typescript` packs. It also installs the plugins that the rules of the standard need when ESLint runs them in place of Biome: `eslint-plugin-unicorn`, `eslint-plugin-promise`, `eslint-plugin-unused-imports`, `eslint-plugin-import`, `eslint-plugin-no-only-tests` and `@vitest/eslint-plugin`. These are the plugins `pawl doctor` would otherwise report as missing. `pawl add`, in a project that ESLint lints, installs the ones that are missing too. With `--no-install`, `init` and `add` write them into `devDependencies` with the rest.
+When ESLint is the linter, `init` also installs `@eslint/js`, and `typescript-eslint` in a TypeScript project. These run the `javascript` and `typescript` packs. It also installs the plugins that the rules of the standard need when ESLint runs them in place of Biome: `eslint-plugin-unicorn`, `eslint-plugin-promise`, `eslint-plugin-unused-imports`, `eslint-plugin-import`, `eslint-plugin-no-only-tests`, and `@vitest/eslint-plugin` in a project that tests with Vitest. These are the plugins `pawl doctor` would otherwise report as missing. `pawl add`, in a project that ESLint lints, installs the ones that are missing too. With `--no-install`, `init` and `add` write them into `devDependencies` with the rest.
 
 | Package                 | Peer range |
 | ----------------------- | ---------- |

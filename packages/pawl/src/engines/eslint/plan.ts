@@ -428,6 +428,11 @@ const placeRules = async (build: Build): Promise<void> => {
     if (policy.rules[name] === undefined && PACKS.some(pack => pack.prefix === prefix && pack.withPack === true))
       continue
 
+    // The plugin of a library the project does not use, such as Vitest's where the tests run on
+    // Jest or node:test, is not asked for unless the policy names the rule. A rule for a technology,
+    // such as React's, already applies only where the project uses it.
+    if (policy.rules[name] === undefined && !(def && isGated(def.tag)) && !usesLibraryOf(prefix, options)) continue
+
     if (!plugins.has(prefix))
       plugins.set(
         prefix,
@@ -451,6 +456,21 @@ const placeRules = async (build: Build): Promise<void> => {
       pluginRules[eslintName] = value
     }
   }
+}
+
+/**
+ * False when the rules of a plugin are for a library the project does not use: its pack switches on
+ * for some dependencies, the project has none of them, and the policy declares no test runner of
+ * that name.
+ */
+const usesLibraryOf = (prefix: string, { policy, dependencies = [] }: EslintPlanOptions): boolean => {
+  const packs = PACKS.filter(pack => pack.prefix === prefix && pack.when.length > 0)
+  const runners: Readonly<Record<string, unknown>> = policy.testRunners
+
+  return (
+    packs.length === 0 ||
+    packs.some(pack => pack.when.some(name => dependencies.includes(name)) || runners[pack.name] !== undefined)
+  )
 }
 
 /** The guards: imports and code patterns to stay away from, for the libraries the project uses. */

@@ -8,6 +8,7 @@ import { effectiveRules, overrideRules } from '../../policy/levels.ts'
 import { findProjectRoot } from '../../policy/load.ts'
 import { loadProject } from '../../policy/project.ts'
 import { testRunnerFiles } from '../../policy/test-runners.ts'
+import { ESLINT_CONFIG_FILES, OXLINT_CONFIG_FILES, PAWL_CONFIG_FILES } from '../../project/config-files.ts'
 import { allTechnologies, packageTechnologies, technologies as repoTechnologies } from '../../project/detect.ts'
 import {
   ALWAYS_IGNORED,
@@ -902,6 +903,15 @@ const configBlocks = (values: readonly unknown[]): FlatConfig[] =>
 
 const PROCESSOR_FILES = ['**/?*.astro/**', '**/?*.md/**', '**/?*.mdx/**']
 
+/**
+ * The config files of pawl and of the linters it drives that are TypeScript. A project's tsconfig
+ * often leaves them out, as Vite's and Svelte's templates do, and typescript-eslint's project service
+ * cannot parse a file no tsconfig includes, so they are linted without a TypeScript program.
+ */
+const TOOL_CONFIG_FILES = [...PAWL_CONFIG_FILES, ...ESLINT_CONFIG_FILES, ...OXLINT_CONFIG_FILES]
+  .filter(name => /\.[cm]?ts$/.test(name))
+  .map(name => `**/${name}`)
+
 /** Only a path below a non-script host filename may opt out of project-aware linting. */
 const processorPattern = (pattern: string): { files: string; host: string } => {
   const parts = pattern.split('/')
@@ -979,6 +989,7 @@ const needsTypeInformation = (name: string, plugins: Readonly<Record<string, unk
 /** Keep the host parser, but never attach a TypeScript project to processor fragments. */
 const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan: EslintPlan): FlatConfig[] => {
   const virtual = processorFiles(options.root, options.untypedFiles ?? [])
+  const untyped = [...virtual, ...TOOL_CONFIG_FILES]
   const all = [...config, ...configBlocks(options.baseConfig ?? [])]
   const plugins: Record<string, unknown> = Object.assign(
     {},
@@ -1004,11 +1015,11 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
     if (!typed) return [block]
     const files = Array.isArray(block.files) ? block.files : ['**/*']
     return [
-      { ...block, ignores: [...(Array.isArray(block.ignores) ? block.ignores : []), ...virtual] },
+      { ...block, ignores: [...(Array.isArray(block.ignores) ? block.ignores : []), ...untyped] },
       {
         ...block,
         name: `${typeof block.name === 'string' ? block.name : 'pawl/shared'}/untyped`,
-        files: files.flatMap(file => virtual.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])),
+        files: files.flatMap(file => untyped.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])),
         languageOptions: { ...language, parserOptions: { ...parser, project: null, projectService: false } },
         rules: isRecord(block.rules)
           ? Object.fromEntries(Object.entries(block.rules).filter(([name]) => !needsTypeInformation(name, plugins)))
@@ -1019,12 +1030,20 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
   const result = routed.flat()
 
   if (Object.keys(typeRules).length > 0)
-    result.push({
-      name: 'pawl/processor-fragments',
-      files: virtual,
-      languageOptions: { parserOptions: { project: null, projectService: false } },
-      rules: typeRules
-    })
+    result.push(
+      {
+        name: 'pawl/processor-fragments',
+        files: virtual,
+        languageOptions: { parserOptions: { project: null, projectService: false } },
+        rules: typeRules
+      },
+      {
+        name: 'pawl/tool-configs',
+        files: TOOL_CONFIG_FILES,
+        languageOptions: { parserOptions: { project: null, projectService: false } },
+        rules: typeRules
+      }
+    )
 
   // A local shared-config exception must not replay a locked key after the policy.
   // Rule-only blocks preserve the host parser, processor, resolver and virtual-module settings.
@@ -1098,7 +1117,7 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
     locked.push({
       name: 'pawl/locked/typescript',
       files: TS_FILES,
-      ignores: virtual,
+      ignores: untyped,
       plugins: used(typedRules),
       rules: typedRules
     })

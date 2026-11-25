@@ -23,7 +23,8 @@ const TOOL_RANGES: Record<string, string> = {
   oxlint: OXLINT_VERSION,
   [TYPE_AWARE_PACKAGE]: TSGOLINT_VERSION,
   '@eslint/js': '^10.0.0',
-  'typescript-eslint': '^8.0.0',
+  // Older versions crash in no-unused-expressions under the ESLint pawl needs.
+  'typescript-eslint': '^8.15.0',
   prettier: '^3.0.0'
 }
 
@@ -33,9 +34,11 @@ export const rangeFor = (name: string, root?: string): string => {
 
   if (known) return known
 
-  const major = /(\d+)/.exec(PACKS.find(pack => pack.plugin === name)?.range ?? '')?.[1]
+  // A pack's plugin from its floor, the oldest version pawl works with: `^0.14.1` and not
+  // `^0.0.0`, which a 0.x plugin's major alone would give, and which no version satisfies.
+  const floor = /(\d+\.\d+\.\d+)/.exec(PACKS.find(pack => pack.plugin === name)?.range ?? '')?.[1]
 
-  if (major) return `^${major}.0.0`
+  if (floor) return `^${floor}`
 
   // Any other package, such as a company policy, is one the project already loads.
   const installed = root === undefined ? undefined : installedVersion(root, name)

@@ -33,8 +33,11 @@ export interface TestFile extends TestCounts {
   file: string
   skips: { line: number; text: string }[]
   masks: number
-  maskLines: { line: number; text: string }[]
+  maskLines: { line: number; text: string; kind: 'retry' | 'timeout' | 'sleep' }[]
 }
+
+/** What can hide a flaky test: a retry, a raised timeout or a fixed sleep. */
+type Mask = TestFile['maskLines'][number]['kind']
 
 /** Vitest, Jest, Playwright and Cypress files, and the files under a __tests__ folder. */
 export const isTestFile = (file: string): boolean => {
@@ -70,18 +73,18 @@ const SKIP =
  * function), or a fixed sleep (`waitForTimeout`, `cy.wait(500)`, `setTimeout(resolve, 500)`,
  * `sleep(500)`). Each line counts once, however many of them it has.
  */
-const MASKS: readonly RegExp[] = [
-  /\.retry\s*\(\s*[1-9]/,
-  /\bretryTimes\s*\(/,
-  /\.retries\s*\(\s*[1-9]/,
-  /\b(?:jest|vi|test|this)\.setTimeout\s*\(/,
-  /\bthis\.timeout\s*\(\s*\d/,
-  /\btest\.slow\s*\(/,
-  /^\s*\}\s*,\s*\d{3,}\s*\)/,
-  /\bwaitForTimeout\s*\(/,
-  /\bcy\.wait\s*\(\s*\d/,
-  /\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*\d/,
-  /\b(?:sleep|delay|wait)\s*\(\s*\d/
+const MASKS: readonly (readonly [Mask, RegExp])[] = [
+  ['retry', /\.retry\s*\(\s*[1-9]/],
+  ['retry', /\bretryTimes\s*\(/],
+  ['retry', /\.retries\s*\(\s*[1-9]/],
+  ['timeout', /\b(?:jest|vi|test|this)\.setTimeout\s*\(/],
+  ['timeout', /\bthis\.timeout\s*\(\s*\d/],
+  ['timeout', /\btest\.slow\s*\(/],
+  ['timeout', /^\s*\}\s*,\s*\d{3,}\s*\)/],
+  ['sleep', /\bwaitForTimeout\s*\(/],
+  ['sleep', /\bcy\.wait\s*\(\s*\d/],
+  ['sleep', /\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*\d/],
+  ['sleep', /\b(?:sleep|delay|wait)\s*\(\s*\d/]
 ]
 
 /**
@@ -204,10 +207,18 @@ const callAround = (script: string, at: number): string => {
   return ''
 }
 
-/** True when a line of the script has a retry, a raised timeout or a fixed sleep. `start` is where the line starts in it. */
-const masks = (script: string, start: number, line: string): boolean =>
-  MASKS.some(mask => mask.test(line)) ||
-  [...line.matchAll(OPTION)].some(match => RUNNER.test(callAround(script, start + match.index)))
+/** The retry, raised timeout or fixed sleep a line of the script has, if any. `start` is where the line starts in it. */
+const maskOf = (script: string, start: number, line: string): Mask | undefined => {
+  const kind = MASKS.find(([, mask]) => mask.test(line))?.[0]
+
+  if (kind) return kind
+
+  const option = [...line.matchAll(OPTION)].find(match => RUNNER.test(callAround(script, start + match.index)))
+
+  if (!option) return undefined
+
+  return /^(?:retry|retries)\b/i.test(option[0]) ? 'retry' : 'timeout'
+}
 
 /** A line that is only a comment. Assertions shown in a comment are not run. */
 const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/
@@ -230,11 +241,11 @@ export const countTests = (file: string, text: string): TestFile => {
   const lines = text.split('\n')
   let start = 0
   const maskLines = script.split('\n').flatMap((line, index) => {
-    const found = masks(script, start, line)
+    const kind = maskOf(script, start, line)
 
     start += line.length + 1
 
-    return found ? [{ line: index + 1, text: (lines[index] ?? '').trim().slice(0, 80) }] : []
+    return kind ? [{ line: index + 1, text: (lines[index] ?? '').trim().slice(0, 80), kind }] : []
   })
 
   return {
@@ -289,6 +300,24 @@ const finding = (file: string, line: number, message: string, severity: Finding[
 
 const PERSON = 'If the tests changed on purpose, a person accepts it by running "pawl baseline".'
 
+/** How to fix each way a test file got weaker. The message of each finding says it, and it is the finding's fix. */
+const ADVICE = {
+  assertions: 'Put back the checks the tests made, with the values they pinned.',
+  skipped: 'Make the test pass instead of skipping it.',
+  gone: 'Bring the tests back, or move them to another file.',
+  retry: 'Find why the test fails now and then, and fix that instead of running it again.',
+  timeout:
+    'Find what the test waits for, and wait for that with an assertion that retries instead of giving it more time.',
+  sleep: 'Wait for what the test needs with an assertion that retries, instead of for a fixed time.'
+} as const
+
+/** A retry, a raised timeout and a fixed sleep, as a finding names them. */
+const MASK_NAMES: Record<Mask, string> = { retry: 'retry', timeout: 'raised timeout', sleep: 'fixed sleep' }
+
+/** How to fix a `pawl/no-weaker-tests` finding: the advice for what the test file lost or gained. */
+export const weakerTestsAdvice = (finding: Finding): string | undefined =>
+  finding.rule === WEAKER_TESTS ? Object.values(ADVICE).find(advice => finding.message.includes(advice)) : undefined
+
 /**
  * Compare the tests with the baseline. A file the baseline did not count has no floor yet. On a
  * check of the whole project, a counted test file that is gone fails too, unless test files the
@@ -323,7 +352,7 @@ export const weakerTests = (
         finding(
           test.file,
           1,
-          `This test file has ${plural(test.assertions, 'assertion')} where the baseline recorded ${recorded.assertions}. Put back the checks the tests made, with the values they pinned. ${PERSON}`,
+          `This test file has ${plural(test.assertions, 'assertion')} where the baseline recorded ${recorded.assertions}. ${ADVICE.assertions} ${PERSON}`,
           severity
         )
       )
@@ -335,7 +364,7 @@ export const weakerTests = (
           finding(
             test.file,
             skip.line,
-            `New skipped test ("${skip.text}"). Make the test pass instead of skipping it. ${PERSON}`,
+            `New skipped test ("${skip.text}"). ${ADVICE.skipped} ${PERSON}`,
             severity,
             recorded.skipped > 0 ? { overBaseline: { allowed: recorded.skipped, found: test.skipped } } : {}
           )
@@ -358,7 +387,7 @@ export const weakerTests = (
         finding(
           test.file,
           mask.line,
-          `A new retry, raised timeout or fixed sleep ("${mask.text}") can make a flaky test pass now and then instead of fixing it. Find what the test waits for and wait for that, with an assertion that retries. ${PERSON}`,
+          `A new ${MASK_NAMES[mask.kind]} ("${mask.text}") can make a flaky test pass now and then instead of fixing it. ${ADVICE[mask.kind]} ${PERSON}`,
           severity,
           allowed > 0 ? { overBaseline: { allowed, found: test.masks } } : {}
         )
@@ -388,7 +417,7 @@ export const weakerTests = (
       finding(
         file,
         1,
-        `A test file with ${plural(counts.assertions, 'assertion')} is gone, and no new test file has them. Bring the tests back, or move them to another file. ${PERSON}`,
+        `A test file with ${plural(counts.assertions, 'assertion')} is gone, and no new test file has them. ${ADVICE.gone} ${PERSON}`,
         severity
       )
     )

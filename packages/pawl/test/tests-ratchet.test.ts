@@ -109,7 +109,11 @@ describe('the ratchet', () => {
     skipped,
     skips: Array.from({ length: skipped }, (_, index) => ({ line: index + 10, text: 'it.skip' })),
     masks,
-    maskLines: Array.from({ length: masks }, (_, index) => ({ line: index + 20, text: 'await sleep(500)' }))
+    maskLines: Array.from({ length: masks }, (_, index) => ({
+      line: index + 20,
+      text: 'await sleep(500)',
+      kind: 'sleep' as const
+    }))
   })
   const baseline: Record<string, TestCounts> = {
     'src/a.test.ts': { assertions: 3, skipped: 0 },

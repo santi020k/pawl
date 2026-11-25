@@ -21,6 +21,7 @@ import { levelForFile, scanIgnores } from '../scans/scan.ts'
 import { type Finding, type Policy, type SetupIssue } from '../types.ts'
 import { isDirectory } from '../utils/fs.ts'
 import { mapAsync } from '../utils/list.ts'
+import { olderThan } from '../utils/semver.ts'
 import {
   applyBaseline,
   BASELINE_FILE,
@@ -34,6 +35,7 @@ import {
   writeBaseline
 } from './baseline.ts'
 import { ACCEPT_TRAILER, accepts, BASELINE_GROWTH, baselineGrowth, growthFinding } from './baseline-growth.ts'
+import { engineTitle } from './output.ts'
 import { type CheckResult, isBlocked } from './result.ts'
 import { scanTests, testCounts, weakerTests } from './tests.ts'
 
@@ -83,6 +85,23 @@ interface EngineOutcome {
   findings: Finding[]
   setup: SetupIssue[]
   commands: string[]
+}
+
+/**
+ * The setup problem for an engine older than this pawl works with, or undefined. Such an engine
+ * stops on the config pawl gives it, with pages of errors about rules and options it does not know,
+ * so it does not run, and one line says what to do. A newer one runs; the doctor reports it.
+ */
+const outdated = (engine: Engine, root: string): SetupIssue | undefined => {
+  const installed = engine.version(root)
+
+  if (engine.range === undefined || installed === undefined || !olderThan(installed, engine.range)) return undefined
+
+  return {
+    code: 'engine-failed',
+    message: `${engineTitle(engine.name)} did not run: ${engine.packageName} ${installed} is installed, older than the versions this pawl works with (${engine.range}).`,
+    fix: 'Run "pawl upgrade" to install a version pawl works with.'
+  }
 }
 
 /** Run one engine. An engine that cannot run is a setup problem, so the other engines still report. */
@@ -209,7 +228,14 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
   if (unreadable) setup.push(unreadable)
 
   setup.push(...lockIssues(policy))
-  if (!idle && project.tools.biome && project.tools.eslint) {
+
+  const active = activeEngines(project.tools)
+  // An engine that is too old cannot read the config pawl gives it, so nothing asks it anything.
+  const tooOld = new Map(
+    active.map(engine => [engine.name, engine.installed(root) ? outdated(engine, root) : undefined])
+  )
+
+  if (!idle && project.tools.biome && project.tools.eslint && !tooOld.get('eslint')) {
     const ownership = await formatterOwnership(
       project,
       (scoped?.files ?? repoFiles()).filter(file => !ignored(file))
@@ -230,8 +256,6 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
     gitignore: policy.gitignore
   }
 
-  const active = activeEngines(project.tools)
-
   engines.push(...active.flatMap(engine => (engine.name === 'prettier' ? [] : [engine.name])))
 
   // A check only reads, so its engines run at the same time. A fix writes files that the next
@@ -243,6 +267,10 @@ export const check = async (options: CheckOptions): Promise<CheckResult> => {
       const state = engine.inspect(project)
 
       if (!engine.installed(root)) return { findings: [], setup: [...state.issues, engine.missing], commands: [] }
+
+      const old = tooOld.get(engine.name)
+
+      if (old) return { findings: [], setup: [...state.issues, old], commands: [] }
 
       if (idle || noTargets || !state.runnable) return { findings: [], setup: state.issues, commands: [] }
 

@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -95,7 +95,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm workspace
         uses: santi020k/quality/actions/setup-pnpm@b456ccc07a80cac227cc314be16c8309557ea8e6 # v2.1.0
@@ -135,7 +135,7 @@ jobs:
         run: git config --global core.autocrlf false
 
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm workspace
         uses: santi020k/quality/actions/setup-pnpm@b456ccc07a80cac227cc314be16c8309557ea8e6 # v2.1.0

@@ -83,7 +83,8 @@ describe('ESLint messages without a rule', () => {
   { files: ['**/*.js'], linterOptions: { reportUnusedDisableDirectives: 'warn' }, rules: { 'no-console': 'error' } }
 ]
 `,
-      'src/unused.js': '// eslint-disable-next-line no-console\nexport const value = 1\n',
+      // Joined, so pawl's check of its own code does not take it for a new disable comment.
+      'src/unused.js': `${['//', 'eslint-disable-next-line', 'no-console'].join(' ')}\nexport const value = 1\n`,
       'src/broken.js': 'export const = 1\n'
     })
 

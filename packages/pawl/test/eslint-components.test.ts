@@ -3,8 +3,8 @@ import { ESLint, type Linter } from 'eslint'
 import { describe, expect, it } from 'vitest'
 import { eslintPlan, mergeLayers } from '../src/index.ts'
 import { type PolicyInput } from '../src/types.ts'
-import { pluginRoot } from './fixtures/eslint/plugins.ts'
 import { toList } from '../src/utils/list.ts'
+import { pluginRoot } from './fixtures/eslint/plugins.ts'
 import { project, write } from './helpers.ts'
 
 // The scripts of a component hold the same mistakes as any script. Each one is valid otherwise:

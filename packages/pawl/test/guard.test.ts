@@ -209,6 +209,24 @@ describe('the guard before an agent tool runs', () => {
       expect(decide(repo, bash(repo, command)), command).toEqual({})
   })
 
+  it('follows a cd before a write, and checks a write after a subshell from both folders', () => {
+    const repo = project({ '.pawl/baseline.json': { findings: {} }, 'src/index.ts': 'export {}\n' })
+    const finding = (command: string) => guardFinding(repo, { host: 'claude', files: [], command, cwd: repo })
+
+    for (const command of [
+      "cd .pawl && printf '{}' > baseline.json",
+      'cd .pawl; rm baseline.json',
+      'pushd .pawl && tee baseline.json < /dev/null',
+      'cd src && cd ../.pawl && truncate -s 0 baseline.json',
+      "(cd src) && printf '{}' > .pawl/baseline.json",
+      'cd .pawl && git restore .'
+    ])
+      expect(finding(command)?.files, command).toContain('.pawl/baseline.json')
+
+    for (const command of ["cd src && printf '{}' > baseline.json", 'cd .pawl && cat baseline.json'])
+      expect(finding(command), command).toBeUndefined()
+  })
+
   it('reads no other payload as one before a tool', () => {
     for (const text of [
       JSON.stringify({

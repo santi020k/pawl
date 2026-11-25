@@ -364,20 +364,66 @@ const writtenBy = (command: ShellCommand): string[] => {
   return files
 }
 
+const absolute = (from: string, file: string): string => {
+  const name = slashes(file)
+
+  return isAbsolute(name) ? name : resolve(from, name)
+}
+
+/**
+ * The folder a `cd` or `pushd` moves to, or undefined when the guard cannot tell, as for `cd`
+ * alone, `cd -`, `cd ~` or a folder named by a variable: the commands after it keep the folder
+ * before it.
+ */
+const changedDirectory = (from: string, command: ShellCommand): string | undefined => {
+  const { name, args } = programOf(command.words)
+
+  if (name !== 'cd' && name !== 'pushd') return undefined
+
+  const [target] = operands(args)
+
+  return target === undefined || /^[~$]/.test(target) || target.includes('$') ? undefined : resolve(from, target)
+}
+
+/**
+ * The files the commands write, each resolved from every folder a `cd` before it could have left the
+ * shell in. The guard does not follow subshells, so `(cd src) && ...` may or may not have moved; it
+ * checks the write from each folder, which can only ask more, never less.
+ */
+const commandWrites = (top: string, base: string, commands: readonly ShellCommand[]): string[] => {
+  const files: string[] = []
+  const folders = new Set([base])
+  let cwd = base
+
+  for (const command of commands) {
+    for (const folder of folders) {
+      files.push(...writtenBy(command).map(file => absolute(folder, file)))
+      files.push(...gitPathspecs(command).flatMap(pathspec => coveredBy(top, folder, pathspec)))
+    }
+
+    const next = changedDirectory(cwd, command)
+
+    if (next !== undefined) {
+      cwd = next
+      folders.add(next)
+    }
+  }
+
+  return files
+}
+
 /** What a tool call would change that the guard hands to a person, or undefined for anything else. */
 export const guardFinding = (root: string, payload: GuardPayload): GuardFinding | undefined => {
   const top = repositoryRoot(root)
   const base = payload.cwd ?? root
   const commands = payload.command === undefined ? [] : shellCommands(payload.command)
   const named = [
-    ...payload.files,
-    ...commands.flatMap(writtenBy),
-    ...commands.flatMap(gitPathspecs).flatMap(pathspec => coveredBy(top, base, pathspec)),
-    ...matches(payload.command ?? '', PATCH_FILES)
+    ...payload.files.map(file => absolute(base, file)),
+    ...commandWrites(top, base, commands),
+    ...matches(payload.command ?? '', PATCH_FILES).map(file => absolute(base, file))
   ]
-  const files = named.flatMap(file => {
-    const name = slashes(file)
-    const path = projectPath(top, isAbsolute(name) ? name : resolve(base, name))
+  const files = named.flatMap(name => {
+    const path = projectPath(top, name)
 
     if (path === undefined) return []
 

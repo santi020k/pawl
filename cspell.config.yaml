@@ -31,6 +31,7 @@ words:
   - distroless
   - Dockerfiles
   - endgroup
+  - ERESOLVE
   - errorformat
   - esbuild
   - extglob

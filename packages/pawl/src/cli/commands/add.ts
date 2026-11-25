@@ -33,7 +33,7 @@ export const runAdd = async (root: string, names: string[], flags: Flags): Promi
 
       out(style.dim('Dry run. Nothing was changed.'))
     } else {
-      endDryRun(plan.notes)
+      endDryRun(plan.notes, plan.actions.length > 0 || plan.install !== undefined)
     }
 
     return EXIT_OK

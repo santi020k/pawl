@@ -12,9 +12,16 @@ export const printNotes = (notes: readonly string[]): void => {
   for (const note of notes) out(`Note: ${note}`)
 }
 
-/** End a dry run: the notes, and the reminder that nothing was written. */
-export const endDryRun = (notes: readonly string[]): void => {
-  out(['', ...notes.map(note => `Note: ${note}`), '', 'Dry run. Nothing was changed.'].join('\n'))
+/**
+ * End a dry run: the notes, and the reminder that nothing was written. A blank line sets each
+ * part off from the one before it, and none comes first when nothing was printed before.
+ */
+export const endDryRun = (notes: readonly string[], printed = true): void => {
+  const lines = notes.map(note => `Note: ${note}`)
+
+  out(
+    [...(printed ? [''] : []), ...lines, ...(lines.length > 0 ? [''] : []), 'Dry run. Nothing was changed.'].join('\n')
+  )
 }
 
 /** The programs an install command runs, one after the other: one, or two joined by `&&`. */

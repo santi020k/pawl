@@ -14,7 +14,9 @@ export const runUpgrade = async (root: string, flags: Flags): Promise<number> =>
   const { rich, style, sym } = term
 
   for (const upgrade of plan.upgrades) {
-    const line = `${upgrade.name} ${upgrade.installed} is outside ${upgrade.wanted}: installing ${upgrade.spec}`
+    const packages = upgrade.where.filter(dir => dir !== '')
+    const where = packages.length > 0 ? ` in ${upgrade.where.map(dir => dir || 'the root').join(', ')}` : ''
+    const line = `${upgrade.name} ${upgrade.installed} is outside ${upgrade.wanted}: installing ${upgrade.spec}${where}${upgrade.major ? ', a new major version' : ''}`
 
     out(rich ? `${style.yellow('~')} ${line}` : line)
   }
@@ -27,7 +29,10 @@ export const runUpgrade = async (root: string, flags: Flags): Promise<number> =>
 
       out(style.dim('Dry run. Nothing was changed. "pawl sync --dry-run" shows the config files a sync would write.'))
     } else {
-      endDryRun([...plan.notes, '"pawl sync --dry-run" shows the config files a sync would write.'])
+      endDryRun(
+        [...plan.notes, '"pawl sync --dry-run" shows the config files a sync would write.'],
+        plan.upgrades.length > 0 || plan.install !== undefined
+      )
     }
 
     return EXIT_OK

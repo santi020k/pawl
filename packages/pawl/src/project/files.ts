@@ -64,15 +64,24 @@ const gitFiles = (root: string, [command, ...args]: [string, ...string[]]): stri
  * Files changed against HEAD, plus untracked ones. In a repository with no commit yet,
  * that is every file. Undefined outside a git repository, where nothing can say what changed:
  * the caller then looks at every file, because an empty list would pass a check without running it.
+ *
+ * While git runs the hooks of a commit, which it tells with `GIT_INDEX_FILE`, they are the files the
+ * commit changes: an untracked file, or a change that is not staged, is not part of it, and must
+ * not stop it.
  */
-export const changedFiles = (root: string): string[] | undefined => {
+export const changedFiles = (
+  root: string,
+  env: Readonly<Record<string, string | undefined>> = process.env
+): string[] | undefined => {
   let files: string[]
 
   try {
-    files = [
-      ...gitFiles(root, ['diff', '--name-only', '--diff-filter=d', 'HEAD', '--relative']),
-      ...gitFiles(root, ['ls-files', '--others', '--exclude-standard'])
-    ]
+    files = env.GIT_INDEX_FILE
+      ? gitFiles(root, ['diff', '--cached', '--name-only', '--diff-filter=d', '--relative'])
+      : [
+          ...gitFiles(root, ['diff', '--name-only', '--diff-filter=d', 'HEAD', '--relative']),
+          ...gitFiles(root, ['ls-files', '--others', '--exclude-standard'])
+        ]
   } catch {
     try {
       files = gitFiles(root, ['ls-files', '--cached', '--others', '--exclude-standard'])

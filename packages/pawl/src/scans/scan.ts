@@ -53,6 +53,8 @@ export type Report = (rule: string, line: number, column: number, detail?: strin
 export interface Scan {
   /** The files it reads, in words, such as "Markdown files". */
   reads: string
+  /** The page of pawl's docs about its rules, from the root of the site, such as `/guide/guards/#markdown-files`. */
+  docs: string
   rules: readonly OwnRule[]
   matches: (file: string) => boolean
   /**

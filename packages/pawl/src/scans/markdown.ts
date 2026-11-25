@@ -252,6 +252,7 @@ const checkInvalidLabelRefs = (prose: readonly (string | undefined)[], report: R
 /** The scan of Markdown files. */
 export const markdown: Scan = {
   reads: 'Markdown files',
+  docs: '/guide/guards/#markdown-files',
   rules: MARKDOWN_RULES,
   matches: isMarkdownFile,
   scan: (_file, text, report) => {

@@ -2,7 +2,7 @@ import { OXLINT_CONFIG_FILE } from '../../project/config-files.ts'
 import { PEER_RANGES } from '../../version.ts'
 import { type Engine } from '../engine.ts'
 import { checkOxlintConfig, oxlintContextFor, TYPE_AWARE_PACKAGE, tsgolintInstalled } from './config.ts'
-import { oxlintInstalled, runOxlint } from './run.ts'
+import { oxlintInstalled, oxlintVersion, runOxlint } from './run.ts'
 
 /** Oxlint lints, when the policy names it. */
 export const oxlint: Engine = {
@@ -11,6 +11,7 @@ export const oxlint: Engine = {
   range: PEER_RANGES.oxlint,
   active: tools => tools.linter === 'oxlint',
   installed: oxlintInstalled,
+  version: oxlintVersion,
   missing: {
     code: 'oxlint-missing',
     message: 'This project lints with Oxlint, but Oxlint is not installed.',

@@ -2,6 +2,7 @@
 import { mkdirSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { check } from '../src/check/check.ts'
 import { formatGithub, formatSarif } from '../src/check/ci-output.ts'
 import {
   codeFrame,
@@ -15,7 +16,7 @@ import { type CheckResult, exitCode } from '../src/check/result.ts'
 import { defaultFormat, workspaceBase } from '../src/cli/commands/check.ts'
 import { type Finding } from '../src/types.ts'
 import { createStyle, stripAnsi, symbols } from '../src/utils/terminal.ts'
-import { project } from './helpers.ts'
+import { link, project } from './helpers.ts'
 
 const result = (findings: Finding[], extra: Partial<CheckResult> = {}): CheckResult => ({
   findings,
@@ -391,6 +392,60 @@ describe('SARIF', () => {
     ])
     expect(run.results[0].properties).toEqual({ overBaseline: { allowed: 1, found: 2 } })
     expect(run.results[0].message.text).toBe('Unexpected any.')
+  })
+
+  it("describes pawl's own rules as it does those of the catalog", async () => {
+    const root = project({
+      'package.json': { name: 'fixture', private: true, type: 'module' },
+      'biome.json': { extends: ['@santi020k/pawl/biome'] },
+      'AGENTS.md': '# Agents\n\nFollow\u200b the rules.\n',
+      'docs/guide.md': '# Guide\n\nSee [the docs]().\n',
+      Dockerfile: 'FROM node:latest\nUSER node\n',
+      'src/a.test.js': "import { expect, it } from 'vitest'\n\nit('adds', () => {\n  expect(1 + 1).toBe(2)\n})\n",
+      '.pawl/baseline.json': {
+        version: 1,
+        findings: {},
+        suppressions: {},
+        tests: { 'src/a.test.js': { assertions: 2, skipped: 0, masks: 0 } }
+      }
+    })
+
+    link(root)
+
+    const checked = await check({ root })
+    const [run] = parse(formatSarif(checked)).runs
+    const rules = new Map(run.tool.driver.rules.map((rule: { id: string }) => [rule.id, rule]))
+
+    expect(rules.get('pawl/no-hidden-characters')).toEqual({
+      id: 'pawl/no-hidden-characters',
+      shortDescription: { text: 'A character that does not show on screen is in the text.' },
+      help: { text: expect.stringContaining('Delete it') },
+      helpUri: 'https://pawl.santi020k.com/guide/guards/#hidden-characters',
+      properties: { tags: ['pawl'] }
+    })
+    expect(rules.get('pawl/markdown-no-empty-links')).toMatchObject({
+      shortDescription: { text: 'A link has no destination.' },
+      help: { text: 'Add the URL the link points to, or remove the link.' },
+      helpUri: 'https://pawl.santi020k.com/guide/guards/#markdown-files'
+    })
+    expect(rules.get('pawl/docker-pin-image')).toMatchObject({
+      shortDescription: { text: 'A base image has no version, or uses "latest".' },
+      help: { text: 'Name a version, such as node:22-slim, so builds repeat.' },
+      helpUri: 'https://pawl.santi020k.com/guide/guards/#dockerfiles-and-compose-files'
+    })
+    expect(rules.get('pawl/no-weaker-tests')).toMatchObject({
+      shortDescription: { text: expect.stringContaining('assertions') },
+      help: { text: expect.any(String) },
+      helpUri: 'https://pawl.santi020k.com/reference/rules/'
+    })
+    const own = run.results.filter((each: { ruleId: string }) => each.ruleId.startsWith('pawl/'))
+
+    expect(own.map((each: { ruleId: string; level: string }) => `${each.ruleId} ${each.level}`).sort()).toEqual([
+      'pawl/docker-pin-image warning',
+      'pawl/markdown-no-empty-links error',
+      'pawl/no-hidden-characters error',
+      'pawl/no-weaker-tests error'
+    ])
   })
 
   it('reports setup problems and the warning limit as notifications, and a check that did not complete', () => {

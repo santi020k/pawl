@@ -1,6 +1,7 @@
 /** `pawl init`: choose the tools, show the plan, write it, install, and record the first baseline. */
 
 import { BASELINE_FILE } from '../../check/baseline.ts'
+import { unparsedNote } from '../../check/output.ts'
 import { EXIT_OK, EXIT_SETUP } from '../../check/result.ts'
 import { describe, detect } from '../../project/detect.ts'
 import {
@@ -9,7 +10,7 @@ import {
   type InitMode,
   type InitPlan,
   planInit,
-  recordBaseline
+  recordInitBaseline
 } from '../../setup/init.ts'
 import { applyPlan, type SetupAction } from '../../setup/plan.ts'
 import { type EngineName, type FormatterName } from '../../types.ts'
@@ -284,15 +285,18 @@ export const runInit = async (
   const status = plan.baseline === false ? undefined : ui?.spinner(`Recording the baseline${term.sym.ellipsis}`)
 
   try {
-    const baselined = await recordBaseline(root, plan)
+    const recorded = await recordInitBaseline(root, plan)
 
-    if (baselined === undefined) {
+    if (recorded === undefined) {
       status?.stop(`Kept the baseline in ${BASELINE_FILE}`)
     } else {
-      const line = `${plural(baselined, 'existing finding')} recorded in ${BASELINE_FILE}. New ones will fail the check.`
+      const line = `${plural(recorded.baselined, 'existing finding')} recorded in ${BASELINE_FILE}. New ones will fail the check.`
+      const unparsed = unparsedNote(recorded.unparsed)
 
       if (status) status.stop(`Baseline: ${line}`)
       else out(`Baseline: ${line}`)
+
+      if (unparsed.length > 0) out(unparsed.join('\n'))
     }
   } catch (error) {
     const message = `Could not record the baseline: ${(error as Error).message}`

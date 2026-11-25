@@ -35,6 +35,6 @@ These did not land in 0.6.0 and go to a later release. Sizes are relative: S is 
 
 ## Closing the release
 
-- [ ] Run `pnpm version-packages`, commit, then `pnpm release:check`.
+- [x] Run `pnpm version-packages`, commit, then `pnpm release:check`.
 - [ ] Open the pull request with `gh pr create --template release.md`.
 - [ ] After the Release run is green, check npm and GitHub, then delete the branch and this file.

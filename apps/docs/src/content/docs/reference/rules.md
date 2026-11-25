@@ -279,5 +279,5 @@ Checked by pawl itself, on top of the engines.
 | `pawl/format`             | The file is not formatted to the standard.                                                               | error |            |           |
 | `pawl/organize-imports`   | Imports are not sorted.                                                                                  | error |            |           |
 | `pawl/no-new-disable`     | No new comments that switch a check off.                                                                 | error |            | guardrail |
-| `pawl/no-weaker-tests`    | No test file losing assertions or gaining skipped tests.                                                 | error |            | guardrail |
+| `pawl/no-weaker-tests`    | No test file losing assertions, or gaining skipped tests, retries, raised timeouts or fixed sleeps.      | error |            | guardrail |
 | `pawl/no-baseline-growth` | No baseline that allows more than the one on the base branch, with --since, unless a person accepted it. | error |            | guardrail |

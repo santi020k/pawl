@@ -4,6 +4,7 @@ import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
 import {
+  binVersion,
   EngineError,
   type EngineRun,
   parseReport,
@@ -32,6 +33,9 @@ const BIN = { packageName: 'eslint', bin: 'eslint', fallback: 'bin/eslint.js' }
 
 /** ESLint is installed in the project. Pawl never brings its own. */
 export const eslintInstalled = (root: string): boolean => resolveBin(root, BIN) !== undefined
+
+/** The version of the ESLint that would run. */
+export const eslintVersion = (root: string): string | undefined => binVersion(root, BIN)
 
 // Zero is a position too: ESLint passes on a parse error's column as the parser counts it, and the
 // YAML and GraphQL parsers count from 0. The finding moves it to 1.

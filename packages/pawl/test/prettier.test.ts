@@ -190,13 +190,15 @@ describe('a file the real Prettier cannot parse', { timeout: 60_000 }, () => {
     }
   })
 
-  it('is recorded by the baseline, and reported to an agent with no fix to run', async () => {
+  it('is never accepted by the baseline, and reported to an agent with no fix to run', async () => {
     const result = await check({ root: fixture() })
     const { findings } = result
     const parse = findings.filter(finding => finding.rule === 'prettier:parse')
+    const earlier = { version: 1 as const, findings: { 'src/broken.ts': { 'prettier:parse': 1 } }, suppressions: {} }
 
-    expect(createBaseline(parse, []).findings).toEqual({ 'src/broken.ts': { 'prettier:parse': 1 } })
-    expect(applyBaseline(parse, createBaseline(parse, [])).fresh).toEqual([])
+    // Prettier checked nothing in a file it cannot parse, so the file must keep failing until it parses.
+    expect(createBaseline(parse, []).findings).toEqual({})
+    expect(applyBaseline(parse, earlier).fresh).toEqual(parse)
 
     const [line] = formatAgent({ ...result, findings: parse, setup: [] })
       .split('\n')

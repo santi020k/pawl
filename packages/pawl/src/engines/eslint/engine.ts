@@ -1,6 +1,6 @@
 import { PEER_RANGES } from '../../version.ts'
 import { type Engine } from '../engine.ts'
-import { eslintInstalled, runEslint } from './run.ts'
+import { eslintInstalled, eslintVersion, runEslint } from './run.ts'
 
 /**
  * ESLint lints, or runs next to Biome or Oxlint for what only a plugin can check.
@@ -12,6 +12,7 @@ export const eslint: Engine = {
   range: PEER_RANGES.eslint,
   active: tools => tools.eslint,
   installed: eslintInstalled,
+  version: eslintVersion,
   missing: {
     code: 'eslint-missing',
     message: 'This project is set up to run ESLint, but ESLint is not installed.',

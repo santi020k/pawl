@@ -1,12 +1,20 @@
 /** `pawl check`, `pawl fix` and `pawl baseline`: run the engines, then report or record what they found. */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { BASELINE_FILE } from '../../check/baseline.ts'
 import { type CheckOptions, type CheckProgress, check } from '../../check/check.ts'
-import { engineTitle, format, type OutputFormat, type RichOptions } from '../../check/output.ts'
-import { type CheckResult, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
+import { engineTitle, format, type OutputFormat, type RichOptions, unparsedNote } from '../../check/output.ts'
+import { type CheckResult, EXIT_FINDINGS, EXIT_OK, EXIT_SETUP, exitCode, isBlocked } from '../../check/result.ts'
+import {
+  BIOME_CONFIG_FILES,
+  ESLINT_CONFIG_FILES,
+  hasAny,
+  OXLINT_CONFIG_FILES,
+  PAWL_CONFIG_FILES
+} from '../../project/config-files.ts'
 import { projectPath } from '../../project/files.ts'
+import { ancestors } from '../../utils/fs.ts'
 import { plural } from '../../utils/text.ts'
 import { assertHookFlags, type Flags, formatFromEnv, inCi, maxWarnings, outputFormat, sinceRef } from '../args.ts'
 import { type Terminal, terminal } from '../audience.ts'
@@ -102,7 +110,7 @@ const runStopHook = async (root: string, payload: StopPayload, fix: boolean): Pr
  * is left in the shape its host reads back. Nothing to say means no output and exit code 0. A
  * stop event runs the stop hook instead.
  */
-const runHook = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
+const runHook = async (root: string, cwd: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
   assertHookFlags(flags, files)
 
   const text = await readStdin()
@@ -110,7 +118,8 @@ const runHook = async (root: string, files: string[], flags: Flags, fix: boolean
   const guard = readGuardPayload(text, { copilot: !fix })
 
   if (guard) {
-    const reply = guardReply(guard, guardFinding(root, guard))
+    // The guard finds the top of the repository itself, and reads a relative path from where the hook started.
+    const reply = guardReply(guard, guardFinding(cwd, guard))
 
     if (reply) out(reply)
 
@@ -122,7 +131,7 @@ const runHook = async (root: string, files: string[], flags: Flags, fix: boolean
   if (stop) return runStopHook(root, stop, fix)
 
   const payload = readPayload(text)
-  const edited = hookFiles(root, payload)
+  const edited = hookFiles(root, { ...payload, cwd: payload.cwd ?? cwd })
 
   if (edited.length === 0) return EXIT_OK
 
@@ -234,8 +243,40 @@ export const defaultFormat = (
   return env.GITHUB_ACTIONS === 'true' ? 'github' : 'pretty'
 }
 
-export const runCheck = async (root: string, files: string[], flags: Flags, fix: boolean): Promise<number> => {
-  if (flags.hook === true) return runHook(root, files, flags, fix)
+/** What marks the folder pawl runs from: its policy, its baseline, or a config of an engine it runs. */
+const ROOT_FILES = [
+  ...PAWL_CONFIG_FILES,
+  BASELINE_FILE,
+  ...BIOME_CONFIG_FILES,
+  ...OXLINT_CONFIG_FILES,
+  ...ESLINT_CONFIG_FILES
+]
+
+/**
+ * The folder a check runs from: the one pawl started in, or, when that has none of pawl's files,
+ * the nearest folder above it in the same git repository that has. In a package of a monorepo, or
+ * in a folder such as src, that is the root, where pawl runs once and covers every package.
+ * Outside a git repository, the folder pawl started in.
+ */
+export const checkRoot = (cwd: string): string => {
+  for (const dir of ancestors(cwd)) {
+    if (hasAny(dir, ROOT_FILES)) return dir
+
+    if (existsSync(join(dir, '.git'))) break
+  }
+
+  return cwd
+}
+
+/**
+ * `pawl check` and `pawl fix`, started in `cwd`. The files named are relative to `cwd`; the check
+ * runs from the root `checkRoot` finds.
+ */
+export const runCheck = async (cwd: string, named: string[], flags: Flags, fix: boolean): Promise<number> => {
+  const root = checkRoot(cwd)
+  const files = named.map(file => resolve(cwd, file))
+
+  if (flags.hook === true) return runHook(root, cwd, named, flags, fix)
 
   const term = terminal()
   const ci = flags.ci === true || inCi(process.env.CI)
@@ -279,9 +320,9 @@ export const runCheck = async (root: string, files: string[], flags: Flags, fix:
   return exitCode(result, ci)
 }
 
-export const runBaseline = async (root: string): Promise<number> => {
+export const runBaseline = async (cwd: string): Promise<number> => {
   const term = terminal()
-  const { result } = await checkWithSpinner(term, { root, updateBaseline: true }, 'Recording')
+  const { result } = await checkWithSpinner(term, { root: checkRoot(cwd), updateBaseline: true }, 'Recording')
   const { style, sym } = term
 
   if (isBlocked(result.setup)) {
@@ -292,8 +333,16 @@ export const runBaseline = async (root: string): Promise<number> => {
   }
 
   const line = `Baseline updated: ${plural(result.baselined, 'finding')} recorded in ${BASELINE_FILE}.`
+  const unparsed = unparsedNote(result.findings)
 
   out(term.rich ? `${style.accent(sym.tick)} ${line}` : line)
 
-  return EXIT_OK
+  if (unparsed.length === 0) return EXIT_OK
+
+  // A file that does not parse was not checked, so its parse errors still fail the check.
+  const [header = '', ...files] = unparsed
+
+  out([term.rich ? `${style.red(sym.cross)} ${header}` : header, ...files].join('\n'))
+
+  return EXIT_FINDINGS
 }

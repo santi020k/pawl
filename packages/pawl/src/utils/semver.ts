@@ -105,20 +105,47 @@ const test = (version: string, comparator: string): boolean => {
   }
 }
 
-/** True when a version is in a range. A range pawl cannot read is never satisfied. */
-export const satisfies = (version: string, range: string): boolean => {
-  if (!parse(version)) return false
-
-  return range.split('||').some(alternative => {
+/** The comparators of each alternative of a range, or undefined for one pawl cannot read. */
+const alternatives = (range: string): (string[] | undefined)[] =>
+  range.split('||').map(alternative => {
     // "1.2.3 - 2.0.0" is a hyphen range.
     const hyphen = /^\s*(\S+)\s+-\s+(\S+)\s*$/.exec(alternative)
     const terms = hyphen ? [`>=${hyphen[1]}`, `<=${hyphen[2]}`] : alternative.trim().split(/\s+/)
     const comparators = terms.map(expand)
 
-    if (comparators.some(list => list === undefined)) return false
-
-    return comparators.flat().every(comparator => test(version, comparator as string))
+    return comparators.some(list => list === undefined) ? undefined : (comparators.flat() as string[])
   })
+
+/** True when a version is in a range. A range pawl cannot read is never satisfied. */
+export const satisfies = (version: string, range: string): boolean => {
+  if (!parse(version)) return false
+
+  return alternatives(range).some(comparators => comparators?.every(comparator => test(version, comparator)))
+}
+
+/** True when a comparator sets a floor the version is under: `>=2.0.0` or `=2.0.0` for 1.9.0. */
+const underFloor = (version: string, comparator: string): boolean => {
+  const match = /^(>=|>|=)(.+)$/.exec(comparator)
+
+  if (!match) return false
+
+  return match[1] === '=' ? compare(version, match[2] as string) < 0 : !test(version, comparator)
+}
+
+/**
+ * True when a version is older than every version a range allows, such as 2.5.0 for `2.6.8` or
+ * 9.30.0 for `>=9.35.0`. A version above the range, such as 2.6.9 for `2.6.8`, is not, nor is
+ * one in it. A version or range pawl cannot read is never older.
+ */
+export const olderThan = (version: string, range: string): boolean => {
+  if (!parse(version)) return false
+
+  const each = alternatives(range)
+
+  return (
+    each.length > 0 &&
+    each.every(comparators => comparators?.some(comparator => underFloor(version, comparator)) === true)
+  )
 }
 
 /**

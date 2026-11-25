@@ -228,6 +228,7 @@ const isBinary = (text: string): boolean => text.includes('\u0000')
 
 export const hiddenScan: Scan = {
   reads: 'agent instructions, skills and settings, code, and docs',
+  docs: '/guide/guards/#hidden-characters',
   rules: HIDDEN_RULES,
   matches: file => isAgentFile(file) || TEXT_FILE.test(file),
   // The default ignores skip the folders AI tools keep, which is where a poisoned rules file goes.

@@ -40,7 +40,11 @@ const SECTIONS: readonly HelpSection[] = [
     title: 'Options for check and fix',
     commands: ['check', 'fix'],
     rows: [
-      row('--changed', 'Only files changed against HEAD, plus untracked ones', '(every file outside a git repository)'),
+      row(
+        '--changed',
+        'Only files changed against HEAD, plus untracked ones',
+        "(every file outside a git repository, and the commit's files in its hooks)"
+      ),
       row('--since <ref>', 'Only files changed since the branch left <ref>, such as origin/main'),
       row('--format <kind>', 'pretty, agent, editor, github, sarif or json (see Output below)'),
       row('--ci', 'Also fail when the setup has drifted from the policy'),

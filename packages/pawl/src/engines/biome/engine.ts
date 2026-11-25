@@ -1,7 +1,7 @@
 import { PACKAGE_NAME } from '../../version.ts'
 import { type Engine } from '../engine.ts'
 import { BIOME_PRESET, BIOME_VERSION } from './config.ts'
-import { biomeInstalled, runBiome } from './run.ts'
+import { biomeInstalled, biomeVersion, runBiome } from './run.ts'
 import {
   biomeContextFor,
   checkBiomeConfig,
@@ -20,6 +20,7 @@ export const biome: Engine = {
   range: BIOME_VERSION,
   active: tools => tools.biome,
   installed: biomeInstalled,
+  version: biomeVersion,
   missing: {
     code: 'biome-missing',
     message: 'This project uses Biome, but Biome is not installed.',

@@ -5,6 +5,7 @@ import { type Finding } from '../../types.ts'
 import { toPosix } from '../../utils/fs.ts'
 import { isRecord } from '../../utils/json.ts'
 import {
+  binVersion,
   EngineError,
   type EngineRun,
   parseReport,
@@ -19,6 +20,9 @@ const BIN = { packageName: '@biomejs/biome', bin: 'biome', fallback: 'bin/biome'
 
 /** Biome is installed in the project, or beside pawl itself. */
 export const biomeInstalled = (root: string): boolean => resolveBin(root, BIN) !== undefined
+
+/** The version of the Biome that would run. */
+export const biomeVersion = (root: string): string | undefined => binVersion(root, BIN)
 
 interface BiomeDiagnostic {
   severity: string

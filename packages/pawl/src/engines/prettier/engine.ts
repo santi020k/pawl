@@ -1,7 +1,7 @@
 import { PEER_RANGES } from '../../version.ts'
 import { type Engine } from '../engine.ts'
 import { checkPrettierConfig } from './config.ts'
-import { prettierInstalled, runPrettier } from './run.ts'
+import { prettierInstalled, prettierVersion, runPrettier } from './run.ts'
 
 /** Prettier formats, when the project chose it. It runs without a config file too. */
 export const prettier: Engine = {
@@ -10,6 +10,7 @@ export const prettier: Engine = {
   range: PEER_RANGES.prettier,
   active: tools => tools.formatter === 'prettier',
   installed: prettierInstalled,
+  version: prettierVersion,
   missing: {
     code: 'prettier-missing',
     message: 'This project formats with Prettier, but Prettier is not installed.',

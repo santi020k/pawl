@@ -67,6 +67,12 @@ const TS_FILES = ['**/*.{ts,mts,cts,tsx}']
  */
 const SCRIPT_HOSTS: ReadonlySet<string> = new Set(['vue', 'svelte'])
 
+/**
+ * The packs whose parser reads the scripts of a component: a `.vue`, `.svelte` or `.astro` file.
+ * The standard's rules for scripts reach those scripts through it.
+ */
+const COMPONENT_HOSTS: ReadonlySet<string> = new Set(['vue', 'svelte', 'astro'])
+
 export interface EslintPlan {
   config: FlatConfig[]
   /** Rules left to Biome because it enforces them faster. */
@@ -495,6 +501,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
   ]
   const config: FlatConfig[] = [{ name: 'pawl/ignores', ignores }]
   const tseslint = ts.module
+  const globals = await globalsFor(root, options.runtimes ?? ['node', 'browser'])
   const otherPlugins = Object.fromEntries(
     [...plugins].flatMap(([prefix, loaded]) => (prefix !== TS_PREFIX && loaded.module ? [[prefix, loaded.module]] : []))
   )
@@ -505,7 +512,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: await globalsFor(root, options.runtimes ?? ['node', 'browser']),
+      globals,
       parserOptions: { ecmaFeatures: { jsx: true } }
     },
     linterOptions: { reportUnusedDisableDirectives: 'warn' },
@@ -528,7 +535,84 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
     notEnforced.push({ rule: 'TypeScript files', needs: needs('typescript-eslint', ts) })
   }
 
+  config.push(...componentConfigs(build, otherPlugins, globals))
+
   return config
+}
+
+/** The component files a pack's parser reads, within the files the integration gives the pack. */
+const componentFiles = (pack: Pack, options: EslintPlanOptions): Array<string | string[]> => {
+  const explicit = options.packFiles?.[pack.name]?.map(toEngineGlob)
+  const own = pack.files ?? []
+
+  return explicit ? own.flatMap(file => explicit.map(pattern => [file, pattern])) : own
+}
+
+/** The component files of the packs that are on, which ESLint reads through the framework's parser. */
+const activeComponentFiles = (packs: readonly string[], options: EslintPlanOptions): Array<string | string[]> =>
+  PACKS.filter(pack => COMPONENT_HOSTS.has(pack.name) && packs.includes(pack.name)).flatMap(pack =>
+    componentFiles(pack, options)
+  )
+
+/** `@typescript-eslint/X` and the core rule it stands in for in TypeScript files. */
+const coreTwin = (name: string): string | undefined =>
+  name.startsWith(`${TS_PREFIX}/`) ? (getRule(name)?.name ?? name.slice(TS_PREFIX.length + 1)) : undefined
+
+const isOff = (value: RuleValue): boolean => {
+  const level: unknown = Array.isArray(value) ? value[0] : value
+
+  return level === 'off' || level === 0
+}
+
+/**
+ * The standard's rules for scripts, in the scripts of the components the framework packs read: the
+ * same rules as a script, and in a TypeScript project those of a TypeScript file. The block names no
+ * parser, so the pack's parser, which comes after it, reads the file, and the pack's own presets can
+ * still turn off a core rule that misfires there. No TypeScript program reaches these files, so the
+ * rules that need type information stay out, and a core rule their twin stood in for comes back.
+ */
+const componentConfigs = (
+  { options, ts, coreRules, pluginRules, tsRules, activePacks }: Build,
+  otherPlugins: Record<string, unknown>,
+  globals: Record<string, unknown>
+): FlatConfig[] => {
+  const files = activeComponentFiles(activePacks, options)
+
+  if (files.length === 0) return []
+
+  const tseslint = ts.module
+  const plugins: Record<string, unknown> = { ...otherPlugins, ...(tseslint ? { [TS_PREFIX]: tseslint.plugin } : {}) }
+  const typescriptRules = tseslint ? tsRules : {}
+  const typed = (name: string): boolean => needsTypeInformation(name, plugins)
+  const standIns = new Set(
+    Object.entries(typescriptRules).flatMap(([name, value]) =>
+      typed(name) && !isOff(value) ? [coreTwin(name) ?? name] : []
+    )
+  )
+  const rules: Rules = Object.fromEntries(
+    Object.entries({ ...coreRules, ...pluginRules }).filter(([name]) => !typed(name))
+  )
+
+  for (const [name, value] of Object.entries(typescriptRules)) {
+    if (typed(name) || (isOff(value) && standIns.has(name))) continue
+
+    rules[name] = value
+  }
+
+  if (Object.keys(rules).length === 0) return []
+
+  const used = Object.fromEntries(
+    Object.entries(plugins).filter(([prefix]) => Object.keys(rules).some(name => splitRule(name) === prefix))
+  )
+  return [
+    {
+      name: 'pawl/components',
+      files,
+      languageOptions: { globals },
+      ...(Object.keys(used).length > 0 ? { plugins: used } : {}),
+      rules
+    }
+  ]
 }
 
 /** One block per active pack, with the rules the installed plugin has. */
@@ -658,9 +742,11 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
     ),
     ...packBlocks.map(({ pack, plugin }): [string, unknown] => [pack.prefix, plugin])
   ])
+  const components = tseslint ? activeComponentFiles(build.activePacks, options) : []
   for (const [index, override] of policy.overrides.entries()) {
     const rules: Rules = {}
     const twins: Rules = {}
+    const componentTwins: Rules = {}
     const used: Record<string, unknown> = {}
     const entries = overrideRules(override, { typescript, technologies }, policy)
 
@@ -700,6 +786,12 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
       if (twin && tseslint) {
         twins[eslintName] = 'off'
         twins[twin] = value
+
+        // Component scripts have no TypeScript program: a twin that needs one leaves the core rule there.
+        if (!needsTypeInformation(twin, { [TS_PREFIX]: tseslint.plugin })) {
+          componentTwins[eslintName] = 'off'
+          componentTwins[twin] = value
+        }
       }
     }
 
@@ -722,6 +814,15 @@ const overrideConfigs = async (build: Build): Promise<FlatConfig[]> => {
           ...ignores,
           plugins: { [TS_PREFIX]: tseslint.plugin },
           rules: twins
+        })
+      }
+      if (tseslint && components.length > 0 && Object.keys(componentTwins).length > 0) {
+        config.push({
+          name: `pawl/override/${index}${suffix}/components`,
+          files: files.flatMap(glob => components.map(kind => [glob, ...toList(kind)])),
+          ...ignores,
+          plugins: { [TS_PREFIX]: tseslint.plugin },
+          rules: componentTwins
         })
       }
     }
@@ -927,10 +1028,14 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
 
   // A local shared-config exception must not replay a locked key after the policy.
   // Rule-only blocks preserve the host parser, processor, resolver and virtual-module settings.
-  const physical = options.technologies?.includes('astro') ? [...SCRIPT_FILES, '**/*.astro'] : SCRIPT_FILES
+  // The components the framework packs read hold scripts too, and get the floors through their parser.
+  const components = activeComponentFiles(plan.activePacks, options)
+  const hosts = [...(options.technologies?.includes('astro') ? ['**/*.astro'] : []), ...components]
+  const physical = [...SCRIPT_FILES, ...hosts.filter((file, index) => hosts.indexOf(file) === index)]
   const rules: Rules = {}
   const typedRules: Rules = {}
   const twins: Rules = {}
+  const componentTwins: Rules = {}
   const levels = effectiveRules(options.policy, {
     typescript: options.typescript,
     technologies: options.technologies ?? []
@@ -964,6 +1069,11 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
       twins[eslintName] = 'off'
       const twinTarget = needsTypeInformation(twin, plugins) ? typedRules : twins
       twinTarget[twin] = target[eslintName]
+      // As in the base: a twin that needs a TypeScript program leaves the core rule in component scripts.
+      if (twinTarget === twins) {
+        componentTwins[eslintName] = 'off'
+        componentTwins[twin] = target[eslintName]
+      }
     }
   }
   const used = (values: Rules): Record<string, unknown> =>
@@ -977,6 +1087,13 @@ const integrateConfig = (config: FlatConfig[], options: EslintPlanOptions, plan:
   if (Object.keys(rules).length > 0) locked.push({ name: 'pawl/locked', files: physical, plugins: used(rules), rules })
   if (Object.keys(twins).length > 0)
     locked.push({ name: 'pawl/locked/typescript-twins', files: TS_FILES, plugins: used(twins), rules: twins })
+  if (components.length > 0 && Object.keys(componentTwins).length > 0)
+    locked.push({
+      name: 'pawl/locked/components',
+      files: components,
+      plugins: used(componentTwins),
+      rules: componentTwins
+    })
   if (Object.keys(typedRules).length > 0)
     locked.push({
       name: 'pawl/locked/typescript',

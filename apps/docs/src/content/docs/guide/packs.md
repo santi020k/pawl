@@ -30,6 +30,7 @@ pawl doctor                    # shows which packs are active
 - A pack starts from the plugin's own recommended rules, then applies the standard's levels, then your policy's `rules`.
 - The `typescript` pack starts from typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets, so it needs type information: promises that nobody awaits, values of type `any` that reach typed code and assertions that change nothing are errors.
 - Where Biome is the linter, it keeps the rules it already enforces, so nothing is reported twice.
+- The `vue`, `svelte` and `astro` packs carry the standard's rules for scripts into the components they read, through the framework's parser: a `debugger`, a `var` or an `==` in a `<script setup>` fails as it does in a `.ts` file, and in a TypeScript project typescript-eslint's rules run there too. A component has no TypeScript program, so the rules that need type information stay on the `.ts` files. Where Biome is the linter, those rules stay Biome's.
 - The `jsx-a11y` standard is in the catalog, so Biome and Oxlint enforce it without the plugin. Under ESLint its rules come with the pack, and are not reported as missing while the pack is off.
 - A rule the installed plugin does not have is left out and listed by `pawl doctor`, so an older plugin does not break the run.
 

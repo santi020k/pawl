@@ -213,6 +213,30 @@ describe('pawl upgrade', () => {
     expect((await planUpgrade(unnamed)).install).toBe(
       'npm install -w @app/config eslint@9 && npm install -D eslint-plugin-promise@7'
     )
+    write(unnamed, { 'packages/web/package.json': { name: '-web', devDependencies: { eslint: '8.57.0' } } })
+    expect((await planUpgrade(unnamed)).install).toBe(
+      'npm install -w @app/config eslint@9 && npm install -D eslint-plugin-promise@7'
+    )
+    // A legacy name with capitals is one the package managers still take.
+    write(unnamed, { 'packages/web/package.json': { name: 'MyWeb', devDependencies: { eslint: '8.57.0' } } })
+    expect((await planUpgrade(unnamed)).install).toBe(
+      'npm install -w @app/config eslint@9 && npm install -D -w MyWeb eslint@9 && npm install -D eslint-plugin-promise@7'
+    )
+
+    // Under Bun the folder goes in the command, so only a plain path does.
+    const bun = workspace({ 'bun.lock': '{}\n' })
+
+    write(bun, {
+      'package.json': {
+        name: 'app',
+        private: true,
+        type: 'module',
+        workspaces: ['packages/*'],
+        devDependencies: { 'eslint-plugin-promise': '6.0.0' }
+      },
+      'packages/a&b/package.json': { name: 'ab', devDependencies: { eslint: '8.57.0' } }
+    })
+    expect((await planUpgrade(bun)).install).not.toContain('a&b')
   })
 
   it('installs the vue-eslint-parser that eslint-plugin-vue 10 takes as a peer, first and on its own under npm', async () => {

@@ -110,8 +110,11 @@ const ROOT: Destination = { dir: '', group: 'devDependencies' }
 const rootStart = (detection: Detection, manager: PackageManager, dev: string): string =>
   `${INSTALL[manager]}${dev}${workspaceRootFlag(detection, manager)}`
 
-/** A package name npm accepts, which is also safe to put in a shell command as it is. */
-const NPM_NAME = /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/
+/**
+ * A package name npm accepts, legacy capitals included, that cannot start with `-` and be read as a
+ * flag, and is safe to put in a shell command as it is.
+ */
+const NPM_NAME = /^(?:@[A-Za-z0-9_][A-Za-z0-9._~-]*\/)?[A-Za-z0-9_][A-Za-z0-9._~-]*$/
 
 /** A folder made of letters, digits and `@ . _ - /` only, safe to put in a shell command as it is. */
 const PLAIN_PATH = /^[\w@./-]+$/

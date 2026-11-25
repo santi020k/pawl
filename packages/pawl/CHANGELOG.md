@@ -38,9 +38,9 @@
 
 ### Patch Changes
 
-- `pawl sync`, `pawl upgrade`, `pawl add` and `pawl doctor` started in a package of a monorepo, or in a folder such as `src`, now work on the root pawl was set up in, as `pawl check` does. Before, they could write a `biome.json` into the package, which Biome reads as a second root config, and install the tools there.
+- `pawl sync`, `pawl upgrade`, `pawl add` and `pawl doctor` started in a package of a monorepo, or in a folder such as `src`, now work on the root pawl was set up in, as `pawl check` does. Before, they could write a `biome.json` into the package, which Biome reads as a second root config, and install the tools there. Outside a git repository every command now stays in the folder it starts in, as the docs said; a config in a folder above it, such as the home folder, no longer counts.
 
-- `pawl upgrade` puts a workspace package in the install command only when its name is one npm accepts, and a Bun folder only when it is a plain path, because the command runs in a shell on Windows. Any other package gets a note with what to install there.
+- `pawl upgrade` puts a workspace package in the install command only when its name is one npm accepts and cannot be read as a flag, and a Bun folder only when it is a plain path, because the command runs in a shell on Windows. Any other package gets a note with what to install there.
 
 - Where Biome or Oxlint is the linter and the policy names the `javascript` or `typescript` pack, as `pawl migrate` writes it, ESLint leaves off the rules the linter already enforces. It ran them at the level the plugin's preset gave them, so `pawl check` reported a `debugger` or an unused variable twice, and a rule the policy turned off, such as `@typescript-eslint/no-non-null-assertion` after a migration, still failed under ESLint.
 

@@ -259,10 +259,14 @@ const ROOT_FILES = [
  * Outside a git repository, the folder pawl started in.
  */
 export const checkRoot = (cwd: string): string => {
-  for (const dir of ancestors(cwd)) {
-    if (hasAny(dir, ROOT_FILES)) return dir
+  let found: string | undefined
 
-    if (existsSync(join(dir, '.git'))) break
+  for (const dir of ancestors(cwd)) {
+    found ??= hasAny(dir, ROOT_FILES) ? dir : undefined
+
+    // The root counts only when it is inside the repository pawl started in: a config in a folder
+    // above a project with no git, such as the home folder, is not that project's.
+    if (existsSync(join(dir, '.git'))) return found ?? cwd
   }
 
   return cwd

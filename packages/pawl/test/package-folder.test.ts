@@ -85,4 +85,13 @@ describe('a check started in a package folder', { timeout: 60_000 }, () => {
     spawnSync('git', ['init', '-q'], { cwd: inner })
     expect(checkRoot(inner)).toBe(inner)
   })
+
+  it('stays in the folder it started in outside git, whatever a folder above it has', () => {
+    const home = project({ 'eslint.config.js': 'export default []\n', 'scratch/app/package.json': { name: 'app' } })
+    const app = join(home, 'scratch/app')
+
+    expect(checkRoot(app)).toBe(app)
+    expect(run(app, 'sync', '--dry-run').status).not.toBe(2)
+    expect(existsSync(join(home, 'pawl.config.json'))).toBe(false)
+  })
 })

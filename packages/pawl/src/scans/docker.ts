@@ -289,6 +289,7 @@ const checkCompose = (text: string, report: Report): void => {
 /** The scan of Dockerfiles and Compose files. */
 export const docker: Scan = {
   reads: 'Dockerfiles and Compose files',
+  docs: '/guide/guards/#dockerfiles-and-compose-files',
   rules: DOCKER_RULES,
   matches: isDockerFile,
   scan: (file, text, report) => {

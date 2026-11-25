@@ -42,10 +42,10 @@ Pawl works with one exact Biome version, because it reads a report format Biome 
 ## Which version a repo runs
 
 ```sh
-npx --no pawl --version
+npx --no -- pawl --version
 ```
 
-`pawl doctor` prints the version on its first line too, and `pawl doctor --format json` puts it in the report CI keeps.
+The `--` matters: without it, npx takes `--version` for its own and prints the version of npm. `pawl doctor` prints the version on its first line too, and `pawl doctor --format json` puts it in the report CI keeps.
 
 ## A policy package of your own
 

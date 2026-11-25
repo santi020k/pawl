@@ -1120,10 +1120,18 @@ export const RULES: readonly RuleDef[] = [
     guardrail: true,
     advice: 'Remove the disable comment and fix the finding it hides.'
   }),
-  rule('pawl', 'pawl/no-weaker-tests', undefined, 'error', 'No test file losing assertions or gaining skipped tests.', {
-    guardrail: true,
-    advice: 'Put back the assertions with the values they pinned, or make the skipped test pass.'
-  }),
+  rule(
+    'pawl',
+    'pawl/no-weaker-tests',
+    undefined,
+    'error',
+    'No test file losing assertions, or gaining skipped tests, retries, raised timeouts or fixed sleeps.',
+    {
+      guardrail: true,
+      advice:
+        'Put back the assertions with the values they pinned, make the skipped test pass, and wait for what a test needs with an assertion that retries, not with a retry, a raised timeout or a fixed sleep.'
+    }
+  ),
   rule(
     'pawl',
     'pawl/no-baseline-growth',

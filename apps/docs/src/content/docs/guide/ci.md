@@ -145,6 +145,8 @@ Uploading needs `security-events: write`, and a private repository also needs `a
 npx --no pawl check --changed
 ```
 
+In the hook, `--changed` checks the files the commit changes, so an untracked file or a change you have not staged does not stop the commit.
+
 It uses the hook manager the repo already has:
 
 | The repo uses | What pawl does                                                                                   |

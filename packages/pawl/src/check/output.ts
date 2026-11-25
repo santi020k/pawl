@@ -1,6 +1,7 @@
 import { type Finding, type SetupIssue } from '../types.ts'
 import { type Style, type Symbols, truncate } from '../utils/terminal.ts'
 import { andList, plural } from '../utils/text.ts'
+import { isParseError } from './baseline.ts'
 import { type CiOutputOptions, formatGithub, formatSarif, neutralizeGithubCommands } from './ci-output.ts'
 import { adviceFor, engineLabel, oneLine, scopedLabel } from './finding-text.ts'
 import { CHECK_REPORT_VERSION } from './report-contract.ts'
@@ -411,6 +412,31 @@ export const formatEditor = (result: CheckResult): string => {
   }
 
   return lines.join('\n')
+}
+
+/**
+ * What recording a baseline says of the files that did not parse, one line each at its first parse
+ * error. The baseline leaves those errors out, so the check fails until each file parses. Empty
+ * when every file parsed.
+ */
+export const unparsedNote = (findings: readonly Finding[]): string[] => {
+  const first = new Map<string, Finding>()
+
+  for (const finding of findings) {
+    if (isParseError(finding) && !first.has(finding.file)) first.set(finding.file, finding)
+  }
+
+  if (first.size === 0) return []
+
+  const one = first.size === 1
+
+  return [
+    `${plural(first.size, 'file')} did not parse, so the baseline leaves ${one ? 'its' : 'their'} syntax errors out and the check fails until ${one ? 'it parses' : 'they parse'}:`,
+    ...[...first.values()].map(
+      finding =>
+        `  ${finding.file}:${finding.line}:${finding.column}  ${oneLine(finding.message)} [${scopedLabel(finding)}]`
+    )
+  ]
 }
 
 /** The whole result as one JSON document, for CI and other tools. */

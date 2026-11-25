@@ -273,7 +273,8 @@ const gitFolder = (from: string, command: ShellCommand): string => {
     const path = args[index + 1]
 
     if (args[index] === '-C' && path !== undefined) {
-      folder = resolve(folder, path)
+      // A folder the guard cannot read, such as "$PWD" or ~/repo, keeps the one before it, as a cd does.
+      if (!/^~/.test(path) && !path.includes('$')) folder = resolve(folder, path)
       index++
     } else if (args[index] === '-c') {
       index++

@@ -315,6 +315,28 @@ describe('pawl upgrade', () => {
     expect(plan.install).toBe('pnpm add -D --filter @app/web eslint@9 && pnpm add -D -w eslint-plugin-promise@7')
   })
 
+  it('moves the package that declares a tool when it runs an older copy hoisted to a root that does not', async () => {
+    const root = outdated()
+
+    write(root, {
+      'package.json': {
+        name: 'app',
+        private: true,
+        type: 'module',
+        workspaces: ['packages/*'],
+        devDependencies: { 'eslint-plugin-promise': '7.2.1' }
+      },
+      'packages/a/package.json': { name: '@app/a', devDependencies: { eslint: '^9.35.0' } }
+    })
+
+    const plan = await planUpgrade(root)
+
+    expect(plan.upgrades.filter(upgrade => upgrade.name === 'eslint')).toEqual([
+      expect.objectContaining({ installed: '8.57.0', spec: 'eslint@9', where: ['packages/a'] })
+    ])
+    expect(plan.install).toContain('pnpm add -D --filter @app/a eslint@9')
+  })
+
   it('installs the vue-eslint-parser that eslint-plugin-vue 10 takes as a peer, first and on its own under npm', async () => {
     const vue = (lockfile: Record<string, string>): string => {
       const root = outdated(lockfile)

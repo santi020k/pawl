@@ -111,16 +111,19 @@ const declaredFloor = (root: string, dir: string, name: string): string | undefi
  */
 const outOfRange = (detection: Detection, name: string, installed: string, wanted: string): Map<string, string[]> => {
   const moving = new Map<string, string[]>()
+  const destinations = destinationsOf(detection, name)
+  const rootMoves = destinations.some(({ dir }) => dir === '') && !satisfies(installed, wanted)
 
-  for (const { dir } of destinationsOf(detection, name)) {
+  for (const { dir } of destinations) {
     const own = dir === '' ? undefined : ownVersion(detection.root, dir, name)
     const version = own ?? installed
 
     if (satisfies(version, wanted)) continue
 
-    // With no copy of its own, the package runs the hoisted one; a range that asks for a version pawl
-    // works with is the package's own choice, and the install at the root moves the hoisted copy.
-    const floor = own === undefined && dir !== '' ? declaredFloor(detection.root, dir, name) : undefined
+    // With no copy of its own, the package runs the hoisted one. When the root is moved too, the
+    // install there moves that copy, so a range that asks for a version pawl works with is left as
+    // the package's own choice; otherwise the package is the only place the install can go.
+    const floor = rootMoves && own === undefined && dir !== '' ? declaredFloor(detection.root, dir, name) : undefined
 
     if (floor !== undefined && satisfies(floor, wanted)) continue
 

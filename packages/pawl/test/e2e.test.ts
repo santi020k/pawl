@@ -1210,6 +1210,16 @@ describe("the tools are the project's choice", { timeout: 60_000 }, () => {
     expect((await planInit({ root, packs: ['markdown'] })).install).toBe(
       'npm install -D @santi020k/pawl @biomejs/biome@2.6.8 eslint typescript-eslint @eslint/markdown'
     )
+
+    // Biome does not fully lint Vue, so the default init runs ESLint next to it.
+    const vue = project({
+      'package.json': { name: 'fixture', private: true, dependencies: { vue: '^3.5.0' } },
+      'tsconfig.json': { include: ['src'] }
+    })
+
+    expect((await planInit({ root: vue })).install).toBe(
+      'npm install -D @santi020k/pawl @biomejs/biome@2.6.8 eslint typescript-eslint'
+    )
   })
 })
 

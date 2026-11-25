@@ -10,7 +10,7 @@ import { formatAgent } from '../src/check/output.ts'
 import { exitCode } from '../src/check/result.ts'
 import { BIOME_PRESET, biomeTechPreset } from '../src/engines/biome/config.ts'
 import { planAdd } from '../src/setup/add.ts'
-import { formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
+import { describePlan, formatWritten, planInit, recordBaseline } from '../src/setup/init.ts'
 import { applyPlan } from '../src/setup/plan.ts'
 import { VERSION } from '../src/version.ts'
 import { link, PACKAGE_ROOT, project, write } from './helpers.ts'
@@ -224,6 +224,22 @@ describe('a real project, with the real Biome', { timeout: 60_000 }, () => {
         '@eslint/js': '^10.0.0'
       }
     })
+  })
+
+  it('keeps the linter and formatter the policy names when init runs again', async () => {
+    const root = project({ 'package.json': { name: 'fixture', private: true }, '.husky/pre-commit': 'pnpm test\n' })
+
+    link(root)
+    applyPlan(await planInit({ root, engine: 'oxlint', formatter: 'prettier', install: false, editor: false }))
+
+    // Run again for the pre-commit hook only, as "pawl init --hooks" does.
+    const again = await planInit({ root, install: false, editor: false, hooks: true })
+
+    expect(again.engines).toEqual(['oxlint'])
+    expect(again.formatter).toBe('prettier')
+    expect(describePlan(again)).toEqual(expect.arrayContaining(['Lint:     Oxlint', 'Format:   Prettier']))
+    expect(again.actions.map(action => action.path)).toEqual(['.husky/pre-commit'])
+    expect(again.packages).toEqual([])
   })
 
   it('does not count a legacy .eslintrc as ESLint running, and points to migrate', async () => {

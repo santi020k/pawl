@@ -76,14 +76,22 @@ interface Choice {
   typeAware: boolean
 }
 
-/** The tools for a project: what the options name, else what the mode keeps or brings in. */
-const chooseTools = (options: InitOptions, detection: Detection): Choice => {
+/**
+ * The tools for a project: what the options name, else what the policy names, as after an earlier
+ * `init`, else what the mode keeps or brings in.
+ */
+const chooseTools = (options: InitOptions, detection: Detection, policy: Policy): Choice => {
   const { root, mode = 'auto' } = options
   const { tools } = detection
   const keep = mode === 'keep' && !tools.biome
   const kept: EngineName | undefined = (tools.oxlint && 'oxlint') || (tools.eslint && 'eslint') || undefined
-  const linter: EngineName = options.engine ?? (keep && kept ? kept : 'biome')
-  const formatter: FormatterName = options.formatter ?? (keep && tools.prettier ? 'prettier' : 'biome')
+  const named = {
+    linter: policy.engine === 'auto' ? undefined : policy.engine,
+    formatter: policy.formatter === 'auto' ? undefined : policy.formatter
+  }
+  const linter: EngineName = options.engine ?? named.linter ?? (keep && kept ? kept : 'biome')
+  const formatter: FormatterName =
+    options.formatter ?? named.formatter ?? (keep && tools.prettier ? 'prettier' : 'biome')
   const eslint =
     linter === 'eslint' ||
     (options.packs?.length ?? 0) > 0 ||
@@ -239,7 +247,7 @@ export const planInit = async (options: InitOptions): Promise<InitPlan> => {
 
   const { policy: loaded, detection } = await loadProject(root)
   const { tools } = detection
-  const choice = chooseTools(options, detection)
+  const choice = chooseTools(options, detection, loaded)
   const { linter, formatter } = choice
   const named = requested.filter(name => onlyWhenNamed(name) && !loaded.packs.includes(name))
   const pinned = pinnedChoice(root, choice, detection, named.length > 0 ? [...loaded.packs, ...named] : [])

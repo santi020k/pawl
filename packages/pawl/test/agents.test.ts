@@ -41,7 +41,10 @@ describe('setting up coding agents', () => {
         ],
         Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }],
         PreToolUse: [
-          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+          {
+            matcher: 'Edit|Write|MultiEdit|Bash|PowerShell',
+            hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }]
+          }
         ]
       }
     })
@@ -76,7 +79,10 @@ describe('setting up coding agents', () => {
         ],
         Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }],
         PreToolUse: [
-          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+          {
+            matcher: 'Edit|Write|MultiEdit|Bash|PowerShell',
+            hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }]
+          }
         ]
       }
     })
@@ -108,7 +114,10 @@ describe('setting up coding agents', () => {
           { hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
         ],
         PreToolUse: [
-          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+          {
+            matcher: 'Edit|Write|MultiEdit|Bash|PowerShell',
+            hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }]
+          }
         ]
       }
     })

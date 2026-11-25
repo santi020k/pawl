@@ -241,7 +241,8 @@ const CLAUDE_HOOK: AgentHook = {
   stopEvent: 'Stop',
   addStop: stopEntry,
   guardEvent: 'PreToolUse',
-  addGuard: existing => preToolUse(existing, 'Edit|Write|MultiEdit|Bash')
+  // PowerShell is the shell tool on Windows, and there the only one where Git Bash is not installed.
+  addGuard: existing => preToolUse(existing, 'Edit|Write|MultiEdit|Bash|PowerShell')
 }
 
 /** An entry under one of Cursor's events, which take a list of commands and no matcher. */

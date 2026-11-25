@@ -125,7 +125,7 @@ The hooks go in next to any hooks you already have. These are the ones for Claud
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|Bash",
+        "matcher": "Edit|Write|MultiEdit|Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
@@ -146,7 +146,7 @@ An agent that cannot make the check pass can make it stop failing instead: run `
 
 | Agent       | Event        | Before it                                          | What pawl answers                                                                         |
 | ----------- | ------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Claude Code | `PreToolUse` | `Edit`, `Write`, `MultiEdit` and `Bash`            | Asks you, with what the call would change                                                 |
+| Claude Code | `PreToolUse` | `Edit`, `Write`, `MultiEdit`, `Bash` and `PowerShell` | Asks you, with what the call would change                                                 |
 | Codex       | `PreToolUse` | `apply_patch` and `Bash`                           | Refuses a change to the baseline and says why, since Codex cannot ask yet; the rest passes |
 | Copilot     | None         | Copilot refuses the tool when a hook before it fails, as `npx --no pawl` does before the install |                                         |
 | Cursor      | None         | Cursor has no hook before an edit that can ask     |                                                                                           |

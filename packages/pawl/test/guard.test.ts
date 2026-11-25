@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { guardFinding, guardReply, readGuardPayload } from '../src/cli/guard.ts'
 import { project } from './helpers.ts'
@@ -74,6 +75,81 @@ describe('the guard before an agent tool runs', () => {
     expect(decide(root, text)).toMatchObject({ permissionDecision: 'ask' })
     expect(decide(root, text, false)).toBeUndefined()
     expect(decide(root, JSON.stringify({ toolName: 'edit', toolArgs: {}, toolResult: {} }))).toBeUndefined()
+  })
+
+  it('asks from a folder of a monorepo, for the files at the root of its repository', () => {
+    const repo = project({ '.git/HEAD': 'ref: refs/heads/main\n', 'packages/web/package.json': { name: 'web' } })
+    const web = join(repo, 'packages/web')
+    const edit = (file: string): string =>
+      JSON.stringify({
+        hook_event_name: 'PreToolUse',
+        session_id: 's',
+        cwd: web,
+        tool_name: 'Edit',
+        tool_input: { file_path: file, old_string: 'a', new_string: 'b' }
+      })
+
+    expect(decision(decide(web, edit(join(repo, '.pawl/baseline.json'))))).toBe('ask')
+    expect(decision(decide(web, edit(join(repo, 'biome.json'))))).toBe('ask')
+    expect(decision(decide(web, claude('Bash', { command: 'echo {} > ../../.pawl/baseline.json' })))).toBe('ask')
+    expect(decide(web, edit('/elsewhere/biome.json'))).toEqual({})
+  })
+
+  it('reads a command for what it runs and writes, not for the words in its strings or what it only reads', () => {
+    for (const command of [
+      'cat .pawl/baseline.json 2>&1 | head -40',
+      'cat .pawl/baseline.json 2>/dev/null',
+      "jq '.findings | length' .pawl/baseline.json > /tmp/count.json",
+      'cp .pawl/baseline.json /tmp/before.json',
+      'git commit -m "chore: record the pawl baseline"',
+      "git commit -F - <<'EOF'\nchore: record the pawl baseline\n\nThe user ran pawl baseline.\nEOF",
+      'grep -rn "pawl baseline" docs',
+      "echo 'Run pawl baseline to accept them' >> notes.md",
+      'npx --no pawl check --since origin/main # not pawl baseline',
+      'pnpm --filter @santi020k/pawl test baseline',
+      'diff <(git show main:.pawl/baseline.json) .pawl/baseline.json',
+      'node -e "console.log(Object.keys(require(\'./.pawl/baseline.json\').findings).length)"',
+      'cat biome.json',
+      'cp biome.json /tmp/biome.json',
+      'cat fixtures/baseline.json > fixtures/copy.json'
+    ])
+      expect(decide(root, codex('Bash', { command })), command).toEqual({})
+  })
+
+  it('refuses what writes the baseline however the command spells it', () => {
+    for (const command of [
+      "sed --in-place 's/1/2/' .pawl/baseline.json",
+      "perl -pi -e 's/1/2/' .pawl/baseline.json",
+      'cp /tmp/old.json ./.pawl/baseline.json',
+      'cp /tmp/baseline.json .pawl/',
+      'git checkout main -- .pawl',
+      `echo {} > ${root}/.pawl/baseline.json`,
+      'bash -c "npx --no pawl baseline"',
+      'echo "$(npx --no pawl baseline)"',
+      'npx --no pawl \\\n  baseline',
+      "node -e \"require('fs').writeFileSync('.pawl/baseline.json', '{}')\"",
+      "python3 - <<'EOF'\nimport json\nopen('.pawl/baseline.json', 'w').write('{}')\nEOF",
+      "apply_patch <<'EOF'\n*** Begin Patch\n*** Update File: .pawl/baseline.json\n@@\n-1\n+2\n*** End Patch\nEOF",
+      String.raw`Set-Content -Path .pawl\baseline.json -Value '{}'`,
+      String.raw`'{}' | Out-File .pawl\baseline.json`,
+      String.raw`echo {} > .pawl\baseline.json`,
+      String.raw`Copy-Item C:\temp\old.json .pawl\baseline.json`,
+      String.raw`Remove-Item -Recurse .pawl`
+    ])
+      expect(decision(decide(root, codex('Bash', { command }))), command).toBe('deny')
+  })
+
+  it('asks before a command writes the policy or an engine config, and only Claude Code', () => {
+    for (const command of [
+      `sed -i 's/"error"/"off"/' biome.json`,
+      "echo '{}' > pawl.config.json",
+      'cp /tmp/eslint.config.js packages/web/eslint.config.js'
+    ]) {
+      expect(decision(decide(root, claude('Bash', { command }))), command).toBe('ask')
+      expect(decide(root, codex('Bash', { command })), command).toEqual({})
+    }
+
+    expect(decision(decide(root, claude('PowerShell', { command: 'npx --no pawl baseline' })))).toBe('ask')
   })
 
   it('reads no other payload as one before a tool', () => {

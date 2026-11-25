@@ -5,10 +5,12 @@
  * installed and out of range, and `sync` runs after the install, with the new versions in place.
  */
 
+import { join } from 'node:path'
 import { getPack } from '../catalog/packs.ts'
 import { loadProject } from '../policy/project.ts'
 import { type Detection } from '../project/detect.ts'
 import { doctor } from '../report/doctor.ts'
+import { readJson } from '../utils/json.ts'
 import { installedVersion, satisfies } from '../utils/semver.ts'
 import { type Destination, declarations, PLUGIN_PEERS, rangeFor, upgradeCommand } from './install.ts'
 
@@ -86,13 +88,57 @@ const destinationsOf = (detection: Detection, name: string): Destination[] => {
   return declared.length > 0 ? declared : [{ dir: '', group: 'devDependencies' }]
 }
 
-/** The install for every upgrade, into the root or the workspace packages that declare each tool. */
+/** The version in the package's own node_modules, not one resolved from a folder above it. */
+const ownVersion = (root: string, dir: string, name: string): string | undefined => {
+  const version = readJson<{ version?: unknown }>(join(root, dir, 'node_modules', name, 'package.json'))?.version
+
+  return typeof version === 'string' ? version : undefined
+}
+
+/** The oldest version a declared range allows, read from its first version: `9.0.0` for `^9.0.0`. */
+const declaredFloor = (root: string, dir: string, name: string): string | undefined => {
+  const manifest = readJson<Record<string, Record<string, unknown> | undefined>>(join(root, dir, 'package.json'))
+  const range = manifest?.devDependencies?.[name] ?? manifest?.dependencies?.[name]
+
+  return typeof range === 'string' ? /^[\^~>=v\s]*(\d+\.\d+\.\d+)/.exec(range)?.[1] : undefined
+}
+
+/**
+ * The destinations of a tool that are out of range, by the version each has: the copy resolved from
+ * its own folder, the root's `installed` when it has none of its own. A destination whose own copy
+ * is one pawl works with is left as it is, and so is one without a copy whose declared range asks
+ * for such a version.
+ */
+const outOfRange = (detection: Detection, name: string, installed: string, wanted: string): Map<string, string[]> => {
+  const moving = new Map<string, string[]>()
+
+  for (const { dir } of destinationsOf(detection, name)) {
+    const own = dir === '' ? undefined : ownVersion(detection.root, dir, name)
+    const version = own ?? installed
+
+    if (satisfies(version, wanted)) continue
+
+    // With no copy of its own, the package runs the hoisted one; a range that asks for a version pawl
+    // works with is the package's own choice, and the install at the root moves the hoisted copy.
+    const floor = own === undefined && dir !== '' ? declaredFloor(detection.root, dir, name) : undefined
+
+    if (floor !== undefined && satisfies(floor, wanted)) continue
+
+    moving.set(version, [...(moving.get(version) ?? []), dir])
+  }
+
+  return moving
+}
+
+/** The install for every upgrade, into the root or the workspace packages each one is for. */
 const installFor = (detection: Detection, upgrades: readonly ToolUpgrade[], notes: string[]): string | undefined => {
   const manager = detection.packageManager ?? 'npm'
   const groups = new Map<string, { destination: Destination; upgrades: ToolUpgrade[] }>()
 
   for (const upgrade of upgrades) {
-    for (const destination of destinationsOf(detection, upgrade.name)) {
+    const destinations = destinationsOf(detection, upgrade.name)
+
+    for (const destination of destinations.filter(({ dir }) => upgrade.where.includes(dir))) {
       const key = `${destination.dir}\0${destination.group}`
 
       groups.set(key, {
@@ -136,13 +182,10 @@ export const planUpgrade = async (root: string): Promise<UpgradePlan> => {
   const notes: string[] = []
   const upgrades: ToolUpgrade[] = []
   const add = (name: string, installed: string, wanted: string): void => {
-    upgrades.push({
-      name,
-      installed,
-      wanted,
-      ...upgradeSpec(name, installed, wanted, root),
-      where: destinationsOf(detection, name).map(destination => destination.dir)
-    })
+    // Each destination by its own version: a workspace package on a newer major pawl works with stays.
+    for (const [version, where] of outOfRange(detection, name, installed, wanted)) {
+      upgrades.push({ name, installed: version, wanted, ...upgradeSpec(name, version, wanted, root), where })
+    }
   }
 
   for (const entry of report.compatibility) {
@@ -176,9 +219,10 @@ export const planUpgrade = async (root: string): Promise<UpgradePlan> => {
     const own = releaseLine(upgrade.installed)
     const target = upgrade.spec.slice(upgrade.name.length + 1)
 
-    notes.push(
-      `No ${upgrade.name} ${own ?? upgrade.installed}.x is in ${upgrade.wanted}, so it moves to ${target}, a new major version. Read its release notes before you commit the upgrade.`
-    )
+    const note = `No ${upgrade.name} ${own ?? upgrade.installed}.x is in ${upgrade.wanted}, so it moves to ${target}, a new major version. Read its release notes before you commit the upgrade.`
+
+    // Two workspace packages on versions of one line need the note once.
+    if (!notes.includes(note)) notes.push(note)
   }
 
   return { detection, upgrades, install: installFor(detection, upgrades, notes), notes }

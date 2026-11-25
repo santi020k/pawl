@@ -249,6 +249,35 @@ describe('retries, raised timeouts and fixed sleeps', () => {
     expect(file.maskLines.map(mask => mask.line)).toEqual([16, 18])
   })
 
+  it('counts an option passed to a test, and not test data in its body that happens to name a timeout or a retry', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('retries a request', async () => {",
+        '  const options = { timeout: 1000, retries: 3 }',
+        '  const nested = {',
+        '    policy: { retry: 2 }',
+        '  }',
+        '  if (options) {',
+        '    const more = { timeout: 50 }',
+        '  }',
+        '  expect(withRetry(options)).toEqual({ retries: 3 })',
+        '})',
+        "it('a', function () { const config = { timeout: 5 } })",
+        "test('b', { timeout: 1000 }, async () => {})",
+        "describe('c', { retry: 2 }, () => {",
+        '  const data = { timeout: 9 }',
+        '}, 5000)'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => [mask.line, mask.kind])).toEqual([
+      [12, 'timeout'],
+      [13, 'retry'],
+      [15, 'timeout']
+    ])
+  })
+
   it('fails a file with more of them than the baseline recorded, and has no floor without a count', () => {
     const tests = [
       {

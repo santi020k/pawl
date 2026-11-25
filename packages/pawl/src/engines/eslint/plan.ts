@@ -387,6 +387,10 @@ const placeRules = async (build: Build): Promise<void> => {
       if (level !== 'off') coveredByBiome.push(name)
 
       // The javascript and typescript packs start from presets that may turn it on in ESLint too.
+      // A rule off only because the standard holds it back, as it does an unstable one, does not run
+      // in the fast linter, so the preset's level stands unless the policy sets one.
+      if (level === 'off' && policy.rules[name] === undefined) continue
+
       for (const alias of [scopedRule(name, 'eslint') ?? name, ...(def?.aliases ?? [])]) {
         if (alias in coreRules) coreRules[alias] = 'off'
         if (alias in tsRules) tsRules[alias] = 'off'

@@ -4,6 +4,7 @@ import { exitCode } from '../src/check/result.ts'
 import { readReport } from '../src/engines/engine.ts'
 import { eslintPlan } from '../src/engines/eslint/plan.ts'
 import { defaultPolicy, mergeLayers } from '../src/policy/merge.ts'
+import { type Level } from '../src/types.ts'
 import { link, project } from './helpers.ts'
 
 const block = (config: Record<string, unknown>[], name: string): Record<string, unknown> | undefined =>
@@ -212,6 +213,36 @@ describe('eslintPlan', () => {
     expect(on('pawl/base')).not.toContain('no-unused-vars')
     expect(on('pawl/typescript')).not.toContain('@typescript-eslint/no-non-null-assertion')
     expect(on('pawl/typescript')).not.toContain('@typescript-eslint/no-unused-vars')
+  })
+
+  it('keeps the preset level of a rule the standard holds back in Biome as unstable', async () => {
+    // no-floating-promises maps to a Biome nursery rule, which the standard leaves off outside strict
+    // mode: Biome does not run it, so the typescript pack's preset level stands unless the policy sets one.
+    const root = project({
+      'package.json': { name: 'fixture' },
+      'node_modules/typescript-eslint/package.json': manifest('typescript-eslint'),
+      'node_modules/typescript-eslint/index.js': [
+        "const names = ['no-floating-promises', 'no-unsafe-return', 'no-non-null-assertion']",
+        "const rules = Object.fromEntries(names.map(name => ['@typescript-eslint/' + name, 'error']))",
+        'const plugin = { rules: Object.fromEntries(names.map(name => [name, { create: () => ({}) }])) }',
+        "export default { parser: { name: 'ts-parser' }, plugin, configs: { strictTypeChecked: [{ rules }], stylisticTypeChecked: [] } }"
+      ].join('\n')
+    })
+    const levelOf = async (rules: Record<string, Level>, name: string): Promise<unknown> => {
+      const policy = mergeLayers([{ source: 'repo', input: { packs: ['typescript'], rules } }])
+      const plan = await eslintPlan({ root, policy, biomeActive: true, typescript: true, technologies: [] })
+      const value = block(plan.config, 'pawl/typescript')?.rules as Record<string, unknown> | undefined
+
+      return value?.[name]
+    }
+    const floating = '@typescript-eslint/no-floating-promises'
+
+    expect(await levelOf({}, floating)).toBe('error')
+    expect(await levelOf({}, '@typescript-eslint/no-unsafe-return')).toBe('error')
+    // A rule Biome runs stays Biome's, and a level the policy sets wins over the preset.
+    expect(await levelOf({}, '@typescript-eslint/no-non-null-assertion')).toBe('off')
+    expect(await levelOf({ [floating]: 'off' }, floating)).toBe('off')
+    expect(await levelOf({ [floating]: 'error' }, floating)).toBe('off')
   })
 
   it('says why when a plugin is installed but cannot load', async () => {

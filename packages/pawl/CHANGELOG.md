@@ -38,13 +38,17 @@
 
 ### Patch Changes
 
+- `pawl upgrade` in a workspace moves each package by its own version. A package whose own copy of a tool is one pawl works with, such as ESLint 10 next to a root on ESLint 8, is left out of the install instead of being moved back to the root's major version.
+
+- The test ratchet counts a `timeout` or a `retry` only where it configures the test runner. An object in a test's body that names one, such as test data for code with its own timeout, no longer counts as a mask and cannot fail `pawl/no-weaker-tests`.
+
 - `pawl sync`, `pawl upgrade`, `pawl add` and `pawl doctor` started in a package of a monorepo, or in a folder such as `src`, now work on the root pawl was set up in, as `pawl check` does. Before, they could write a `biome.json` into the package, which Biome reads as a second root config, and install the tools there. Outside a git repository every command now stays in the folder it starts in, as the docs said; a config in a folder above it, such as the home folder, no longer counts.
 
 - `pawl upgrade` puts a workspace package in the install command only when its name is one npm accepts and cannot be read as a flag, and a Bun folder only when it is a plain path, because the command runs in a shell on Windows. Any other package gets a note with what to install there.
 
 - Where Biome or Oxlint is the linter and the policy names the `javascript` or `typescript` pack, as `pawl migrate` writes it, ESLint leaves off the rules the linter already enforces. It ran them at the level the plugin's preset gave them, so `pawl check` reported a `debugger` or an unused variable twice, and a rule the policy turned off, such as `@typescript-eslint/no-non-null-assertion` after a migration, still failed under ESLint.
 
-- Where Biome is the linter, a duplicate key in a `.json` or `.jsonc` file is reported once, by Biome. The JSON pack reported it again as `jsonc/no-dupe-keys`; it still checks `.json5` files, which Biome does not read. The same goes for the rules of a plugin's own preset that Biome or Oxlint enforces, which the Vue, Svelte, Astro and format packs left on: a one-word Vue component name was reported by both Biome and `vue/multi-word-component-names`. A rule the standard holds back in the fast linter as unstable keeps the level the plugin's preset gives it.
+- Where Biome is the linter, a duplicate key in a `.json` or `.jsonc` file is reported once, by Biome. The JSON pack reported it again as `jsonc/no-dupe-keys`; it still checks `.json5` files, which Biome does not read. The same goes for the rules of a plugin's own preset that Biome or Oxlint enforces, which the Vue, Svelte, Astro and format packs left on: a one-word Vue component name was reported by both Biome and `vue/multi-word-component-names`. A rule the standard holds back in the fast linter as unstable keeps the level the plugin's preset gives it. That includes the TypeScript preset's rules, such as `@typescript-eslint/no-floating-promises`, which Biome holds back as nursery rules: they still run in ESLint.
 
 - A project that moves its linting or formatting back to Biome, from Oxlint, ESLint or Prettier, is checked again. Pawl had written `"enabled": false` for Biome's linter or formatter into biome.json, and kept it after the policy changed back, while `pawl doctor` said biome.json was in line with the policy: Biome then linted or formatted nothing, and the check passed. A biome.json that switches off what the policy has Biome do is now out of date, `biome-config-stale`, and `pawl sync` switches it on again.
 

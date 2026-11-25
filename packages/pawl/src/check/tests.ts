@@ -192,7 +192,19 @@ const chainBefore = (script: string, paren: number): string => {
   return script.slice(index + 1, paren)
 }
 
-/** The call whose arguments hold the text at `at`, through the objects and lists around it. Empty outside any call. */
+/** A `{` that opens a block, such as a function's body, and not an object: it follows `=>` or `)`. */
+const opensBlock = (script: string, brace: number): boolean => {
+  let index = brace - 1
+
+  while (index >= 0 && /\s/.test(script[index] as string)) index--
+
+  return script[index] === ')' || (script[index] === '>' && script[index - 1] === '=')
+}
+
+/**
+ * The call whose arguments hold the text at `at`, through the objects and lists around it. Empty
+ * outside any call, and inside a block: an object in a test's body is test data, not its options.
+ */
 const callAround = (script: string, at: number): string => {
   let depth = 0
 
@@ -201,6 +213,7 @@ const callAround = (script: string, at: number): string => {
 
     if (')]}'.includes(char)) depth++
     else if (char === '(' && depth === 0) return chainBefore(script, index)
+    else if (char === '{' && depth === 0 && opensBlock(script, index)) return ''
     else if ('([{'.includes(char)) depth = Math.max(0, depth - 1)
   }
 

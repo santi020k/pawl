@@ -239,6 +239,52 @@ describe('pawl upgrade', () => {
     expect((await planUpgrade(bun)).install).not.toContain('a&b')
   })
 
+  it('leaves a workspace package whose own ESLint is one pawl works with, and moves each other by its own version', async () => {
+    const root = outdated()
+    const eslint = (version: string): object => ({
+      name: 'eslint',
+      version,
+      main: 'index.js',
+      bin: { eslint: 'bin.js' }
+    })
+
+    write(root, {
+      'package.json': {
+        name: 'app',
+        private: true,
+        type: 'module',
+        workspaces: ['packages/*'],
+        devDependencies: { eslint: '8.57.0', 'eslint-plugin-promise': '6.0.0' }
+      },
+      'packages/web/package.json': { name: '@app/web', devDependencies: { eslint: '^10.0.0' } },
+      'packages/web/node_modules/eslint/package.json': eslint('10.0.0'),
+      'packages/old/package.json': { name: '@app/old', devDependencies: { eslint: '^9.0.0' } },
+      'packages/old/node_modules/eslint/package.json': eslint('9.30.0'),
+      // Asks for a version pawl works with, and has an older copy of its own: the copy decides.
+      'packages/stale/package.json': { name: '@app/stale', devDependencies: { eslint: '^9.35.0' } },
+      'packages/stale/node_modules/eslint/package.json': eslint('9.30.0'),
+      // Declares a range pawl works with, and resolves the copy hoisted to the root.
+      'packages/hoisted/package.json': { name: '@app/hoisted', devDependencies: { eslint: '^10.0.0' } }
+    })
+
+    const plan = await planUpgrade(root)
+
+    expect(plan.upgrades.filter(upgrade => upgrade.name === 'eslint')).toEqual([
+      expect.objectContaining({ installed: '8.57.0', spec: 'eslint@9', major: true, where: [''] }),
+      expect.objectContaining({
+        installed: '9.30.0',
+        spec: 'eslint@9',
+        major: false,
+        where: ['packages/old', 'packages/stale']
+      })
+    ])
+    expect(plan.install).toBe(
+      'pnpm add -D -w eslint@9 eslint-plugin-promise@7 && pnpm add -D --filter @app/old eslint@9 && pnpm add -D --filter @app/stale eslint@9'
+    )
+    expect(plan.install).not.toContain('@app/web')
+    expect(plan.install).not.toContain('@app/hoisted')
+  })
+
   it('installs the vue-eslint-parser that eslint-plugin-vue 10 takes as a peer, first and on its own under npm', async () => {
     const vue = (lockfile: Record<string, string>): string => {
       const root = outdated(lockfile)

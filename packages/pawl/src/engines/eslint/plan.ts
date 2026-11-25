@@ -520,7 +520,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
 }
 
 /** One block per active pack, with the rules the installed plugin has. */
-const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: Build): FlatConfig[] => {
+const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options }: Build): FlatConfig[] => {
   const config: FlatConfig[] = []
 
   for (const { pack, plugin, fromPlugin, dirs } of packBlocks) {
@@ -581,6 +581,15 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
           }
         })
       )
+      // The preset's parser reads each <script> with parserOptions.parser, which is espree unless the
+      // config names another, so a component with `lang="ts"` would not parse.
+      const scriptParser = pack.scriptParser ? ts.module?.parser : undefined
+      if (scriptParser !== undefined && files)
+        config.push({
+          name: `pawl/pack/${pack.name}/typescript`,
+          files,
+          languageOptions: { parserOptions: { parser: scriptParser } }
+        })
       // The plugin object the preset registers, which a plugin with both a CommonJS and an ES module
       // build may not share with the module pawl imported. ESLint refuses two objects under one name.
       const own = preset.map(block => (isRecord(block.plugins) ? block.plugins[pack.prefix] : undefined)).find(Boolean)

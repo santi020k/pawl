@@ -1061,6 +1061,34 @@ describe('hooks and agent instructions', () => {
   })
 })
 
+describe('dry runs', () => {
+  const cli = (root: string, ...args: string[]) =>
+    spawnSync(process.execPath, [join(PACKAGE_ROOT, 'src/cli.ts'), ...args], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', PAWL_AGENT: '0' }
+    })
+
+  it('says there is nothing to sync, with no blank lines before it', async () => {
+    const root = project({ 'package.json': { name: 'fixture', private: true } })
+
+    link(root)
+    applyPlan(await planInit({ root, install: false, editor: false, baseline: false }))
+
+    const sync = cli(root, 'sync', '--dry-run')
+
+    expect(sync.status, sync.stderr).toBe(0)
+    expect(sync.stdout).toBe('Config files are up to date.\n\nDry run. Nothing was changed.\n')
+
+    const upgrade = cli(root, 'upgrade', '--dry-run')
+
+    expect(upgrade.status, upgrade.stderr).toBe(0)
+    expect(upgrade.stdout).toBe(
+      'Note: "pawl sync --dry-run" shows the config files a sync would write.\n\nDry run. Nothing was changed.\n'
+    )
+  })
+})
+
 describe('Biome rule domains, with the real Biome', { timeout: 60_000 }, () => {
   const page = 'export default function Page() {\n  return <img src="/a.png" alt="a" />\n}\n'
 

@@ -12,11 +12,17 @@ export const runSync = async (root: string, flags: Pick<Flags, 'dry-run'> = {}):
   const { actions, notes, tools } = await planSync(root)
   const { rich, style, sym } = terminal()
   const done = (text: string): string => (rich ? `${style.accent(sym.tick)} ${text}` : text)
+  const upToDate =
+    tools.biome || tools.formatter === 'prettier'
+      ? 'Config files are up to date.'
+      : 'ESLint reads the policy live, so there is nothing to sync.'
 
   if (flags['dry-run']) {
     for (const line of describeActions(actions)) out(line)
 
-    endDryRun(notes)
+    if (actions.length === 0 && notes.length === 0) out(done(upToDate))
+
+    endDryRun(notes, actions.length > 0 || notes.length === 0)
 
     return EXIT_OK
   }
@@ -33,15 +39,7 @@ export const runSync = async (root: string, flags: Pick<Flags, 'dry-run'> = {}):
     )
   }
 
-  if (actions.length === 0 && notes.length === 0) {
-    out(
-      done(
-        tools.biome || tools.formatter === 'prettier'
-          ? 'Config files are up to date.'
-          : 'ESLint reads the policy live, so there is nothing to sync.'
-      )
-    )
-  }
+  if (actions.length === 0 && notes.length === 0) out(done(upToDate))
 
   for (const note of notes) out(rich ? `${style.cyan(sym.info)} ${note}` : `Note: ${note}`)
 

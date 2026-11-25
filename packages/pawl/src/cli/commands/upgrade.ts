@@ -27,7 +27,10 @@ export const runUpgrade = async (root: string, flags: Flags): Promise<number> =>
 
       out(style.dim('Dry run. Nothing was changed. "pawl sync --dry-run" shows the config files a sync would write.'))
     } else {
-      endDryRun([...plan.notes, '"pawl sync --dry-run" shows the config files a sync would write.'])
+      endDryRun(
+        [...plan.notes, '"pawl sync --dry-run" shows the config files a sync would write.'],
+        plan.upgrades.length > 0 || plan.install !== undefined
+      )
     }
 
     return EXIT_OK

@@ -145,7 +145,9 @@ const sourceFiles = (dir: string): string[] =>
   readdirSync(dir).flatMap(name => {
     const path = join(dir, name)
 
-    return statSync(path).isDirectory() ? sourceFiles(path) : name.endsWith('.ts') ? [path] : []
+    if (statSync(path).isDirectory()) return sourceFiles(path)
+
+    return name.endsWith('.ts') ? [path] : []
   })
 
 /** A project with a copy of pawl's source and tests, set up for one engine. */

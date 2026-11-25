@@ -278,6 +278,36 @@ describe('retries, raised timeouts and fixed sleeps', () => {
     ])
   })
 
+  it('counts a number after a test function as a raised timeout, and not one after an object passed to other code', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('a', async () => {",
+        '  const client = createClient({',
+        "    endpoint: '/api'",
+        '  }, 1000)',
+        '  run(() => {',
+        '    work()',
+        '  }, 2000)',
+        '}, 5000)',
+        "it.concurrent('b', function () {",
+        '  work()',
+        '}, 10000)',
+        "describe('c', () => {",
+        '  beforeEach(async () => {',
+        '    await setUp()',
+        '  }, 3000)',
+        '})'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => [mask.line, mask.kind])).toEqual([
+      [8, 'timeout'],
+      [11, 'timeout'],
+      [15, 'timeout']
+    ])
+  })
+
   it('fails a file with more of them than the baseline recorded, and has no floor without a count', () => {
     const tests = [
       {

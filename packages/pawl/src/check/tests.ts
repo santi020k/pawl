@@ -80,7 +80,6 @@ const MASKS: readonly (readonly [Mask, RegExp])[] = [
   ['timeout', /\b(?:jest|vi|test|this)\.setTimeout\s*\(/],
   ['timeout', /\bthis\.timeout\s*\(\s*\d/],
   ['timeout', /\btest\.slow\s*\(/],
-  ['timeout', /^\s*\}\s*,\s*\d{3,}\s*\)/],
   ['sleep', /\bwaitForTimeout\s*\(/],
   ['sleep', /\bcy\.wait\s*\(\s*\d/],
   ['sleep', /\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*\d/],
@@ -220,11 +219,31 @@ const callAround = (script: string, at: number): string => {
   return ''
 }
 
+/** A line that ends a function with a number after it: `}, 5000)`. */
+const NUMBER_AFTER = /^(\s*)\}\s*,\s*\d{3,}\s*\)/
+
+/**
+ * A number after a test's function, as on `}, 5000)`: a raised timeout only when the `}` closes a
+ * function's body and the `)` closes a call of the test runner, not an object passed to other code.
+ */
+const timeoutAfterTest = (script: string, start: number, line: string): boolean => {
+  const match = NUMBER_AFTER.exec(line)
+
+  if (!match) return false
+
+  const brace = start + (match[1] ?? '').length
+  const paren = start + match[0].length - 1
+
+  return opensBlock(script, openerOf(script, brace)) && RUNNER.test(chainBefore(script, openerOf(script, paren)))
+}
+
 /** The retry, raised timeout or fixed sleep a line of the script has, if any. `start` is where the line starts in it. */
 const maskOf = (script: string, start: number, line: string): Mask | undefined => {
   const kind = MASKS.find(([, mask]) => mask.test(line))?.[0]
 
   if (kind) return kind
+
+  if (timeoutAfterTest(script, start, line)) return 'timeout'
 
   const option = [...line.matchAll(OPTION)].find(match => RUNNER.test(callAround(script, start + match.index)))
 

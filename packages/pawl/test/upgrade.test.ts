@@ -120,7 +120,7 @@ describe('pawl upgrade', () => {
     'runs both installs in turn, and stops without syncing when one fails',
     async () => {
       const bin = project({
-        npm: `#!/bin/sh\necho "npm $*" >> "$NPM_LOG"\ncase "$*" in *"$NPM_FAIL"*) exit 1 ;; esac\n`
+        npm: `#!/bin/sh\necho "npm $*" >> "$NPM_LOG"\nif echo "$*" | grep -q -- "$NPM_FAIL"; then exit 1; fi\n`
       })
 
       chmodSync(join(bin, 'npm'), 0o755)

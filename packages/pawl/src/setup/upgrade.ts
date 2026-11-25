@@ -181,7 +181,10 @@ export const planUpgrade = async (root: string): Promise<UpgradePlan> => {
   const [{ detection, policy }, report] = await Promise.all([loadProject(root), doctor(root)])
   const notes: string[] = []
   const upgrades: ToolUpgrade[] = []
+  const seen = new Set<string>()
   const add = (name: string, installed: string, wanted: string): void => {
+    seen.add(name)
+
     // Each destination by its own version: a workspace package on a newer major pawl works with stays.
     for (const [version, where] of outOfRange(detection, name, installed, wanted)) {
       upgrades.push({ name, installed: version, wanted, ...upgradeSpec(name, version, wanted, root), where })
@@ -189,13 +192,15 @@ export const planUpgrade = async (root: string): Promise<UpgradePlan> => {
   }
 
   for (const entry of report.compatibility) {
-    if (entry.ok) continue
-
     if (entry.name === 'node') {
-      notes.push(`Node ${entry.installed ?? ''} is not one pawl works with (${entry.wanted}). Upgrade Node yourself.`)
+      if (!entry.ok)
+        notes.push(`Node ${entry.installed ?? ''} is not one pawl works with (${entry.wanted}). Upgrade Node yourself.`)
 
       continue
     }
+
+    // A root in range can still have a workspace package with an older copy of its own, so even a
+    // tool the doctor passes has each destination looked at; the root itself is left as it is.
 
     // A tool that is not installed is for "pawl add" or "pawl init": upgrade moves what is there.
     if (entry.installed === undefined) continue
@@ -209,8 +214,7 @@ export const planUpgrade = async (root: string): Promise<UpgradePlan> => {
     const pack = getPack(entry.split('/')[0] ?? entry)
     const installed = pack && pack.plugin !== 'eslint' ? installedVersion(root, pack.plugin) : undefined
 
-    if (!pack || installed === undefined || satisfies(installed, pack.range)) continue
-    if (upgrades.some(upgrade => upgrade.name === pack.plugin)) continue
+    if (!pack || installed === undefined || seen.has(pack.plugin)) continue
 
     add(pack.plugin, installed, pack.range)
   }

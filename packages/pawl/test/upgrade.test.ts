@@ -285,6 +285,36 @@ describe('pawl upgrade', () => {
     expect(plan.install).not.toContain('@app/hoisted')
   })
 
+  it('moves a workspace package on an older copy of a tool when the root has one pawl works with', async () => {
+    const root = outdated()
+    const eslint = (version: string): object => ({
+      name: 'eslint',
+      version,
+      main: 'index.js',
+      bin: { eslint: 'bin.js' }
+    })
+
+    write(root, {
+      'package.json': {
+        name: 'app',
+        private: true,
+        type: 'module',
+        workspaces: ['packages/*'],
+        devDependencies: { eslint: '9.35.0', 'eslint-plugin-promise': '6.0.0' }
+      },
+      'node_modules/eslint/package.json': eslint('9.35.0'),
+      'packages/web/package.json': { name: '@app/web', devDependencies: { eslint: '8.57.0' } },
+      'packages/web/node_modules/eslint/package.json': eslint('8.57.0')
+    })
+
+    const plan = await planUpgrade(root)
+
+    expect(plan.upgrades.filter(upgrade => upgrade.name === 'eslint')).toEqual([
+      expect.objectContaining({ installed: '8.57.0', spec: 'eslint@9', major: true, where: ['packages/web'] })
+    ])
+    expect(plan.install).toBe('pnpm add -D --filter @app/web eslint@9 && pnpm add -D -w eslint-plugin-promise@7')
+  })
+
   it('installs the vue-eslint-parser that eslint-plugin-vue 10 takes as a peer, first and on its own under npm', async () => {
     const vue = (lockfile: Record<string, string>): string => {
       const root = outdated(lockfile)

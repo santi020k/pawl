@@ -205,7 +205,13 @@ describe('pawl upgrade', () => {
 
     expect(plan.install).toBe('npm install -w @app/config eslint@9 && npm install -D eslint-plugin-promise@7')
     expect(plan.notes).toContain(
-      'packages/web declares eslint 8.57.0 and has no package name, so pawl cannot install into it. Install eslint@9 in packages/web yourself.'
+      'packages/web declares eslint 8.57.0 and has no package name pawl can put in a command, so pawl cannot install into it. Install eslint@9 in packages/web yourself.'
+    )
+
+    // A name npm would refuse never reaches the command, which runs in a shell on Windows.
+    write(unnamed, { 'packages/web/package.json': { name: 'web&calc', devDependencies: { eslint: '8.57.0' } } })
+    expect((await planUpgrade(unnamed)).install).toBe(
+      'npm install -w @app/config eslint@9 && npm install -D eslint-plugin-promise@7'
     )
   })
 

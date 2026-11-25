@@ -110,9 +110,16 @@ const ROOT: Destination = { dir: '', group: 'devDependencies' }
 const rootStart = (detection: Detection, manager: PackageManager, dev: string): string =>
   `${INSTALL[manager]}${dev}${workspaceRootFlag(detection, manager)}`
 
+/** A package name npm accepts, which is also safe to put in a shell command as it is. */
+const NPM_NAME = /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/
+
+/** A folder made of letters, digits and `@ . _ - /` only, safe to put in a shell command as it is. */
+const PLAIN_PATH = /^[\w@./-]+$/
+
 /**
  * The start of the command that adds packages to one destination, or undefined when it cannot be
- * named in a command: a workspace package without a name, or with a space in its folder for Bun.
+ * named in a command: a workspace package without a valid npm name, or, for Bun, with a folder that
+ * is not a plain path. The command runs in a shell on Windows, so nothing else reaches it.
  */
 const adder = (detection: Detection, manager: PackageManager, { dir, group }: Destination): string | undefined => {
   const dev = group === 'devDependencies' ? DEV_FLAG[manager] : ''
@@ -120,7 +127,7 @@ const adder = (detection: Detection, manager: PackageManager, { dir, group }: De
   if (dir === '') return rootStart(detection, manager, dev)
 
   const name = readJson<{ name?: unknown }>(join(detection.root, dir, 'package.json'))?.name
-  const named = typeof name === 'string' && /^\S+$/.test(name) ? name : undefined
+  const named = typeof name === 'string' && NPM_NAME.test(name) ? name : undefined
 
   switch (manager) {
     case 'npm':
@@ -130,7 +137,7 @@ const adder = (detection: Detection, manager: PackageManager, { dir, group }: De
     case 'yarn':
       return named && `yarn workspace ${named} add${dev}`
     default:
-      return /\s/.test(dir) ? undefined : `bun add${dev} --cwd ${dir}`
+      return PLAIN_PATH.test(dir) ? `bun add${dev} --cwd ${dir}` : undefined
   }
 }
 

@@ -117,7 +117,7 @@ const installFor = (detection: Detection, upgrades: readonly ToolUpgrade[], note
       const tools = moving.map(upgrade => `${upgrade.name} ${upgrade.installed}`).join(', ')
 
       notes.push(
-        `${destination.dir} declares ${tools} and has no package name, so pawl cannot install into it. Install ${[...peers, ...specs].join(' ')} in ${destination.dir} yourself.`
+        `${destination.dir} declares ${tools} and has no package name pawl can put in a command, so pawl cannot install into it. Install ${[...peers, ...specs].join(' ')} in ${destination.dir} yourself.`
       )
 
       continue

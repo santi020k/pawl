@@ -670,6 +670,7 @@ describe.runIf(existsSync(join(PACKAGE_ROOT, 'dist/cli.js')))(
       expect(run(root, 'explain', 'not-a-rule')).toMatchObject({ code: 1, stderr: '' })
       // The names of an engine's own diagnostics, with no rule of the catalog behind them.
       expect(run(root, 'explain', 'eslint:parse').stdout).toContain('ESLint cannot parse the file')
+      expect(run(root, 'explain', 'eslint:unused-disable-directive').stdout).toContain('switches off no finding')
       expect(run(root, 'explain', 'oxlint:parse').stdout).toContain('Oxlint cannot parse the file')
       expect(run(root, 'explain', 'biome:fs/cantRead')).toMatchObject({ code: 0 })
       expect(run(root, 'explain', 'biome:style/noDefaultExport').stdout).toContain(

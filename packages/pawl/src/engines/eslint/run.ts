@@ -74,6 +74,13 @@ const isResult = (value: unknown): value is EslintResult => {
 
 const isReport = (value: unknown): value is EslintResult[] => Array.isArray(value) && value.every(isResult)
 
+/**
+ * The name of a message ESLint reports with no rule. An `eslint-disable` or `eslint-enable` comment
+ * that switches nothing has its own, so it does not read as a file ESLint could not parse.
+ */
+const ruleless = (message: EslintMessage): string =>
+  /^Unused eslint-(?:disable|enable) directive\b/.test(message.message) ? 'unused-disable-directive' : 'parse'
+
 /** Run the project's ESLint and turn its report into findings. */
 export const runEslint = async ({
   root,
@@ -130,13 +137,15 @@ export const runEslint = async ({
           const file = projectPath(root, filePath) ?? toPosix(filePath)
 
           for (const message of messages) {
+            const own = ruleless(message)
+
             findings.push({
               file,
               line: Math.max(1, message.line ?? 1),
               column: Math.max(1, message.column ?? 1),
               engine: 'eslint',
-              engineRule: message.ruleId ?? 'parse',
-              rule: message.ruleId ?? scopedName('eslint', 'parse'),
+              engineRule: message.ruleId ?? own,
+              rule: message.ruleId ?? scopedName('eslint', own),
               severity: message.severity === 2 ? 'error' : 'warn',
               message: message.message,
               fixable: message.fix !== undefined

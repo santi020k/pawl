@@ -74,3 +74,36 @@ export default [
     )
   })
 })
+
+describe('ESLint messages without a rule', () => {
+  it('names an unused disable directive by what it is, not as a parse error', async () => {
+    const root = project({
+      'package.json': { name: 'directives', type: 'module' },
+      'eslint.config.js': `export default [
+  { files: ['**/*.js'], linterOptions: { reportUnusedDisableDirectives: 'warn' }, rules: { 'no-console': 'error' } }
+]
+`,
+      'src/unused.js': '// eslint-disable-next-line no-console\nexport const value = 1\n',
+      'src/broken.js': 'export const = 1\n'
+    })
+
+    link(root, { eslint: true })
+
+    const { findings } = await runEslint({ root, files: ['src/unused.js', 'src/broken.js'] })
+
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file: 'src/unused.js',
+          line: 1,
+          rule: 'eslint:unused-disable-directive',
+          engineRule: 'unused-disable-directive',
+          severity: 'warn',
+          fixable: true
+        }),
+        expect.objectContaining({ file: 'src/broken.js', rule: 'eslint:parse', severity: 'error' })
+      ])
+    )
+    expect(findings).toHaveLength(2)
+  })
+})

@@ -41,7 +41,10 @@ describe('setting up coding agents', () => {
         ],
         Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }],
         PreToolUse: [
-          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+          {
+            matcher: 'Edit|Write|MultiEdit|Bash|PowerShell',
+            hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }]
+          }
         ]
       }
     })
@@ -76,7 +79,10 @@ describe('setting up coding agents', () => {
         ],
         Stop: [{ hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }],
         PreToolUse: [
-          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+          {
+            matcher: 'Edit|Write|MultiEdit|Bash|PowerShell',
+            hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }]
+          }
         ]
       }
     })
@@ -108,7 +114,10 @@ describe('setting up coding agents', () => {
           { hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
         ],
         PreToolUse: [
-          { matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }] }
+          {
+            matcher: 'Edit|Write|MultiEdit|Bash|PowerShell',
+            hooks: [{ type: 'command', command: 'npx --no pawl check --hook' }]
+          }
         ]
       }
     })
@@ -240,6 +249,8 @@ describe('the pawl skill', () => {
     expect(claude?.startsWith('---\nname: pawl\ndescription: ')).toBe(true)
     expect(claude).toContain('npx --no pawl check --changed --format agent')
     expect(claude).toContain('Run `pawl baseline`. It accepts every current finding')
+    expect(claude).toContain('Claude Code asks the person before you can and Codex refuses it')
+    expect(claude).toContain('or more retries, raised timeouts and fixed sleeps than the baseline recorded')
     expect(claude).toContain('When you stop, a hook checks every file you edited in the session.')
     expect(claude).not.toMatch(/npx pawl /)
     expect((await agents(root)).actions).toEqual([])

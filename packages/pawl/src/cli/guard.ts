@@ -11,7 +11,8 @@
  * before every edit and every shell command the agent makes.
  */
 
-import { isAbsolute, posix, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { dirname, isAbsolute, join, posix, resolve } from 'node:path'
 import { BASELINE_FILE } from '../check/baseline.ts'
 import {
   BIOME_CONFIG_FILES,
@@ -22,6 +23,7 @@ import {
 } from '../project/config-files.ts'
 import { projectPath } from '../project/files.ts'
 import { isRecord } from '../utils/json.ts'
+import { type ShellCommand, shellCommands } from '../utils/shell.ts'
 
 /**
  * Which host is asking, which decides the answer: Claude Code and Copilot can ask the person;
@@ -133,48 +135,201 @@ const GUARDED = new Set([
   ...PRETTIER_CONFIG_FILES
 ])
 
+/** The folder the baseline is in: a command that removes or replaces it changes the baseline. */
+const BASELINE_FOLDER = posix.dirname(BASELINE_FILE)
+
 const isBaseline = (path: string): boolean => path === BASELINE_FILE || path.endsWith(`/${BASELINE_FILE}`)
 
 const guarded = (path: string): boolean => isBaseline(path) || GUARDED.has(posix.basename(path))
 
-/** `pawl baseline`, however pawl is run: `npx --no pawl baseline`, `pnpm exec pawl baseline`, `node …/pawl/dist/cli.js baseline`. */
-const RECORDS = /\bpawl\b[^\n;&|]*?\sbaseline\b/
+/** A path as a POSIX shell or PowerShell on Windows names it, with forward slashes. */
+const slashes = (path: string): string => path.replaceAll('\\', '/')
 
-/** A command that writes, moves or removes the baseline file, rather than one that reads it. */
-const WRITERS = [
-  '>',
-  String.raw`\btee\b`,
-  String.raw`\brm\b`,
-  String.raw`\bmv\b`,
-  String.raw`\bcp\b`,
-  String.raw`\b(?:sed)\s+-i`
-]
-const MORE_WRITERS = [String.raw`\btruncate\b`, String.raw`\bunlink\b`, String.raw`\bgit\s+(?:checkout|restore|rm)\b`]
-const BASELINE_PATTERN = BASELINE_FILE.replace(/[./]/g, match => `\\${match}`)
-const WRITES_BASELINE = new RegExp(
-  `(?:${[...WRITERS, ...MORE_WRITERS].join('|')})[^\\n;&|]*${BASELINE_PATTERN}|${BASELINE_PATTERN}[^\\n;&|]*(?:>|\\btee\\b)`
-)
+/**
+ * The top of the repository the project is in. Agents start their hooks in the folder they work
+ * in, which in a monorepo can be a package, and the baseline and the policy are still at the top.
+ * Outside a repository, the folder pawl runs in.
+ */
+const repositoryRoot = (root: string): string => {
+  for (let dir = resolve(root); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, '.git'))) return dir
+
+    if (dirname(dir) === dir) return root
+  }
+}
+
+/** pawl however a command names it: `pawl`, `node_modules/.bin/pawl`, `@santi020k/pawl@0.6.0`, `pawl.cmd`, `…/pawl/dist/cli.js`. */
+const PAWL_PROGRAM =
+  /(?:^|\/)(?:pawl(?:@[^/]*)?|pawl\.(?:cmd|ps1|exe)|@santi020k\/pawl(?:@[^/]*)?|pawl\/(?:dist|src)\/cli\.[cm]?[jt]s)$/i
+
+/** `pawl baseline`: pawl, then `baseline` as the first word after it that is not an option. */
+const recordsBaseline = ({ words }: ShellCommand): boolean =>
+  words.some(
+    (word, index) =>
+      PAWL_PROGRAM.test(slashes(word)) && words.slice(index + 1).find(item => !item.startsWith('-')) === 'baseline'
+  )
+
+/** Words that run the command after them: `sudo rm …`, `env A=1 tee …`, `xargs rm`. */
+const WRAPPERS = new Set(['sudo', 'env', 'command', 'exec', 'time', 'nice', 'xargs', 'timeout'])
+
+const nameOf = (word: string): string => (slashes(word).split('/').pop() ?? '').toLowerCase().replace(/\.exe$/, '')
+
+/** The program a simple command runs, by its name in lower case, and the words after it. */
+const programOf = (words: readonly string[]): { name: string; args: string[] } => {
+  let index = 0
+  let wrapped = false
+
+  while (index < words.length) {
+    const word = words[index] as string
+
+    if (/^[A-Za-z_]\w*=/.test(word) || (wrapped && /^(?:-|\d)/.test(word))) {
+      index++
+    } else if (WRAPPERS.has(nameOf(word))) {
+      wrapped = true
+      index++
+    } else {
+      break
+    }
+  }
+
+  return { name: nameOf(words[index] ?? ''), args: words.slice(index + 1) }
+}
+
+/** Programs that write, move or remove every file they name: in a POSIX shell, and PowerShell's cmdlets with their aliases. */
+const WRITE_ALL = new Set([
+  'tee',
+  'truncate',
+  'sponge',
+  'rm',
+  'unlink',
+  'shred',
+  'mv',
+  'del',
+  'erase',
+  'ri',
+  'remove-item',
+  'set-content',
+  'sc',
+  'add-content',
+  'ac',
+  'clear-content',
+  'clc',
+  'out-file',
+  'new-item',
+  'ni',
+  'move-item',
+  'mi',
+  'move',
+  'rename-item',
+  'rni',
+  'ren'
+])
+
+/** Programs that write the last file they name, or into the folder after `-t` or `-Destination`. */
+const WRITE_LAST = new Set(['cp', 'copy', 'cpi', 'copy-item', 'install', 'ln', 'rsync'])
+
+/** Programs that edit the files they name in place with `-i`: `sed -i`, `perl -pi -e`, `yq -i`. */
+const IN_PLACE = new Set(['sed', 'perl', 'ruby', 'yq'])
+
+/** Programs that run a script given after `-e` or `-c`, or as a here-document. */
+const INTERPRETERS = new Set(['node', 'nodejs', 'deno', 'bun', 'python', 'python3', 'py', 'perl', 'ruby', 'php'])
+
+/** git commands that write the files they name from another commit, or remove them. */
+const GIT_WRITES = new Set(['checkout', 'restore', 'rm', 'mv'])
+
+/** What in a script can write a file, read loosely: `writeFileSync`, `open(…, 'w')`, `json.dump`, `rename`. */
+const SCRIPT_WRITES = /write|dump|rename|unlink|rmSync|copyFile|truncate|open\s*\([^)]*['"][wax]/i
+
+/** Every file a unified diff changes, as `git apply` or `patch` reads it. */
+const DIFF_FILES = /^(?:\+\+\+|---) (?:[ab]\/)?(\S+)/gm
+
+const matches = (text: string, pattern: RegExp): string[] =>
+  [...text.matchAll(pattern)].map(match => (match[1] ?? '').trim()).filter(file => file !== '/dev/null')
+
+const operands = (args: readonly string[]): string[] => args.filter(arg => !arg.startsWith('-'))
+
+/** The words of a script that could be a file it names. */
+const namedIn = (script: string): string[] => script.split(/[\s'"`(),;=[\]{}]+/).filter(Boolean)
+
+/** The git command after its own options, such as `-C <path>`. */
+const gitCommand = (args: readonly string[]): { name: string; args: string[] } => {
+  let index = 0
+
+  while (index < args.length && (args[index] as string).startsWith('-'))
+    index += /^-[Cc]$/.test(args[index] as string) ? 2 : 1
+
+  return { name: (args[index] ?? '').toLowerCase(), args: args.slice(index + 1) }
+}
+
+/** The files one simple command writes, moves or removes, as it names them. */
+const writtenBy = (command: ShellCommand): string[] => {
+  const { name, args } = programOf(command.words)
+  const paths = operands(args)
+  const files = [...command.writes]
+
+  if (WRITE_ALL.has(name)) files.push(...paths)
+
+  if (WRITE_LAST.has(name)) {
+    const flag = args.findIndex(arg => /^(?:-t|--target-directory|-destination)$/i.test(arg))
+    const target = flag === -1 ? paths.at(-1) : args[flag + 1]
+
+    if (target !== undefined) {
+      files.push(target)
+
+      // A folder takes the names of what is copied into it: `cp /tmp/baseline.json .pawl/`.
+      if (flag !== -1 || /[\\/]$/.test(target) || target === '.' || nameOf(target) === BASELINE_FOLDER)
+        files.push(...paths.filter(path => path !== target).map(path => `${target}/${slashes(path).split('/').pop()}`))
+    }
+  }
+
+  if (IN_PLACE.has(name) && args.some(arg => /^-[a-zA-Z]*i/.test(arg) || /^--in-?place/.test(arg))) files.push(...paths)
+
+  if (name === 'dd') files.push(...args.flatMap(arg => (arg.startsWith('of=') ? [arg.slice(3)] : [])))
+
+  if (name === 'git') {
+    const git = gitCommand(args)
+
+    if (GIT_WRITES.has(git.name)) files.push(...operands(git.args))
+
+    if (git.name === 'apply' || git.name === 'am') files.push(...matches(command.input, DIFF_FILES))
+  }
+
+  if (name === 'patch') files.push(...matches(command.input, DIFF_FILES))
+
+  if (INTERPRETERS.has(name)) {
+    const scripts = [
+      command.input,
+      ...args.flatMap((arg, index) => (/^(?:-[ecp]|--eval|--print)$/.test(arg) ? [args[index + 1] ?? ''] : []))
+    ]
+
+    for (const script of scripts) if (SCRIPT_WRITES.test(script)) files.push(...namedIn(script))
+  }
+
+  return files
+}
 
 /** What a tool call would change that the guard hands to a person, or undefined for anything else. */
 export const guardFinding = (root: string, payload: GuardPayload): GuardFinding | undefined => {
+  const top = repositoryRoot(root)
   const base = payload.cwd ?? root
-  const files = payload.files.flatMap(file => {
-    const path = projectPath(root, isAbsolute(file) ? file : resolve(base, file))
+  const commands = payload.command === undefined ? [] : shellCommands(payload.command)
+  const named = [...payload.files, ...commands.flatMap(writtenBy), ...matches(payload.command ?? '', PATCH_FILES)]
+  const files = named.flatMap(file => {
+    const name = slashes(file)
+    const path = projectPath(top, isAbsolute(name) ? name : resolve(base, name))
 
-    return path !== undefined && guarded(path) ? [path] : []
+    if (path === undefined) return []
+
+    // Removing or replacing the baseline's folder changes the baseline in it.
+    const changed = posix.basename(path) === BASELINE_FOLDER ? posix.join(path, posix.basename(BASELINE_FILE)) : path
+
+    return guarded(changed) ? [changed] : []
   })
-  const command = payload.command ?? ''
-  const records = RECORDS.test(command)
-  const writes = WRITES_BASELINE.test(command)
-  const baseline = records || writes || files.some(isBaseline)
+  const records = commands.some(recordsBaseline)
 
-  if (files.length === 0 && !records && !writes) return undefined
+  if (files.length === 0 && !records) return undefined
 
-  return {
-    files: writes && !files.some(isBaseline) ? [...files, BASELINE_FILE] : [...new Set(files)],
-    baseline,
-    records
-  }
+  return { files: [...new Set(files)], baseline: records || files.some(isBaseline), records }
 }
 
 const what = (finding: GuardFinding): string => {

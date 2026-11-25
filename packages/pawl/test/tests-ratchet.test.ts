@@ -216,6 +216,35 @@ describe('retries, raised timeouts and fixed sleeps', () => {
     expect(file.masks).toBe(9)
   })
 
+  it('counts a retry or a timeout option only on a test, wherever the line breaks, and none in a string or a comment', () => {
+    const file = countTests(
+      'src/a.test.ts',
+      [
+        "test('gives up after retries: 3', async () => {",
+        '  await waitFor(',
+        "    () => expect(screen.getByText('saved')).toBeVisible(),",
+        '    { timeout: 2000 }',
+        '  )',
+        "  await expect(page.getByRole('button'))",
+        '    .toBeEnabled({',
+        '      timeout: 5000',
+        '    })',
+        '  const client = createClient({ timeout: 100, retries: 2 })',
+        '  const yaml = `',
+        'retries: 2',
+        'timeout: 30',
+        '`',
+        "  await page.click('#save') // sleep(500) was flaky",
+        "  await expect(page.getByText('done')).toBeVisible({ timeout: 10_000 }); await page.waitForTimeout(500)",
+        '}, {',
+        '  timeout: 30_000',
+        '})'
+      ].join('\n')
+    )
+
+    expect(file.maskLines.map(mask => mask.line)).toEqual([16, 18])
+  })
+
   it('fails a file with more of them than the baseline recorded, and has no floor without a count', () => {
     const tests = [
       {

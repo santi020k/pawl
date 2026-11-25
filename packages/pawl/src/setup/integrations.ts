@@ -241,7 +241,8 @@ const CLAUDE_HOOK: AgentHook = {
   stopEvent: 'Stop',
   addStop: stopEntry,
   guardEvent: 'PreToolUse',
-  addGuard: existing => preToolUse(existing, 'Edit|Write|MultiEdit|Bash')
+  // PowerShell is the shell tool on Windows, and there the only one where Git Bash is not installed.
+  addGuard: existing => preToolUse(existing, 'Edit|Write|MultiEdit|Bash|PowerShell')
 }
 
 /** An entry under one of Cursor's events, which take a list of commands and no matcher. */
@@ -642,7 +643,7 @@ export const planWorkflow = (root: string, detection: Detection): SetupAction | 
   return {
     path: '.github/workflows/pawl.yml',
     kind: 'create',
-    summary: 'run "pawl check --ci" on every pull request and keep the doctor report',
+    summary: 'run "pawl check --ci --format github" on every pull request and push to main, and keep the doctor report',
     apply: () => writeText(join(root, '.github/workflows/pawl.yml'), workflowFile(detection.packageManager ?? 'npm'))
   }
 }

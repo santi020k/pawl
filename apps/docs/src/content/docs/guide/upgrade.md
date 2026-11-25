@@ -17,7 +17,20 @@ Read the release's notes in the [changelog](/changelog/) first. Until 1.0, a min
 
    With pnpm it is `pnpm add -D`, with yarn `yarn add -D` and with Bun `bun add -d`.
 
-2. Run `pawl upgrade`. It installs each tool that the new release no longer takes, Biome, Oxlint and `oxlint-tsgolint` at the exact version pawl is built for and the others at their newest, then runs `pawl sync`, so this step and the next are one command. `pawl upgrade --dry-run` shows what it would install. To do it by hand instead, run `pawl doctor`. A release can move the Biome version pawl pins, or the range it takes for ESLint, Oxlint, Prettier or a pack's plugin. The doctor names each tool that does not match and the version to install:
+   npm holds pawl's optional peers to their ranges, so under npm this stops with `ERESOLVE` when a tool the project has is older than the new release takes, such as ESLint 9.30 for pawl 0.6. Run the new release's upgrade first to see what it would install, then install pawl with those versions in one command:
+
+   ```sh
+   npx @santi020k/pawl@latest upgrade --dry-run
+   npm install -D @santi020k/pawl@latest eslint@9 typescript-eslint@8
+   ```
+
+2. Run `pawl upgrade`. It installs each tool that the new release no longer takes, then runs `pawl sync`, so this step and the next are one command. `pawl upgrade --dry-run` shows what it would install.
+   - Biome, Oxlint and `oxlint-tsgolint` go to the exact version pawl is built for.
+   - Any other tool goes to the newest version of the major version it is on, such as `eslint@9` for ESLint 9.30, when that major version has one pawl takes. Only a tool whose major version has none moves to a new one, the nearest that pawl takes, and the plan says so: a new major version can change or remove rules, so read its release notes. Below 1.0.0, each minor version counts as a major version, as it does for `^`.
+   - In a workspace, a tool goes into each package that declares it, in the dependency group it is in there, so no package keeps the old version. A tool that no package declares goes into the root.
+   - Under npm, moving `eslint-plugin-vue` from 9 to 10 installs `vue-eslint-parser` 10 first, in a command of its own. Version 9 of the plugin brought the parser itself, version 10 takes it as a peer, and npm cannot swap both in one install. The other package managers get the parser in the same command as the plugin, since Yarn 1 installs no peers.
+
+   To do it by hand instead, run `pawl doctor`. A release can move the Biome version pawl pins, or the range it takes for ESLint, Oxlint, Prettier or a pack's plugin. The doctor names each tool that does not match and the version to install:
 
    ```txt wrap
    Problem: @biomejs/biome 2.5.0 is not a version pawl works with (2.6.8). Install @biomejs/biome@2.6.8.
@@ -75,7 +88,7 @@ A baseline recorded before 0.5 has no test counts, so `pawl/no-weaker-tests` has
 
 ## Moving to 0.6
 
-- **ESLint and plugin floors.** Pawl 0.6 takes ESLint 9.35.0 or later, up from 9.22.0, and `typescript-eslint` 8.15.0 or later, up from 8.0.0. Several pack plugins have a higher floor, and the ones that took any version now have one. `pawl doctor` reports an installed version below its floor as a problem, which also fails the doctor step of the workflow `init --workflow` writes. `pawl upgrade` installs the newer versions.
+- **ESLint and plugin floors.** Pawl 0.6 takes ESLint 9.35.0 or later, up from 9.22.0, and `typescript-eslint` 8.15.0 or later, up from 8.0.0. Several pack plugins have a higher floor, and the ones that took any version now have one. `pawl doctor` reports an installed version below its floor as a problem, which also fails the doctor step of the workflow `init --workflow` writes. `pawl upgrade` installs the newer versions, on the major version each tool is on when it can. Under npm, install pawl 0.6 with them in one command, as step 1 shows.
 - **Annotations in GitHub Actions.** In a GitHub Actions job, `pawl check` and `pawl fix` now use `--format github` when no format is given: annotations in a folded log group, then the plain report. If a step reads what pawl prints, give it the format it reads, or set `PAWL_FORMAT=pretty` on the step. See [Findings on the pull request](/guide/ci/#findings-on-the-pull-request).
 - **The guard.** Run `pawl init --agents` again to add the hook that hands a change to the baseline, the policy or an engine config to you, for Claude Code and Codex. See [A guard on what the check allows](/guide/agents/#a-guard-on-what-the-check-allows).
 - **A baseline that allows more.** `pawl check --since <ref>` now fails with `pawl/no-baseline-growth` when the branch's baseline allows more than the one on `<ref>`. A branch that records new findings on purpose, as after a plugin upgrade that adds rules, needs a commit with a `Pawl-Baseline: accept` trailer. See [A baseline that allows more](/guide/ratchet/#a-baseline-that-allows-more).

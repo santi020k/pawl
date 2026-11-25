@@ -14,7 +14,9 @@ export const runUpgrade = async (root: string, flags: Flags): Promise<number> =>
   const { rich, style, sym } = term
 
   for (const upgrade of plan.upgrades) {
-    const line = `${upgrade.name} ${upgrade.installed} is outside ${upgrade.wanted}: installing ${upgrade.spec}`
+    const packages = upgrade.where.filter(dir => dir !== '')
+    const where = packages.length > 0 ? ` in ${upgrade.where.map(dir => dir || 'the root').join(', ')}` : ''
+    const line = `${upgrade.name} ${upgrade.installed} is outside ${upgrade.wanted}: installing ${upgrade.spec}${where}${upgrade.major ? ', a new major version' : ''}`
 
     out(rich ? `${style.yellow('~')} ${line}` : line)
   }

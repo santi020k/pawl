@@ -100,7 +100,7 @@ In a terminal, when no option says what to set up, `init` asks: how to set up th
 | `--dry-run`    | Show the tools it would install and change nothing    |
 | `--no-install` | Do not run the package manager; only sync the configs |
 
-`pawl upgrade` installs every tool that is installed and outside the versions this pawl works with, as `pawl doctor` reports them: Biome, Oxlint and `oxlint-tsgolint` at the exact version pawl is built for, and ESLint, Prettier, `typescript-eslint` and the plugins of the packs the policy names at their newest version, which is inside every range pawl declares. It uses the project's package manager, and runs `pawl sync` once the new versions are in place. A tool that is not installed is left to `pawl add` or `pawl init`, and Node to you. It exits with 2 when the install fails, and with 0 otherwise.
+`pawl upgrade` installs every tool that is installed and outside the versions this pawl works with, as `pawl doctor` reports them: Biome, Oxlint and `oxlint-tsgolint` at the exact version pawl is built for, and ESLint, Prettier, `typescript-eslint` and the plugins of the packs the policy names at the newest version of the major version they are on, such as `eslint@9`. A tool moves to a new major version only when its own has no version pawl takes, and the plan says so. In a workspace, each tool goes into the packages that declare it. It uses the project's package manager, and runs `pawl sync` once the new versions are in place. See [Upgrading](/guide/upgrade/). A tool that is not installed is left to `pawl add` or `pawl init`, and Node to you. It exits with 2 when the install fails, and with 0 otherwise.
 
 ## Other options
 

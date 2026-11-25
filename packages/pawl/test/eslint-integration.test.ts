@@ -1,6 +1,7 @@
 import { ESLint } from 'eslint'
 import { describe, expect, it } from 'vitest'
 import { check, eslint, eslintPlanFor, exitCode } from '../src/index.ts'
+import { pluginRoot } from './fixtures/eslint/plugins.ts'
 import { link, project } from './helpers.ts'
 
 const fixture = (): string =>
@@ -146,6 +147,36 @@ describe('public ESLint integrations', () => {
 
     expect(plan.notEnforced.filter(item => item.rule.startsWith('@html-eslint/'))).toEqual([])
     expect(preset?.files).toEqual(['**/*.html'])
+  })
+
+  it.each([
+    ['vue', 'eslint-plugin-vue', 'src/App.vue'],
+    ['svelte', 'eslint-plugin-svelte', 'src/App.svelte']
+  ])('hands the %s pack scripts to typescript-eslint in a TypeScript project', async (prefix, name, file) => {
+    // vue-eslint-parser and svelte-eslint-parser read a <script lang="ts"> with parserOptions.parser,
+    // which is espree unless the config names another: without it, every typed component fails to parse.
+    const root = project({
+      'package.json': { name: 'consumer', type: 'module', devDependencies: { [name]: '1.0.0', typescript: '5.0.0' } },
+      'tsconfig.json': { include: ['src'] },
+      'pawl.config.json': { engine: 'eslint', packs: [prefix] },
+      [`node_modules/${name}/package.json`]: { name, version: '10.0.0', type: 'module', exports: './index.js' },
+      [`node_modules/${name}/index.js`]: [
+        'const parser = {',
+        '  parseForESLint(code, options) {',
+        '    if (!options.parser) throw new SyntaxError("Unexpected token :")',
+        '    return options.parser.parseForESLint(code, options)',
+        '  }',
+        '}',
+        'const plugin = { rules: { "padding-line-between-blocks": { create() { return {} } } } }',
+        `plugin.configs = { "flat/recommended": [{ plugins: { ${prefix}: plugin } }, { files: ["**/*.${prefix}"], languageOptions: { parser } }] }`,
+        'export default plugin'
+      ].join('\n')
+    })
+    const config = await eslint({ root, pluginRoots: [pluginRoot] })
+    const runner = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: config })
+    const [report] = await runner.lintText('const value: number = 1\nexport { value }\n', { filePath: file })
+
+    expect(report?.messages.filter(message => message.fatal)).toEqual([])
   })
 
   it('resolves plugins through public exports in additional shared-config roots', async () => {

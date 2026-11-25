@@ -61,6 +61,12 @@ const globalsFor = async (root: string, runtimes: readonly Runtime[]): Promise<R
 
 const TS_FILES = ['**/*.{ts,mts,cts,tsx}']
 
+/**
+ * The packs whose preset's parser hands each `<script>` to `parserOptions.parser`, which reads
+ * JavaScript only unless the config names another. In a TypeScript project they get typescript-eslint's.
+ */
+const SCRIPT_HOSTS: ReadonlySet<string> = new Set(['vue', 'svelte'])
+
 export interface EslintPlan {
   config: FlatConfig[]
   /** Rules left to Biome because it enforces them faster. */
@@ -360,6 +366,12 @@ const placeRules = async (build: Build): Promise<void> => {
     if (covered(name)) {
       if (level !== 'off') coveredByBiome.push(name)
 
+      // The javascript and typescript packs start from presets that may turn it on in ESLint too.
+      for (const alias of [scopedRule(name, 'eslint') ?? name, ...(def?.aliases ?? [])]) {
+        if (alias in coreRules) coreRules[alias] = 'off'
+        if (alias in tsRules) tsRules[alias] = 'off'
+      }
+
       continue
     }
 
@@ -520,7 +532,7 @@ const baseConfigs = async (build: Build): Promise<FlatConfig[]> => {
 }
 
 /** One block per active pack, with the rules the installed plugin has. */
-const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: Build): FlatConfig[] => {
+const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options }: Build): FlatConfig[] => {
   const config: FlatConfig[] = []
 
   for (const { pack, plugin, fromPlugin, dirs } of packBlocks) {
@@ -581,6 +593,15 @@ const packConfigs = ({ covered, packRules, packBlocks, notEnforced, options }: B
           }
         })
       )
+      // The preset's parser reads each <script> with parserOptions.parser, which is espree unless the
+      // config names another, so a component with `lang="ts"` would not parse.
+      const scriptParser = SCRIPT_HOSTS.has(pack.name) ? ts.module?.parser : undefined
+      if (scriptParser !== undefined && files)
+        config.push({
+          name: `pawl/pack/${pack.name}/typescript`,
+          files,
+          languageOptions: { parserOptions: { parser: scriptParser } }
+        })
       // The plugin object the preset registers, which a plugin with both a CommonJS and an ES module
       // build may not share with the module pawl imported. ESLint refuses two objects under one name.
       const own = preset.map(block => (isRecord(block.plugins) ? block.plugins[pack.prefix] : undefined)).find(Boolean)

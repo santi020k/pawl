@@ -166,7 +166,9 @@ const missingPackages = (
     ...(linter === 'biome' || formatter === 'biome' ? ['@biomejs/biome'] : []),
     ...(linter === 'oxlint' ? ['oxlint', ...(choice.typeAware ? [TYPE_AWARE_PACKAGE] : [])] : []),
     ...(choice.eslint ? ['eslint'] : []),
-    ...(linter === 'eslint' ? ['@eslint/js', ...(detection.typescript ? ['typescript-eslint'] : [])] : []),
+    ...(linter === 'eslint' ? ['@eslint/js'] : []),
+    // ESLint lints the scripts too, also next to Biome, and reads TypeScript only with typescript-eslint.
+    ...(choice.eslint && detection.typescript ? ['typescript-eslint'] : []),
     ...(formatter === 'prettier' ? ['prettier'] : []),
     ...packs.flatMap(name => getPack(name)?.plugin ?? []),
     ...more

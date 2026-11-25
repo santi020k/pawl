@@ -1201,6 +1201,29 @@ describe("the tools are the project's choice", { timeout: 60_000 }, () => {
     })
     await expect(planAdd(root, ['nope'])).rejects.toThrow(/Unknown pack: nope/)
   })
+
+  it('installs typescript-eslint with ESLint next to Biome in a TypeScript project, so its scripts parse', async () => {
+    // ESLint lints the scripts for any pack, and without typescript-eslint's parser it fails on every type.
+    const root = project({
+      'package.json': { name: 'fixture', private: true, devDependencies: { typescript: '^5.9.0' } },
+      'tsconfig.json': { include: ['src'] }
+    })
+
+    expect((await planAdd(root, ['yaml'])).install).toBe('npm install -D eslint typescript-eslint eslint-plugin-yml')
+    expect((await planInit({ root, packs: ['markdown'] })).install).toBe(
+      'npm install -D @santi020k/pawl @biomejs/biome@2.6.8 eslint typescript-eslint @eslint/markdown'
+    )
+
+    // Biome does not fully lint Vue, so the default init runs ESLint next to it.
+    const vue = project({
+      'package.json': { name: 'fixture', private: true, dependencies: { vue: '^3.5.0' } },
+      'tsconfig.json': { include: ['src'] }
+    })
+
+    expect((await planInit({ root: vue })).install).toBe(
+      'npm install -D @santi020k/pawl @biomejs/biome@2.6.8 eslint typescript-eslint'
+    )
+  })
 })
 
 describe('guards for the libraries a project uses, with the real Biome', { timeout: 60_000 }, () => {

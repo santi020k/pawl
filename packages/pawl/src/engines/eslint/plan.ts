@@ -572,34 +572,39 @@ const packConfigs = ({ covered, ts, packRules, packBlocks, notEnforced, options 
     const files = explicitFiles ?? pack.files
     if (pack.spread) {
       const preset = toList(presetOf(pack, plugin) as FlatConfig | readonly FlatConfig[] | undefined)
-      config.push(
-        ...preset.map(block => {
-          if (Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
-          // A block of the preset with no files would reach every file ESLint lints. One that sets a
-          // parser, a language or a processor keeps to the pack's own files, or it would parse the
-          // scripts as HTML. One with rules only keeps to the scripts and the pack's own files, away
-          // from the Markdown, JSON or YAML another pack hands to its own language, where it crashes.
-          if (!explicitFiles) {
-            if (Array.isArray(block.files) || !pack.files) return block
+      const blocks = preset.map(block => {
+        if (Object.keys(block).every(key => key === 'ignores' || key === 'name')) return block
+        // A block of the preset with no files would reach every file ESLint lints. One that sets a
+        // parser, a language or a processor keeps to the pack's own files, or it would parse the
+        // scripts as HTML. One with rules only keeps to the scripts and the pack's own files, away
+        // from the Markdown, JSON or YAML another pack hands to its own language, where it crashes.
+        if (!explicitFiles) {
+          if (Array.isArray(block.files) || !pack.files) return block
 
-            return { ...block, files: parses(block) ? pack.files : [...SCRIPT_FILES, ...pack.files] }
-          }
-          const original = Array.isArray(block.files) ? block.files : ['**/*']
-          return {
-            ...block,
-            files: original.flatMap(file =>
-              explicitFiles.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])
-            )
-          }
-        })
-      )
+          return { ...block, files: parses(block) ? pack.files : [...SCRIPT_FILES, ...pack.files] }
+        }
+        const original = Array.isArray(block.files) ? block.files : ['**/*']
+        return {
+          ...block,
+          files: original.flatMap(file =>
+            explicitFiles.map(pattern => [...(Array.isArray(file) ? file : [file]), pattern])
+          )
+        }
+      })
+      config.push(...blocks)
       // The preset's parser reads each <script> with parserOptions.parser, which is espree unless the
-      // config names another, so a component with `lang="ts"` would not parse.
+      // config names another, so a component with `lang="ts"` would not parse. The same goes for every
+      // file the preset hands to that parser, such as Svelte's `.svelte.ts` modules.
       const scriptParser = SCRIPT_HOSTS.has(pack.name) ? ts.module?.parser : undefined
-      if (scriptParser !== undefined && files)
+      const parsed = blocks.flatMap(block =>
+        isRecord(block.languageOptions) && block.languageOptions.parser !== undefined && Array.isArray(block.files)
+          ? (block.files as unknown[])
+          : []
+      )
+      if (scriptParser !== undefined && parsed.length > 0)
         config.push({
           name: `pawl/pack/${pack.name}/typescript`,
-          files,
+          files: parsed,
           languageOptions: { parserOptions: { parser: scriptParser } }
         })
       // The plugin object the preset registers, which a plugin with both a CommonJS and an ES module
